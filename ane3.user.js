@@ -1,383 +1,1054 @@
 // ==UserScript==
-// @name         Custom Chat Word Highlighter with Dashboard
+// @name         LiveChat Minimal UI + Toggles (per-ID) + Left-Bar Pulse + Accent Toast + Fixed Sidebars
 // @namespace    http://tampermonkey.net/
-// @version      2025-10-07
-// @description  Highlight words in chat with custom group names and colors. Edit via floating dashboard.
-// @match        https://my.livechatinc.com/*
+// @version      2.0.4
+// @description  Garis kiri seragam (termasuk Archived). Toast ber-outline sesuai toggle & width 300px. Semua fitur tetap, sidebar width tetap. Left host & pulse scale mengikuti kustom kamu.
+// @author       @anonymous
+// @match        https://my.livechatinc.com/chats/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_deleteValue
-// @grant        GM_listValues
-// @run-at       document-idle
 // ==/UserScript==
 
 (function () {
     'use strict';
 
-    const STORAGE_KEY = 'chatHighlighterWords';
-    const SIZE_KEY = 'chatHighlighterSize';
-    const ENABLED_KEY = 'chatHighlighterEnabled';
-    const CONFIG_KEY = 'MC_DASHBOARD_CONFIG';
-    const RESPONSE_KEY = 'chatAutoResponses';
+    // ====== Konfigurasi ======
+    const BLINK_DELAY_MS = 180000; // 3 menit (Merah Berkedip + ⚠️)
+    const YELLOW_THRESHOLD_MS = 120000; // 2 menit (Kuning Diam)
+    const TOAST_LIFETIME_MS = 180000;
+    const TOAST_ACCENT_COLOR = '#ffcc00'; // Amber/Gold (Lebih Jelas di Putih)
+    const TOAST_ACCENT_COLOR_RED = '#ff0000'; // aksen merah terang
+    const TOAST_ACCENT_COLOR_BLUE = '#011d47ff'; // Biru Jeans Tua (Pengganti Putih)
+    const LEFTBAR_WIDTH_PX = 3; // ketebalan garis kiri
+    const TAG_RAINBOW = 'rainbow'; // 🌈 mode pelangi
+
+    // ====== SLA Notification Toggle Settings ======
     const SLA_NOTIF_2MIN_KEY = 'slaNotif2minEnabled';
     const SLA_NOTIF_3MIN_KEY = 'slaNotif3minEnabled';
 
-    // Helper functions for GM Storage with Local Cache Bridge
-    function getStore(key, defaultValue) {
-        let val = GM_getValue(key);
-        if (val === undefined) {
-            // Migration check: check localStorage first
-            val = localStorage.getItem(key);
-            if (val !== null) {
-                try {
-                    const parsed = JSON.parse(val);
-                    GM_setValue(key, parsed);
-                    return parsed;
-                } catch (e) {
-                    GM_setValue(key, val);
-                    return val;
-                }
+    // =======================================
+    // Utils: Universal Robust Helpers
+    // =======================================
+    const archTags = [
+        'archived', 'customer left', 'inactivity', 'meninggalkan',
+        'followup', 'sent to', 'joined', 'assigned', 'invited', 'closed',
+        'transferred', 'ditransfer'
+    ];
+
+    const detectIsTyping = (item) => {
+        if (!item) return false;
+        // Hanya deteksi elemen indikator khusus, jangan scan seluruh teks item
+        // karena teks "..." di akhir pesan (truncation) akan terbaca sebagai typing.
+        const typingEl = item.querySelector(
+            '[class*="typing"], [class*="dots"], [data-test*="typing"], [data-testid*="typing"], ' +
+            '.typing-indicator, [aria-label*="typing"], [class*="lc-dots"], [class*="lc-typing"], ' +
+            'img[src*="typing"], .css-14v0z1c, [class*="DotIndicator"], [class*="ThreeDots"], ' +
+            '[class*="LoadingDots"], [class*="typing_dots"], [class*="DotAnimation"]'
+        ) || item.querySelector('svg[class*="typing"], svg[class*="dots"], svg[aria-label*="typing"]');
+
+        if (typingEl) return true;
+
+        // Fallback: Cek apakah ada elemen yang secara spesifik mengandung teks 'mengetik' atau 'typing'
+        // tapi bukan bagian dari preview pesan.
+        const dotsEl = item.querySelector('.chat-item__message--typing, .lc-typing-indicator');
+        if (dotsEl) return true;
+
+        return false;
+    };
+
+    // Helper functions to check notification settings
+    // Use localStorage as a runtime bridge from Script 1
+    const isNotif2minEnabled = () => localStorage.getItem(SLA_NOTIF_2MIN_KEY) !== 'false';
+    const isNotif3minEnabled = () => localStorage.getItem(SLA_NOTIF_3MIN_KEY) !== 'false';
+
+    // Function to clear specific type of SLA toasts
+    const clearSlaToasts = (type) => {
+        const host = document.querySelector('.my-toast-host');
+        if (!host) return;
+
+        const toasts = host.querySelectorAll('.my-toast[data-chat-id]');
+        toasts.forEach(toast => {
+            const msgEl = toast.querySelector('.my-toast-msg');
+            if (!msgEl) return;
+            const text = msgEl.textContent || '';
+
+            if (type === '2min' && text.includes('2 MENIT')) {
+                toast.classList.add('hide');
+                setTimeout(() => toast.remove(), 200);
+            } else if (type === '3min' && text.includes('3 MENIT')) {
+                toast.classList.add('hide');
+                setTimeout(() => toast.remove(), 200);
             }
-            return defaultValue;
-        }
-        return val;
-    }
+        });
+    };
 
-    function setStore(key, value) {
-        GM_setValue(key, value);
-        // Bridge to localStorage so other scripts can still read it at runtime
-        try {
-            localStorage.setItem(key, typeof value === 'object' ? JSON.stringify(value) : value);
-        } catch (e) { }
-    }
+    // Listen for setting changes from dashboard
+    window.addEventListener('slaNotifSettingChanged', (e) => {
+        const { type, enabled } = e.detail;
+        console.log(`🔔 SLA Notif ${type} changed to: ${enabled ? 'ON' : 'OFF'}`);
 
-    function removeStore(key) {
-        GM_deleteValue(key);
-        localStorage.removeItem(key);
-    }
-
-    // Runtime Bridge: Sinkronisasi GM_storage ke localStorage saat startup
-    // agar skrip lain (seperti script3) bisa membaca setting terbaru meskipun cache baru dihapus.
-    [STORAGE_KEY, SIZE_KEY, ENABLED_KEY, CONFIG_KEY, RESPONSE_KEY, SLA_NOTIF_2MIN_KEY, SLA_NOTIF_3MIN_KEY, 'MC_ORB_POS'].forEach(key => {
-        const val = GM_getValue(key);
-        if (val !== undefined) {
-            try {
-                localStorage.setItem(key, typeof val === 'object' ? JSON.stringify(val) : val);
-            } catch (e) { }
+        // If turned OFF, clear existing toasts of that type
+        if (!enabled) {
+            clearSlaToasts(type);
         }
     });
 
+    // =========================
+    // Utilities (URL & Chat ID)
+    // =========================
+    const getActiveChatId = () => {
+        // 1. Cek via attribute aria-selected atau class active (Sangat Akurat)
+        const selectedLi = document.querySelector('li[data-testid^="chat-item-"][aria-selected="true"], li[class*="selected"], li[class*="active"]');
+        if (selectedLi) {
+            const tid = selectedLi.getAttribute('data-testid') || '';
+            const m = tid.match(/chat-item-([^/]+)/i);
+            if (m) return m[1];
+        }
 
-
-    // Load SLA notification settings (default: ON)
-    let slaNotif2minEnabled = getStore(SLA_NOTIF_2MIN_KEY, true);
-    let slaNotif3minEnabled = getStore(SLA_NOTIF_3MIN_KEY, true);
-
-    // Custom word groups (Neon Elite Aesthetic)
-    const colorGroups = {
-        Blue: { textColor: '#fff', grad: 'linear-gradient(135deg, #00d2ff, #3a7bd5)', shadow: '#00d2ff88', words: ['depo', 'deposit', 'dp', 'freespin', 'free spin', 'paspot', 'Topap', 'top up'] },
-        Red: { textColor: '#fff', grad: 'linear-gradient(135deg, #ff0844, #ffb199)', shadow: '#ff084488', words: ['withdraw', 'buyspin', 'buy spin', 'sandi', 'pasword', 'password', 'paswod', 'wd', 'pw', 'batalkan', 'kontol', 'penarikan', 'batalin', 'keluar', 'maindikeluarin', 'main di keluarin', 'reset deposit'] },
-        Green: { textColor: '#fff', grad: 'linear-gradient(135deg, #00f260, #0575e6)', shadow: '#00f26088', words: ['lupa id', 'lupa', 'sketer', 'scater', 'scatter', 'username', 'Lupa akun'] },
-        Yellow: { textColor: '#000', grad: 'linear-gradient(135deg, #f9d423, #ff4e50)', shadow: '#f9d42388', words: ['situs', 'game', 'bola'] },
-        Purple: { textColor: '#fff', grad: 'linear-gradient(135deg, #8e2de2, #4a00e0)', shadow: '#8e2de288', words: ['promo', 'bonus', 'event'] },
-        Pink: { textColor: '#fff', grad: 'linear-gradient(135deg, #ff94c2, #ff0080)', shadow: '#ff94c2aa', words: ['mila', 'cantik', 'sayang', 'hallo', 'halo'] }
+        // 2. Fallback via URL
+        const m = location.pathname.match(/\/chats\/(?:[^/]+\/)?([^/]+)/i);
+        return m ? m[1] : null;
     };
 
+    const manuallyRepliedIds = new Map(); // chatId -> timestamp (untuk cleanup otomatis)
 
+    // --- FITUR BARU: Deteksi Kirim Pesan untuk Reset Instan ---
+    const handleManualReply = () => {
+        const activeId = getActiveChatId();
+        if (activeId) {
+            console.log(`🚀 [${activeId}] Reply terdeteksi via Input! Mereset Timer...`);
 
-    let isHighlighterEnabled = getStore(ENABLED_KEY, true);
-    let globalFontSize = parseInt(getStore(SIZE_KEY, 16)) || 16;
+            // Mark as manually replied to prevent restart while sidebar lags
+            manuallyRepliedIds.set(activeId, Date.now());
 
-    // Default system settings
-    let dashConfig = {
-        profileImg: 'https://i.imgur.com/hc1INx7.png',
-        mcLabel: 'Mc',
-        dashBg: 'rgba(15, 15, 20, 0.95)',
-        bubbleBg: 'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.15), rgba(0,0,0,0.4))'
+            unrepliedStartTimes.delete(activeId);
+            saveUnrepliedTimers();
+
+            // Cari item dan bersihkan visualnya segera
+            const item = findItemByChatId(activeId);
+            if (item) {
+                item.classList.remove('blink-red', 'is-red');
+                item.classList.add('replied-instant'); // Force green state visually
+                delete item.dataset.redToastShown;
+                delete item.dataset.yellowToastShown;
+                removeWarningBadge(item);
+            }
+            updateLiveToastIndices(); // Tutup toast segera
+        }
     };
-    const storedConfig = getStore(CONFIG_KEY, null);
-    if (storedConfig) dashConfig = { ...dashConfig, ...storedConfig };
 
-    let currentDashTab = 'main'; // 'main' or 'settings'
+    // Listen untuk klik tombol Send dan tekan Enter
+    document.addEventListener('click', (e) => {
+        if (e.target.closest('[data-testid="send-button"], [class*="send-button"], button.send')) {
+            handleManualReply();
+        }
+    }, true);
 
-    // --- SHARED POSITION STATE ---
-    const savedPos = getStore('MC_ORB_POS', { x: 20, y: 20 });
-    let xOffset = Math.max(0, Math.min(savedPos.x, window.innerWidth - 80));
-    let yOffset = Math.max(0, Math.min(savedPos.y, window.innerHeight - 80));
-    let isDragging = false;
-    let dragMoved = false;
-
-    function saveConfig() {
-        setStore(CONFIG_KEY, dashConfig);
-        updateSystemLive();
-    }
-
-    function updateSystemLive() {
-        if (typeof bubble !== 'object') return;
-        const bImg = bubble.querySelector('img');
-        const bLabel = bubble.querySelector('.mc-label');
-        if (bImg) bImg.src = dashConfig.profileImg;
-        if (bLabel) bLabel.textContent = dashConfig.mcLabel;
-        bubble.style.background = dashConfig.bubbleBg;
-
-        if (typeof dash === 'object') {
-            if (dashConfig.dashBg.includes('url')) {
-                // Gunakan background shorthand agar posisi & ukuran gambar (cover/center) tidak hancur
-                dash.style.background = `linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)), ${dashConfig.dashBg}`;
-                dash.style.backgroundColor = '#0f0f14';
-            } else {
-                dash.style.background = dashConfig.dashBg;
-                dash.style.backgroundImage = 'none';
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            // Cek apakah sedang fokus di area pesan
+            if (document.activeElement.matches('[data-testid="message-input"], [contenteditable="true"], textarea')) {
+                handleManualReply();
             }
         }
-    }
+    }, true);
 
-    // Load AUTO_RESPONSE_DATA from localStorage if available
-    let AUTO_RESPONSE_DATA = {
-        'Depo': {
-            triggerWords: ['depo', 'deposit', 'dp', 'topap'],
-            messages: ["Dana deposit anda sudah berhasil kami proseskan ya Bosku."]
-        },
-        'Withdraw': {
-            triggerWords: ['withdraw', 'wd', 'penarikan'],
-            messages: ["Untuk permintaan withdraw anda sedang dalam antrian."]
+    const onRouteChange = (cb) => {
+        const _ps = history.pushState, _rs = history.replaceState;
+        history.pushState = function () { const r = _ps.apply(this, arguments); setTimeout(cb, 0); return r; };
+        history.replaceState = function () { const r = _rs.apply(this, arguments); setTimeout(cb, 0); return r; };
+        window.addEventListener('popstate', () => setTimeout(cb, 0));
+    };
+
+    const findItemByChatId = (chatId) => {
+        if (!chatId) return null;
+        const li = document.querySelector(`li[data-testid="chat-item-${chatId}"]`);
+        return li ? (li.querySelector('.chat-item') || li) : null;
+    };
+
+    const getChatIdFromItem = (item) => {
+        if (!item) return null;
+        if (item.dataset.chatId) return item.dataset.chatId;
+        const holder = item.closest('li[data-testid^="chat-item-"]') || item;
+        const tid = holder.getAttribute('data-testid') || '';
+        const m = tid.match(/chat-item-([^/]+)/i);
+        if (m) { item.dataset.chatId = m[1]; return m[1]; }
+        const a = item.querySelector('a[href*="/chats/"]');
+        if (a) {
+            const m2 = (a.getAttribute('href') || '').match(/\/chats\/(?:[^/]+\/)?([^/]+)/i);
+            if (m2) { item.dataset.chatId = m2[1]; return m2[1]; }
+        }
+        return null;
+    };
+
+    const getCurrentChatItem = () => findItemByChatId(getActiveChatId());
+    const storageKeyForItem = (item) => {
+        const id = getChatIdFromItem(item);
+        return id ? `chat-toggle-${id}` : null;
+    };
+
+    // ============== DOM Helpers ==============
+    const waitForElement = (selector, callback) => {
+        const el = document.querySelector(selector);
+        if (el) callback(el); else setTimeout(() => waitForElement(selector, callback), 500);
+    };
+
+    // ======== Persist (per-ID) ========
+    const saveColor = (item, token) => {
+        const key = storageKeyForItem(item);
+        if (key) {
+            GM_setValue(key, token);
+            localStorage.setItem(key, token); // bridge
         }
     };
-    const savedResponses = getStore(RESPONSE_KEY, null);
-    if (savedResponses) AUTO_RESPONSE_DATA = savedResponses;
+    const getSavedColor = (item) => {
+        const key = storageKeyForItem(item);
+        if (!key) return null;
+        let val = GM_getValue(key);
+        if (val === undefined) {
+            val = localStorage.getItem(key);
+            if (val) GM_setValue(key, val);
+        }
+        return val;
+    };
+    const clearSavedColor = (item) => {
+        const key = storageKeyForItem(item);
+        if (key) {
+            GM_deleteValue(key);
+            localStorage.removeItem(key);
+        }
+    };
 
-    function saveResponses() {
-        setStore(RESPONSE_KEY, AUTO_RESPONSE_DATA);
-        if (typeof rebuildRegex === 'function') rebuildRegex();
-        renderDashboard();
-    }
+    // ====== Toast ======
+    const ensureToastHost = () => {
+        let host = document.querySelector('.my-toast-host');
+        if (!host) {
+            host = document.createElement('div');
+            host.className = 'my-toast-host';
+            document.body.appendChild(host);
+        }
+        return host;
+    };
 
-    const savedWords = getStore(STORAGE_KEY, null);
-    if (savedWords) {
-        Object.keys(savedWords).forEach(name => {
-            if (colorGroups[name]) colorGroups[name].words = savedWords[name];
+    const showToast = (message, accent = TOAST_ACCENT_COLOR, chatId = null, duration = TOAST_LIFETIME_MS, onUserClose = null) => {
+        const host = ensureToastHost();
+
+        // --- ANTI-SPAM NOTIFIKASI ---
+        const existingToast = host.querySelector(`.my-toast[data-chat-id="${chatId}"]`);
+        if (chatId && existingToast) {
+            // Jika notifikasi untuk chat ini sudah ada, update pesannya saja, jangan buat baru
+            const msgSpan = existingToast.querySelector('.my-toast-msg');
+            if (msgSpan) {
+                if (message.includes('#')) {
+                    const parts = message.split(/#\d+/);
+                    msgSpan.innerHTML = `${parts[0]}#<span class="live-idx">?</span>${parts[1] || ''}`;
+                } else {
+                    msgSpan.textContent = message;
+                }
+            }
+            // Update warna aksen jika berubah (misal dari kuning ke merah)
+            existingToast.style.setProperty('--toast-accent', accent);
+            updateLiveToastIndices();
+            return;
+        }
+
+        const toast = document.createElement('div');
+        toast.className = 'my-toast';
+        if (chatId) {
+            toast.dataset.chatId = chatId;
+            toast.style.cursor = 'pointer';
+        }
+        toast.setAttribute('role', 'status');
+        toast.setAttribute('aria-live', 'polite');
+        toast.style.setProperty('--toast-accent', accent);
+
+        const msg = document.createElement('span');
+        msg.className = 'my-toast-msg';
+
+        if (message.includes('#')) {
+            const parts = message.split(/#\d+/);
+            msg.innerHTML = `${parts[0]}#<span class="live-idx">?</span>${parts[1] || ''}`;
+        } else {
+            msg.textContent = message;
+        }
+
+        const btn = document.createElement('button');
+        btn.className = 'my-toast-close';
+        btn.type = 'button';
+        btn.setAttribute('aria-label', 'Close');
+        btn.textContent = '×';
+
+        toast.appendChild(msg);
+        toast.appendChild(btn);
+        host.appendChild(toast);
+
+        if (chatId) updateLiveToastIndices();
+
+        const close = (isUserAction = false) => {
+            if (isUserAction && onUserClose) onUserClose();
+
+            // Bersihkan flag Shown di item agar bisa dipicu lagi nanti jika diperlukan
+            if (chatId) {
+                const itm = findItemByChatId(chatId);
+                if (itm) {
+                    delete itm.dataset.redToastShown;
+                    delete itm.dataset.yellowToastShown;
+                }
+            }
+
+            toast.classList.add('hide');
+            setTimeout(() => toast.remove(), 200);
+        };
+
+        // --- FITUR QUICK-JUMP ---
+        toast.addEventListener('click', () => {
+            if (chatId) {
+                const item = findItemByChatId(chatId);
+                if (item) {
+                    item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    item.click();
+                }
+            }
+            close(false);
         });
-    }
-    function saveGroups() {
+
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            close(true);
+        });
+
+        setTimeout(() => {
+            if (toast.parentElement) close(false);
+        }, duration);
+    };
+
+    // =========================
+    // Toggle logic + Timer kuning & Merah (Locked Timestamp)
+    // =========================
+    const bootTime = Date.now(); // Catat waktu booting script
+    const UNREPLIED_STORAGE_KEY = 'chatUnrepliedStartTimes';
+    const initUnrepliedMap = () => {
+        let saved = GM_getValue(UNREPLIED_STORAGE_KEY);
+        if (saved === undefined) {
+            // Migration
+            saved = localStorage.getItem(UNREPLIED_STORAGE_KEY);
+            if (saved) {
+                try {
+                    const obj = JSON.parse(saved);
+                    GM_setValue(UNREPLIED_STORAGE_KEY, obj);
+                    return new Map(Object.entries(obj).map(([id, time]) => [id, Number(time)]));
+                } catch (e) { return new Map(); }
+            }
+            return new Map();
+        }
+        return new Map(Object.entries(saved).map(([id, time]) => [id, Number(time)]));
+    };
+
+    const yellowTimers = new Map(); // chatId -> timeoutId
+    const unrepliedStartTimes = initUnrepliedMap();
+
+    const saveUnrepliedTimers = () => {
         const obj = {};
-        Object.keys(colorGroups).forEach(name => obj[name] = colorGroups[name].words);
-        setStore(STORAGE_KEY, obj);
-        rebuildRegex();
-        highlightMessages();
-        renderDashboard();
-    }
+        unrepliedStartTimes.forEach((v, k) => obj[k] = v);
+        GM_setValue(UNREPLIED_STORAGE_KEY, obj);
+        localStorage.setItem(UNREPLIED_STORAGE_KEY, JSON.stringify(obj)); // bridge
+    };
 
-    // —— Modern Design System CSS ——
-    const style = document.createElement('style');
-    document.head.appendChild(style);
-    function rebuildCSS() {
-        style.textContent = `
-        @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;600&display=swap');
+    const setYellowTimer = (item, enable) => {
+        const chatId = getChatIdFromItem(item);
+        if (!chatId) return;
 
-        :root {
-            --glass-bg: rgba(15, 15, 20, 0.9);
-            --glass-border: rgba(255, 255, 255, 0.15);
-            --neon-blue: #00f2ff;
-            --neon-red: #ff0000;
-            --neon-green: #00ff00;
-            --neon-yellow: #ffff00;
+        if (yellowTimers.has(chatId)) {
+            clearTimeout(yellowTimers.get(chatId));
+            yellowTimers.delete(chatId);
         }
 
-        /* Cyber-Pill Highlighter Style */
-        ${Object.entries(colorGroups).map(([name, group]) => `
-        .hl-${name} {
-            background: ${isHighlighterEnabled ? group.grad : 'transparent'} !important;
-            color: ${isHighlighterEnabled ? group.textColor : 'inherit'} !important;
-            font-size: ${globalFontSize}px !important;
-            padding: ${isHighlighterEnabled ? '2px 12px' : '0'};
-            border-radius: 50px;
-            box-shadow: ${isHighlighterEnabled ? `0 4px 15px ${group.shadow}` : 'none'};
-            font-weight: ${isHighlighterEnabled ? '700' : 'normal'};
-            display: inline-block;
-            margin: 0 ${isHighlighterEnabled ? '4' : '0'}px;
-            position: relative;
-            overflow: hidden;
-            border: ${isHighlighterEnabled ? '1px solid rgba(255,255,255,0.2)' : 'none'};
-            text-shadow: ${isHighlighterEnabled ? '0 1px 2px rgba(0,0,0,0.2)' : 'none'};
-            line-height: 1.2;
-            vertical-align: middle;
-            transition: all 0.3s ease;
-        }
-        /* Efek Kilauan Kaca di atas Pill */
-        .hl-${name}::after {
-            content: "";
-            position: absolute;
-            top: 0; left: 0; right: 0; height: 50%;
-            background: ${isHighlighterEnabled ? 'linear-gradient(to bottom, rgba(255,255,255,0.2), transparent)' : 'transparent'};
-            pointer-events: none;
-        }
-        `).join('\n')}
+        const currentNode = findItemByChatId(chatId);
+        if (currentNode) currentNode.classList.remove('blink-yellow');
 
-        /* Modern Toggle Switch CSS */
-        .switch {
-            position: relative;
-            display: inline-block;
-            width: 44px;
-            height: 24px;
+        if (enable) {
+            const tid = setTimeout(() => {
+                const node = findItemByChatId(chatId);
+                const stillYellow = node && getSavedColor(node) === 'yellow';
+                if (stillYellow) {
+                    node.classList.add('blink-yellow');
+                    showToast(`⏳ Cek chat yang ditandai (kuning) • #1`, TOAST_ACCENT_COLOR, chatId);
+                }
+                yellowTimers.delete(chatId);
+            }, BLINK_DELAY_MS);
+            yellowTimers.set(chatId, tid);
         }
-        .switch input { opacity: 0; width: 0; height: 0; }
-        .slider-toggle {
-            position: absolute;
-            cursor: pointer;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background-color: rgba(255,255,255,0.1);
-            transition: .4s;
-            border-radius: 24px;
-            border: 1px solid rgba(255,255,255,0.1);
-        }
-        .slider-toggle:before {
-            position: absolute;
-            content: "";
-            height: 18px; width: 18px;
-            left: 3px; bottom: 2px;
-            background-color: white;
-            transition: .4s;
-            border-radius: 50%;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        }
-        input:checked + .slider-toggle { background: linear-gradient(135deg, #00d2ff, #3a7bd5); }
-        input:checked + .slider-toggle:before { transform: translateX(20px); }
+    };
 
-        /* Dashboard & Bubble Animations */
-        @keyframes orbGlow {
-            0%, 100% { box-shadow: 0 0 15px rgba(255,255,255,0.2), inset 0 0 5px rgba(255,255,255,0.1); }
-            50% { box-shadow: 0 0 25px rgba(255,255,255,0.4), inset 0 0 10px rgba(255,255,255,0.2); }
+    // ========== Warning Badge Functions ==========
+    const addWarningBadge = (item) => {
+        if (item.querySelector('.warning-badge-3min')) return;
+        const badge = document.createElement('div');
+        badge.className = 'warning-badge-3min';
+        badge.innerHTML = '⚠️';
+        item.style.position = 'relative';
+        item.appendChild(badge);
+    };
+
+    const removeWarningBadge = (item) => {
+        const badge = item.querySelector('.warning-badge-3min');
+        if (badge) badge.remove();
+    };
+
+    // ========== Blink merah (LOCK pada pesan pertama) ==========
+    const setRedBlinkState = (item, isRed) => {
+        const chatId = getChatIdFromItem(item);
+        if (!chatId) return;
+
+        // --- DETEKSI REPLY AGENT YANG LEBIH AKURAT ---
+        const hasReplyIcon = !!(
+            item.querySelector('[data-testid="replied"]') ||
+            item.querySelector('svg[data-testid="Icon--reply"]') ||
+            item.querySelector('.chat-item__replied')
+        );
+
+        const hasUnread = !!item.querySelector('[data-testid="unread-messages-count"]');
+        const isActive = (chatId === getActiveChatId());
+
+        const itemText_lower = (item.textContent || "").toLowerCase();
+        const hasReply = !!hasReplyIcon;
+
+        // --- CLEANUP MANUAL REPLY STATUS ---
+        if (hasReply || hasUnread) {
+            manuallyRepliedIds.delete(chatId);
+            item.classList.remove('replied-instant');
+            delete item.dataset.redToastSuppressed;
+            delete item.dataset.yellowToastSuppressed;
         }
 
-        @keyframes floaty {
-            0%, 100% { transform: translateY(0px); }
-            50% { transform: translateY(-8px); }
+        // --- FIX: Deteksi Pesan Klien di Chat Aktif ---
+        // Jika chat aktif, hasUnread biasanya false. Kita cek DOM chat window.
+        if (isActive && manuallyRepliedIds.has(chatId)) {
+            const allMsgs = document.querySelectorAll('[data-testid="agent-message"], [data-testid="customer-message"]');
+            if (allMsgs.length > 0) {
+                const last = allMsgs[allMsgs.length - 1];
+                if (last.getAttribute('data-testid') === 'customer-message') {
+                    console.log(`🧹 Klien membalas di chat aktif [${chatId}], menghapus flag manual reply.`);
+                    manuallyRepliedIds.delete(chatId);
+                }
+            }
         }
 
-        .premium-chip {
-            display: flex;
-            align-items: center;
-            background: rgba(255,255,255,0.03);
-            border: 1px solid var(--glass-border);
-            border-radius: 8px;
-            padding: 5px 10px;
-            margin-bottom: 6px;
-            transition: all 0.2s ease;
-        }
-        .premium-chip:hover {
-            background: rgba(255,255,255,0.08);
-            border-color: rgba(255,255,255,0.3);
+        // --- SAFETY TIMEOUT: Jika flag manual reply macet > 30 detik, hapus paksa ---
+        if (manuallyRepliedIds.has(chatId)) {
+            const replyTime = manuallyRepliedIds.get(chatId);
+            if (Date.now() - replyTime > 30000) {
+                console.log(`🕒 Manual reply flag expired for [${chatId}], removing...`);
+                manuallyRepliedIds.delete(chatId);
+            }
         }
 
-        .chip-delete {
-            margin-left: auto;
-            color: #ff4d4f;
-            cursor: pointer;
-            opacity: 0.5;
-            transition: opacity 0.2s;
-            font-size: 16px;
-        }
-        .chip-delete:hover { opacity: 1; }
-
-        .modern-input {
-            background: rgba(0,0,0,0.3);
-            border: 1px solid var(--glass-border);
-            color: white;
-            border-radius: 8px;
-            padding: 8px 12px;
-            width: 100%;
-            outline: none;
-            font-family: 'Lexend', sans-serif;
-            transition: border-color 0.3s;
-        }
-        .modern-input:focus { border-color: var(--neon-blue); }
-
-        /* SLA Notification Panel Animations */
-        @keyframes rotateGlow {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        @keyframes pulseRed {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(1.2); }
+        if (manuallyRepliedIds.has(chatId) && !hasReply) {
+            item.classList.remove('blink-red', 'is-red', 'blink-yellow');
+            removeWarningBadge(item);
+            return;
         }
 
-        /* --- SMART AUTO SCROLL BUTTON (Sleeker & More Compact) --- */
-        .smart-scroll-top {
-            position: absolute;
-            bottom: 18px;
-            right: 18px;
-            width: 36px;
-            height: 36px;
-            background: linear-gradient(135deg, #e4739eff, #ff85aeff);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            z-index: 10005;
-            opacity: 0;
-            transform: translateY(15px) scale(0.8);
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            box-shadow: 0 4px 12px rgba(0, 210, 255, 0.4), inset 0 0 8px rgba(255,255,255,0.2);
-            pointer-events: none;
-            border: 1px solid rgba(255,255,255,0.2);
+        const itemText = (item.textContent || "").toLowerCase();
+        const isArchived = archTags.some(function (tag) { return itemText.indexOf(tag) !== -1; });
+        const isTyping = detectIsTyping(item);
+
+        if (isTyping) {
+            if (!unrepliedStartTimes.has(chatId)) {
+                item.classList.remove('blink-red', 'is-red', 'blink-yellow');
+                delete item.dataset.redToastShown;
+                delete item.dataset.yellowToastShown;
+                removeWarningBadge(item);
+                return;
+            }
         }
 
-        .smart-scroll-top.visible {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-            pointer-events: auto;
+        if (hasReply || isArchived) {
+            if (unrepliedStartTimes.has(chatId)) {
+                unrepliedStartTimes.delete(chatId);
+                saveUnrepliedTimers();
+            }
+            item.classList.remove('blink-red', 'is-red', 'blink-yellow');
+            delete item.dataset.redToastShown;
+            delete item.dataset.yellowToastShown;
+            delete item.dataset.redToastSuppressed;
+            delete item.dataset.yellowToastSuppressed;
+            removeWarningBadge(item);
+            return;
         }
 
-        .smart-scroll-top:hover {
-            transform: translateY(-4px) scale(1.1);
-            box-shadow: 0 6px 20px rgba(0, 210, 255, 0.6);
-            filter: brightness(1.15);
+        const isTransferred = itemText.includes('transferred') || itemText.includes('ditransfer');
+        const isRichMessage = itemText.includes('sent a rich message') || itemText.includes('mengirim pesan');
+
+        // Deteksi jika preview teks diawali dengan nama CS (biasanya indikasi agen sudah membalas)
+        const isAgentAction = isRichMessage || (/^[a-z0-9]+\s+[a-z0-9]+\s+sent/i.test(itemText)) || itemText.includes('you:');
+
+        if (!unrepliedStartTimes.has(chatId) && (hasUnread || (!hasReplyIcon && !isTransferred && !isAgentAction))) {
+            unrepliedStartTimes.set(chatId, Date.now());
+            saveUnrepliedTimers();
         }
 
-        .smart-scroll-top:active {
-            transform: scale(0.9);
+        // --- EVALUASI TAHAPAN WAKTU (2 Menit & 3 Menit) ---
+        const startTime = unrepliedStartTimes.get(chatId);
+        if (!startTime) {
+            item.classList.remove('blink-red', 'is-red', 'blink-yellow');
+            return;
         }
 
-        .scroll-icon {
-            font-size: 16px;
-            transition: transform 0.3s ease;
+        const elapsed = Date.now() - startTime;
+
+        // 1. TAHAP FINAL: 3 MENIT (Merah Berkedip)
+        if (elapsed >= BLINK_DELAY_MS) {
+            item.classList.add('is-red');
+            item.classList.add('blink-red');
+            item.classList.remove('blink-yellow'); // Hilangkan kuning bila sudah merah
+            addWarningBadge(item);
+
+            if (!isActive && !item.dataset.redToastShown && !item.dataset.redToastSuppressed && isNotif3minEnabled()) {
+                showToast(`🚨 3 MENIT: Belum Dibalas (#1)`, TOAST_ACCENT_COLOR_RED, chatId, TOAST_LIFETIME_MS, () => {
+                    item.dataset.redToastSuppressed = '1';
+                });
+                item.dataset.redToastShown = '1';
+            }
         }
+        // 2. TAHAP SIAGA: 2 MENIT (Kuning Berdetak Pelan)
+        else if (elapsed >= YELLOW_THRESHOLD_MS) {
+            item.classList.add('is-red');
+            item.classList.remove('blink-red');
+            item.classList.add('blink-yellow'); // Detak pelan kuning
+            removeWarningBadge(item); // Belum saatnya badge ⚠️
 
-        .smart-scroll-top:hover .scroll-icon {
-            transform: translateY(-3px);
-            animation: bounceSmall 1s infinite;
+            if (!isActive && !item.dataset.yellowToastShown && !item.dataset.yellowToastSuppressed && isNotif2minEnabled()) {
+                showToast(`⚡ 2 MENIT: Segera Balas (#1)`, TOAST_ACCENT_COLOR, chatId, TOAST_LIFETIME_MS, () => {
+                    item.dataset.yellowToastSuppressed = '1';
+                });
+                item.dataset.yellowToastShown = '1';
+            }
+        } else {
+            // Dibawah 2 menit (Merah Solid saja atau sesuai applySingleChatStyling)
+            item.classList.add('is-red');
+            item.classList.remove('blink-red', 'blink-yellow');
+            removeWarningBadge(item);
+            delete item.dataset.redToastShown;
+            delete item.dataset.yellowToastShown;
+            delete item.dataset.redToastSuppressed;
+            delete item.dataset.yellowToastSuppressed;
         }
+    };
 
-        @keyframes bounceSmall {
-            0%, 100% { transform: translateY(-3px); }
-            50% { transform: translateY(1px); }
-        }
-    `;
-    }
+    // Fungsi untuk update semua angka di notifikasi agar AKTUAL (Live)
+    // DAN otomatis menutup hanya jika beneran sudah dibalas (timer dihapus)
+    const updateLiveToastIndices = () => {
+        const toasts = document.querySelectorAll('.my-toast[data-chat-id]');
+        const allItems = Array.from(document.querySelectorAll('.chat-item'));
 
+        toasts.forEach(toast => {
+            const chatId = toast.dataset.chatId;
+            const item = findItemByChatId(chatId);
 
-    rebuildCSS();
+            // LOGIKA AUDIT: Toast hanya boleh hilang jika timer unreplied sudah dihapus (sudah dibalas/archive)
+            // atau jika chat item sudah tidak ada di sidebar
+            const itemText = item ? (item.textContent || "").toLowerCase() : "";
+            const isArchived = archTags.some(function (tag) { return itemText.indexOf(tag) !== -1; });
+            const hasTimer = unrepliedStartTimes.has(chatId);
+            const isActive = (chatId === getActiveChatId()); // Cek apakah chat sedang dibuka
 
-    // Regex & word map
-    let regex;
-    let wordMap = {};
-    function rebuildRegex() {
-        wordMap = {};
-        const allWords = [];
-        Object.entries(colorGroups).forEach(([name, group]) => {
-            group.words.forEach(word => {
-                allWords.push(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-                wordMap[word.toLowerCase()] = `hl-${name}`;
-            });
+            // LOGIKA: Tutup jika: Item hilang, Timer hilang, di-Archive, atau SEDANG DIBUKA (Seen)
+            const shouldClose = !item || !hasTimer || isArchived || isActive;
+
+            if (shouldClose) {
+                if (!toast.classList.contains('hide')) {
+                    console.log(`🧹 Menutup notifikasi (Navigasi/Selesai): ${chatId}`);
+
+                    // Bersihkan flag Shown agar bisa muncul lagi jika nanti pindah chat lagi
+                    if (item) {
+                        delete item.dataset.redToastShown;
+                        delete item.dataset.yellowToastShown;
+                    }
+
+                    toast.classList.add('hide');
+                    setTimeout(() => toast.remove(), 200);
+                }
+            } else {
+                // Update angka baris jika masih aktif (tetap muncul sampai dibalas)
+                const liveIdxSpan = toast.querySelector('.live-idx');
+                if (liveIdxSpan && item) {
+                    const currentIdx = allItems.indexOf(item) + 1;
+                    if (currentIdx > 0) liveIdxSpan.textContent = currentIdx;
+                }
+            }
         });
-        regex = allWords.length ? new RegExp(`\\b(${allWords.join('|')})\\b`, 'gi') : null;
-    }
-    rebuildRegex();
+    };
 
-    // === PERFORMANCE OPTIMIZATION: Debounce Helper ===
-    function debounce(func, wait) {
+    // === PERFORMANCE OPTIMIZATION: Visibility-aware Interval ===
+    let periodicCheckerId = null;
+
+    function runPeriodicChecker() {
+        // Skip jika tab tidak terlihat
+        if (document.hidden) return;
+
+        const allItems = document.querySelectorAll('.chat-item');
+        const activeIds = new Set();
+
+        allItems.forEach(item => {
+            const id = getChatIdFromItem(item);
+            if (id) activeIds.add(id);
+            // Kita panggil ulang styling untuk update status blink/badge
+            applySingleChatStyling(item);
+        });
+
+        // Cleanup: Hapus timer dari storage hanya jika chat benar-benar hilang permanen
+        // JANGAN hapus jika masih dalam masa loading (Grace Period 10 detik pertama)
+        const isBooting = (Date.now() - bootTime < 10000);
+        let isChanged = false;
+
+        if (!isBooting && activeIds.size > 0) {
+            unrepliedStartTimes.forEach((v, k) => {
+                if (!activeIds.has(k)) {
+                    unrepliedStartTimes.delete(k);
+                    isChanged = true;
+                }
+            });
+            if (isChanged) saveUnrepliedTimers();
+        }
+
+        // Update angka baris di notifikasi agar selalu aktual (100% akurat)
+        updateLiveToastIndices();
+    }
+
+    // Start interval - 500ms adalah angka aman agar tidak lag
+    periodicCheckerId = setInterval(runPeriodicChecker, 500);
+
+    // Pause/resume saat tab visibility berubah
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            // Tab aktif kembali - jalankan segera
+            runPeriodicChecker();
+        }
+    });
+
+    // tokenOrNull: 'yellow' | 'black' | null
+    const applyToggleToken = (item, tokenOrNull) => {
+        if (!item) return;
+        if (tokenOrNull === null) { clearSavedColor(item); setYellowTimer(item, false); }
+        else { saveColor(item, tokenOrNull); setYellowTimer(item, tokenOrNull === 'yellow'); }
+        applySingleChatStyling(item);
+    };
+
+    // =========================
+    // Navigation (Alt+↑/↓)
+    // =========================
+    const enablePriorityNavigation = () => {
+        let lastIndex = 0;
+        const getUnrepliedChats = () => {
+            return Array.from(document.querySelectorAll('.chat-item')).filter(item => {
+                const isReplied = item.querySelector('[data-testid="replied"]');
+                const itemText = (item.textContent || "").toLowerCase();
+                const isArchived = archTags.some(function (tag) { return itemText.indexOf(tag) !== -1; });
+                const isBlackToggled = getSavedColor(item) === 'black';
+                const isYellowToggled = getSavedColor(item) === 'yellow';
+                const isTyping = detectIsTyping(item);
+                return !isReplied && !isArchived && !isBlackToggled && !isYellowToggled && !isTyping;
+            });
+        };
+        const focusChat = (chat) => {
+            if (!chat) return;
+            chat.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            chat.click();
+            chat.focus();
+        };
+        const navigateUnreplied = (direction) => {
+            const chats = getUnrepliedChats();
+            if (chats.length === 0) return;
+            if (direction === 'down') lastIndex = (lastIndex + 1) % chats.length;
+            else if (direction === 'up') lastIndex = (lastIndex - 1 + chats.length) % chats.length;
+            focusChat(chats[lastIndex]);
+            console.log(`🔁 Lompat ke chat belum dibalas [${lastIndex + 1}/${chats.length}]`);
+        };
+        document.addEventListener('keydown', (e) => {
+            if (e.altKey && e.key === 'ArrowDown') { e.preventDefault(); navigateUnreplied('down'); }
+            else if (e.altKey && e.key === 'ArrowUp') { e.preventDefault(); navigateUnreplied('up'); }
+        });
+        console.log('✅ Navigasi semua chat belum dibalas AKTIF. Gunakan Alt + ↑ atau Alt + ↓');
+    };
+
+    // =========================
+    // Layout (Sidebar width + CSS var)
+    // =========================
+    const applySidebarWidth = () => {
+        const leftSidebar = document.querySelector('.css-1cmlcj3');
+        const rightSidebar = document.querySelector('.css-1orfco2');
+        if (leftSidebar) {
+            leftSidebar.style.width = '350px';
+            leftSidebar.style.minWidth = '350px';
+            leftSidebar.style.maxWidth = '350px';
+            leftSidebar.style.paddingRight = '10px';
+            document.documentElement.style.setProperty('--mp-left-sidebar-w', '350px'); // dipakai bila perlu
+        }
+        if (rightSidebar) {
+            rightSidebar.style.width = '320px';
+            rightSidebar.style.minWidth = '320px';
+            rightSidebar.style.maxWidth = '320px';
+        }
+    };
+
+    // =======================================
+    // Helpers
+    // =======================================
+    const hexToRgb = (hex) => {
+        let h = (hex || '').replace('#', '').trim();
+        if (!h) return { r: 255, g: 255, b: 255 };
+        if (h.length === 3) h = h.split('').map(c => c + c).join('');
+        const n = parseInt(h, 16);
+        return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+    };
+
+    // =======================================
+    // Styling per item (garis kiri seragam)
+    // =======================================
+    const applySingleChatStyling = (item) => {
+        const chatId = getChatIdFromItem(item);
+        if (!chatId) return;
+
+        const hasReplyIcon = !!item.querySelector('[data-testid="replied"]');
+        const hasUnread = !!item.querySelector('[data-testid="unread-messages-count"]');
+        const itemText = (item.textContent || "").toLowerCase();
+
+        const isLeft = archTags.some(function (tag) { return itemText.indexOf(tag) !== -1; });
+
+        // --- TRANSFERRED & RICH MESSAGE LOGIC ---
+        const isTransferred = itemText.includes('transferred') || itemText.includes('ditransfer');
+        const isRichMessage = itemText.includes('sent a rich message') || itemText.includes('mengirim pesan');
+        const isAgentAction = isRichMessage || (/^[a-z0-9]+\s+[a-z0-9]+\s+sent/i.test(itemText)) || itemText.includes('you:');
+
+        const hasReply = !!hasReplyIcon || isAgentAction;
+        const isTyping = detectIsTyping(item);
+        const saved = getSavedColor(item);
+        let startTime = unrepliedStartTimes.get(chatId);
+        const now = Date.now();
+
+        // Jika timer sudah sangat lama (misal > 30 menit) dan baru muncul lagi, reset saja.
+        if (startTime && (now - startTime > 1800000)) {
+            unrepliedStartTimes.delete(chatId);
+            startTime = null;
+            saveUnrepliedTimers();
+        }
+
+        const elapsed = startTime ? (now - startTime) : 0;
+        let leftColor = '#ff0000'; // Merah Terang
+        let isRedState = false;
+
+        // --- CEK MANUAL OVERRIDE (Instan Hijau) ---
+        const isManuallyReplied = manuallyRepliedIds.has(chatId);
+
+        // Jika ditransfer atau mengirim rich message dan tidak ada pesan baru (unread), hapus timer jika ada
+        if ((isTransferred || isAgentAction) && !hasUnread && unrepliedStartTimes.has(chatId)) {
+            unrepliedStartTimes.delete(chatId);
+            saveUnrepliedTimers();
+            startTime = null;
+        }
+
+        // --- LOGIKA PRIORITAS WARNA (PROFESSIONAL MASTER PRIORITY) ---
+        const isSlaAlert = (hasUnread || (unrepliedStartTimes.has(chatId) && !hasReply)) && (elapsed >= YELLOW_THRESHOLD_MS);
+
+        // 1. STATUS ARCHIVE/LEFT (HIGHEST PRIORITY): Langsung kunci warna biru gelap & stop semua indikator lain.
+        if (isLeft) {
+            item.classList.remove('is-typing', 'blink-red', 'is-red', 'blink-yellow');
+            leftColor = '#011635ff';
+            isRedState = false;
+        }
+        // 2. TAHAP SLA ALERT: Jika sudah >= 2 menit, abaikan pelangi agar Agent fokus SLA.
+        else if (isSlaAlert) {
+            item.classList.remove('is-typing');
+            isRedState = true;
+            if (elapsed >= BLINK_DELAY_MS) {
+                leftColor = '#ff0000'; // Red Blink (3m)
+            } else {
+                leftColor = '#ffb300'; // Kuning Amber (2m)
+            }
+        }
+        // 3. TYPING RAINBOW: Muncul sebagai hiasan selama durasi chat masih aman (< 2 menit).
+        else if (isTyping) {
+            item.classList.add('is-typing');
+            leftColor = 'transparent';
+            isRedState = false;
+        }
+        // 4. SAVED TAGS: Manual override (Yellow/Black)
+        else if (saved === 'yellow') {
+            item.classList.remove('is-typing');
+            leftColor = '#ffb300';
+        } else if (saved === 'black') {
+            item.classList.remove('is-typing');
+            leftColor = '#021736ff';
+        }
+        // 5. BELUM DIBALAS (FASE AWAL < 2 MENIT): Merah Statis
+        else if (hasUnread || (unrepliedStartTimes.has(chatId) && !hasReply)) {
+            item.classList.remove('is-typing');
+            isRedState = true;
+            leftColor = '#ff0000';
+        }
+        // 6. SUDAH DIBALAS / DEFAULT: Hijau Emerald
+        else {
+            item.classList.remove('is-typing', 'blink-red', 'is-red', 'blink-yellow');
+            leftColor = '#00a300';
+        }
+
+        // --- TERAPKAN CSS VARIABLES ---
+        const { r, g, b } = hexToRgb(leftColor);
+        item.style.setProperty('--leftbar-color', leftColor);
+        item.style.setProperty('--leftbar-rgb', `${r}, ${g}, ${b}`);
+        item.style.setProperty('--leftbar-w', `${LEFTBAR_WIDTH_PX}px`);
+        item.classList.add('mp-lined');
+        item.classList.toggle('rainbow', saved === TAG_RAINBOW);
+
+        if (getComputedStyle(item).position === 'static') item.style.position = 'relative';
+
+        // Reset default LiveChat styling
+        item.style.backgroundColor = '';
+        item.style.color = '';
+
+        // Jalankan logic blink & badge
+        setRedBlinkState(item, isRedState);
+    };
+
+    const applyAllChatStyling = () => {
+        const allItems = document.querySelectorAll('.chat-item');
+        allItems.forEach(item => applySingleChatStyling(item));
+
+        // Tambahan: Notifikasi MODE SERIUS
+        const unreplied = Array.from(allItems).filter(item => {
+            const hasReplyIcon = item.querySelector('[data-testid="replied"]');
+            const itemText = (item.textContent || "").toLowerCase();
+            const isTransferred = itemText.includes('transferred');
+            const isReplied = !!hasReplyIcon;
+            const isArchived = archTags.some(function (tag) { return itemText.indexOf(tag) !== -1; });
+            const isTyping = detectIsTyping(item);
+            const isBlackToggled = getSavedColor(item) === 'black';
+            const isYellowToggled = getSavedColor(item) === 'yellow';
+            return !isReplied && !isArchived && !isTyping && !isBlackToggled && !isYellowToggled;
+        });
+
+        if (unreplied.length > 3 && !document.body.dataset.seriousToastShown) {
+            showToast('🔥 MODE SERIUS: >3 Chat Pending!', TOAST_ACCENT_COLOR_RED, null, 10000); // Auto-hide 10 detik
+            document.body.dataset.seriousToastShown = '1';
+
+            // Reset agar bisa muncul lagi setelah 1 menit
+            setTimeout(() => {
+                delete document.body.dataset.seriousToastShown;
+            }, 60000); // 1 menit
+        }
+    };
+
+
+
+    const injectMinimalStyles = () => {
+        const style = document.createElement('style');
+        style.textContent = `
+/* —— Garis kiri seragam —— */
+.chat-item.mp-lined::before {
+content:"";
+position:absolute;
+left:0; top:0; bottom:0;
+width: var(--leftbar-w, 5px); /* Diperlapis menjadi 5px agar lebih tegas */
+background: var(--leftbar-color, currentColor);
+border-radius: 0;
+transform-origin:left center;
+z-index: 10;
+pointer-events: none;
+transition: background 0.4s ease, border-color 0.4s ease, transform 0.3s ease;
+/* Outline & Shadow lebih tegas agar tidak menyatu dengan BACKGROUND PUTIH */
+box-shadow: 1px 0 4px rgba(0,0,0,0.4), inset -1px 0 0 rgba(0,0,0,0.1);
+}
+
+/* —— Pulse halus —— */
+@keyframes leftBarPulseRed {
+    0%,100% { transform: scaleX(1); }
+    50% { transform: scaleX(4.6); }
+}
+@keyframes leftBarPulseYellow {
+    0%,100% { transform: scaleX(1); opacity: 1; }
+    50% { transform: scaleX(2.5); opacity: 0.7; }
+}
+
+.chat-item.blink-red::before {
+    animation: leftBarPulseRed .7s ease-in-out infinite;
+}
+.chat-item.blink-yellow::before {
+    animation: leftBarPulseYellow 2s ease-in-out infinite; /* Detak pelan (2 detik) */
+}
+
+/* —— Toast host —— */
+.my-toast-host {
+position: fixed;
+bottom: 20px;
+left: 65px;
+display: flex;
+flex-direction: column-reverse;
+gap: 10px;
+z-index: 99999;
+pointer-events: none;
+width: max-content;
+max-width: calc(100vw - 77px);
+}
+
+/* —— Toast card —— */
+.my-toast {
+position: relative;
+pointer-events: auto;
+cursor: pointer;
+display: inline-flex;
+align-items: center;
+gap: 10px;
+padding: 12px 36px 12px 16px;
+border-radius: 12px;
+background: rgba(15, 15, 20, 0.98); /* Lebih gelap & solid */
+color: #ffffff;
+border: 2px solid var(--toast-accent, ${TOAST_ACCENT_COLOR});
+box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 10px rgba(0,0,0,0.2); /* Shadow lebih kuat */
+width: 280px;
+max-width: 280px;
+overflow: hidden;
+animation: toastIn 160ms ease-out both;
+}
+
+.my-toast::before {
+content: "";
+position: absolute;
+left: 0;
+top: 0;
+bottom: 0;
+width: 4px;
+background: var(--toast-accent, ${TOAST_ACCENT_COLOR});
+border-radius: 2px 0 0 2px;
+}
+
+.my-toast .my-toast-msg {
+white-space: nowrap;
+overflow: hidden;
+text-overflow: ellipsis;
+font-size: 13px;
+line-height: 1.25;
+padding-right: 6px;
+}
+
+.my-toast .my-toast-close {
+position: absolute;
+right: 8px;
+top: 8px;
+width: 24px;
+height: 24px;
+border-radius: 6px;
+border: 1px solid var(--toast-accent, ${TOAST_ACCENT_COLOR});
+background: transparent;
+color: var(--toast-accent, ${TOAST_ACCENT_COLOR});
+font-size: 16px;
+display: grid;
+place-items: center;
+}
+
+.my-toast .my-toast-close:hover {
+background: rgba(255,255,255,0.06);
+}
+
+.my-toast.hide {
+animation: toastOut 140ms ease-in both;
+}
+
+@keyframes toastIn {
+from { opacity: 0; transform: translateY(8px) scale(.98); }
+to { opacity: 1; transform: none; }
+}
+
+@keyframes toastOut {
+from { opacity: 1; transform: none; }
+to { opacity: 0; transform: translateY(8px) scale(.98); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+.chat-item.blink-red::before,
+.chat-item.blink-yellow::before {
+animation: none;
+}
+.my-toast, .my-toast.hide {
+animation: none;
+}
+}
+
+/* 🌈 Mode Rainbow */
+.chat-item.mp-lined.rainbow::before {
+background: linear-gradient(90deg, red, orange, yellow, green, blue, indigo, violet);
+background-size: 400% 100%;
+animation: rainbowPulse 3s linear infinite;
+}
+
+@keyframes rainbowPulse {
+0% { background-position: 0% 50%; }
+100% { background-position: 400% 50%; }
+}
+
+/* 🌈 Mode Typing Rainbow (Tanpa Merah agar tidak terkecoh) */
+@keyframes rainbowBar {
+    0% { background: #00ff00; } /* Hijau */
+    20% { background: #00ffff; } /* Cyan */
+    40% { background: #0000ff; } /* Biru */
+    60% { background: #ff00ff; } /* Magenta */
+    80% { background: #ffff00; } /* Kuning */
+    100% { background: #00ff00; }
+}
+.chat-item.is-typing::before {
+    animation: rainbowBar 1s linear infinite !important;
+    width: 6px !important;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+
+/* —— Warning Badge (3 menit) —— */
+.warning-badge-3min {
+    position: absolute;
+    right: 8px; /* Lebih ke pinggir */
+    bottom: 8px;
+    font-size: 20px; /* Lebih besar */
+    z-index: 100;
+    /* Efek Glow & Shadow Ganda agar terbaca di putih */
+    filter: drop-shadow(0 0 5px rgba(255, 255, 0, 0.8)) drop-shadow(0 2px 5px rgba(0,0,0,0.6));
+    animation: badgePulse 0.8s ease-in-out infinite;
+    user-select: none;
+    pointer-events: none;
+}
+
+@keyframes badgePulse {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 5px rgba(255, 255, 0, 0.8)) drop-shadow(0 2px 5px rgba(0,0,0,0.6)); }
+    50% { transform: scale(1.4); filter: drop-shadow(0 0 15px rgba(255, 255, 0, 1)) drop-shadow(0 4px 8px rgba(0,0,0,0.8)); }
+}
+`;
+
+        document.head.appendChild(style);
+    };
+
+    // =========================
+    // Global keybinds (Alt+. / Alt+/)
+    // =========================
+    document.addEventListener('keydown', (e) => {
+        const isRainbow = e.ctrlKey && (e.key === '.' || e.code === 'Period'); // Ctrl + .
+        const isBlack = e.altKey && (e.key === '/' || e.code === 'Slash' || e.code === 'NumpadDivide'); // Alt + /
+        if (!isRainbow && !isBlack) return;
+        e.preventDefault();
+
+        const item = getCurrentChatItem();
+        if (!item) return;
+
+        const current = getSavedColor(item);
+        const desired = isRainbow ? TAG_RAINBOW : 'black'; // kalau rainbow toggle rainbow, kalau black toggle black
+        const nextToken = (current === desired) ? null : desired;
+
+        applyToggleToken(item, nextToken);
+    });
+
+    // =========================
+    // Observer & bootstrap - OPTIMIZED
+    // =========================
+    // Debounce helper untuk observer
+    function debounceUI(func, wait) {
         let timeout;
         return function executedFunction(...args) {
             clearTimeout(timeout);
@@ -385,1172 +1056,106 @@
         };
     }
 
-    // Cache untuk menghindari re-process elemen yang sama
-    const processedElements = new WeakSet();
-
-    //highlight - OPTIMIZED (ONLY CLIENT/VISITOR MESSAGES)
-    // highlight - Optimized & Targeted
-    function highlightMessages(targetNodes = null) {
-        if (!regex) return;
-
-        // Jika targetNodes ada (dari observer), gunakan itu. Jika tidak, cari semua.
-        const containers = targetNodes || document.querySelectorAll('[data-testid="visitor-message"], [data-testid="customer-message"], .css-3dz5hy');
-
-        containers.forEach(msgContainer => {
-            if (!(msgContainer instanceof HTMLElement) || processedElements.has(msgContainer)) return;
-
-            // Efisiensi: Jika sudah punya data-testid visitor/customer, tidak perlu cek warna lagi
-            const isKnownVisitor = msgContainer.matches('[data-testid="visitor-message"], [data-testid="customer-message"]') ||
-                msgContainer.closest('[data-testid="visitor-message"], [data-testid="customer-message"]');
-
-            if (!isKnownVisitor) {
-                // Hanya lakukan getComputedStyle jika class-nya generik (.css-3dz5hy)
-                const bg = getComputedStyle(msgContainer).backgroundColor;
-                const isClientBg = bg === 'rgb(45, 45, 51)' || bg === 'rgb(38, 38, 44)' || bg === 'rgb(50, 50, 56)';
-                if (!isClientBg) {
-                    processedElements.add(msgContainer);
-                    return;
-                }
-            }
-
-            // PENTING: Skip jika ini adalah pesan AGENT
-            if (msgContainer.closest('[data-testid="agent-message"]')) {
-                processedElements.add(msgContainer);
-                return;
-            }
-
-            const walker = document.createTreeWalker(msgContainer, NodeFilter.SHOW_TEXT, null);
-            let node;
-            const nodes = [];
-            while (node = walker.nextNode()) {
-                if (!node.nodeValue.trim()) continue;
-                if (node.parentNode.closest('[data-hl]')) continue;
-                nodes.push(node);
-            }
-
-            if (nodes.length === 0) return;
-
-            nodes.forEach(textNode => {
-                const text = textNode.nodeValue;
-                if (!regex.test(text)) return;
-                regex.lastIndex = 0;
-                const replaced = text.replace(regex, match => {
-                    const cls = wordMap[match.toLowerCase()];
-                    return cls ? `<span class="${cls}" data-hl="1">${match}</span>` : match;
-                });
-                const span = document.createElement('span');
-                span.setAttribute('data-hl', '1');
-                span.innerHTML = replaced;
-                textNode.parentNode.replaceChild(span, textNode);
-            });
-
-            processedElements.add(msgContainer);
-        });
-    }
-
-    // Debounced version - (Lama 150ms -> Baru 50ms untuk response secepat kilat)
-    const debouncedHighlight = debounce(() => highlightMessages(), 50);
+    // Debounced styling function for general UI updates (PENTING AGAR TIDAK LAG)
+    const debouncedStyling = debounceUI(() => {
+        applySidebarWidth();
+        applyAllChatStyling();
+        updateLiveToastIndices();
+    }, 80); // 80ms: instan di mata, tapi ringan di prosesor
 
     const observer = new MutationObserver((mutations) => {
-        let addedTargets = [];
-        mutations.forEach(m => {
-            m.addedNodes.forEach(node => {
-                if (node.nodeType === 1) { // ELEMENT_NODE
-                    // Cek jika node itu sendiri container pesan
-                    if (node.matches('[data-testid="visitor-message"], [data-testid="customer-message"], .css-3dz5hy')) {
-                        addedTargets.push(node);
-                    } else {
-                        // Cek jika di dalamnya ada container pesan
-                        const sub = node.querySelectorAll('[data-testid="visitor-message"], [data-testid="customer-message"], .css-3dz5hy');
-                        if (sub.length > 0) addedTargets.push(...sub);
-                    }
-                }
-            });
+        // Deteksi apakah ada perubahan DI DALAM chat-item
+        const isRelevant = mutations.some(m => {
+            const target = (m.type === 'attributes' || m.type === 'characterData') ? m.target : m.addedNodes[0];
+            if (!target) return false;
+
+            // Jika teks atau elemen berubah di dalam .chat-item, maka itu RELEVAN
+            const node = (target.nodeType === 3) ? target.parentElement : target;
+            return node && (node.closest?.('.chat-item') || (node.classList && node.classList.contains('chat-item')));
         });
 
-        if (addedTargets.length > 0) {
-            // Langsung eksekusi tanpa menunggu debounce jika ada target spesifik
-            highlightMessages(addedTargets);
-            attachClickToHighlights();
-        } else {
-            // Fallback tetap gunakan debounce untuk perubahan minor/atribut
-            debouncedHighlight();
+        if (isRelevant) {
+            debouncedStyling();
         }
     });
 
-    observer.observe(document.body, { childList: true, subtree: true });
+    const init = () => {
+        // Observe seluruh body untuk cakupan maksimal (Penting untuk SPA seperti LiveChat)
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            characterData: true,
+            attributes: true
+        });
 
-
-    // —— Futuristic Orb Bubble ——
-    const bubble = document.createElement('div');
-    bubble.id = 'chat-hl-bubble';
-    bubble.style.cssText = `
-    position: fixed; top: 0; left: 0;
-    width: 70px; height: 70px;
-    background: ${dashConfig.bubbleBg || 'rgba(255,0,0,0.8)'};
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255,255,255,0.2);
-    border-radius: 50%;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    cursor: pointer; z-index: 10001;
-    animation: orbGlow 4s infinite ease-in-out;
-    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
-    font-family: 'Lexend', sans-serif;
-    transform: translate3d(${xOffset}px, ${yOffset}px, 0);
-    touch-action: none;
-    user-select: none;
-    -webkit-user-drag: none;
-`;
-
-    const img = document.createElement('img');
-    img.src = dashConfig.profileImg;
-    img.style.cssText = 'width: 35px; height: 35px; filter: drop-shadow(0 0 5px rgba(255,0,0,0.5)); pointer-events: none;';
-
-    const label = document.createElement('div');
-    label.className = 'mc-label';
-    label.textContent = dashConfig.mcLabel;
-    label.style.cssText = 'color: #fff; font-size: 11px; font-weight: 600; letter-spacing: 1px; text-shadow: 0 0 5px rgba(0,0,0,0.8); margin-top: 2px;';
-
-    const orbWrapper = document.createElement('div');
-    orbWrapper.style.cssText = 'display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; animation: floaty 3s infinite ease-in-out; pointer-events:none;';
-    orbWrapper.appendChild(img);
-    orbWrapper.appendChild(label);
-    bubble.appendChild(orbWrapper);
-    // —— Glassmorphism Dashboard ——
-    const dash = document.createElement('div');
-    dash.id = 'chat-hl-dashboard';
-    dash.style.cssText = `
-    position: fixed; top: 0; left: 0;
-    width: 320px; height: 500px; /* Fixed height for consistent internal scroll */
-    background: ${dashConfig.dashBg.includes('url') ? `linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)), ${dashConfig.dashBg}` : dashConfig.dashBg};
-    background-color: #0f0f14;
-    backdrop-filter: blur(25px);
-    border: 1px solid rgba(255,255,255,0.15);
-    border-radius: 20px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.6), inset 0 0 30px rgba(255,255,255,0.02);
-    padding: 0;
-    z-index: 10000; display: none; overflow: hidden;
-    color: #fff;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
-    font-family: 'Lexend', sans-serif;
-    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    opacity: 0; transform: translate3d(20px, 100px, 0) scale(0.95);
-`;
-
-    // --- NEW: INTERNAL SCROLL AREA ---
-    const dashBody = document.createElement('div');
-    dashBody.id = 'chat-hl-dash-body';
-    dashBody.style.cssText = 'width:100%; height:100%; overflow-y:auto; overflow-x:hidden; padding:20px; box-sizing:border-box; scroll-behavior: smooth; position: relative;';
-    dash.appendChild(dashBody);
-
-    // --- AUTO SCROLL TO TOP FEATURE ---
-    const scrollTopBtn = document.createElement('div');
-    scrollTopBtn.className = 'smart-scroll-top';
-    scrollTopBtn.innerHTML = '<span class="scroll-icon">🚀</span>';
-    scrollTopBtn.title = 'Terbang ke Atas';
-
-    // Append to dash directly so it floats relative to the dashboard content
-    // but we use absolute positioning in CSS
-    dash.appendChild(scrollTopBtn);
-
-    scrollTopBtn.onclick = (e) => {
-        e.stopPropagation();
-        dashBody.scrollTo({ top: 0, behavior: 'smooth' });
+        applySidebarWidth();
+        applyAllChatStyling();
+        injectMinimalStyles(); // CSS garis kiri + toast accent
+        enablePriorityNavigation();
     };
 
-    dashBody.onscroll = () => {
-        if (dashBody.scrollTop > 120) {
-            scrollTopBtn.classList.add('visible');
-        } else {
-            scrollTopBtn.classList.remove('visible');
-        }
-    };
-
-    // Scrollbar styling
-    const scrollStyle = document.createElement('style');
-    scrollStyle.textContent = `
-    #chat-hl-dash-body::-webkit-scrollbar { width: 5px; }
-    #chat-hl-dash-body::-webkit-scrollbar-track { background: transparent; }
-    #chat-hl-dash-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
-    #chat-hl-dash-body::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
-`;
-    document.head.appendChild(scrollStyle);
-
-    function mountElements() {
-        if (document.body && !document.getElementById('chat-hl-bubble')) {
-            document.body.appendChild(bubble);
-            document.body.appendChild(dash);
-            if (typeof updateDashPosition === 'function') updateDashPosition();
-            console.log("✅ Orb & Dashboard Mounted Successfully.");
-        } else if (!document.body) {
-            setTimeout(mountElements, 100);
-        }
-    }
-    mountElements();
-
-    function renderDashboard() {
-        if (!dashBody) return;
-        dashBody.innerHTML = '';
-
-        const header = document.createElement('div');
-        header.style.cssText = 'display:flex; align-items:center; margin-bottom:20px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px; gap:10px;';
-
-        const title = document.createElement('h3');
-        title.style.cssText = 'margin:0; font-size:18px; font-weight:600; background:linear-gradient(to right, #00d2ff, #fff); -webkit-background-clip:text; -webkit-text-fill-color:transparent; cursor:pointer;';
-        title.textContent = currentDashTab === 'settings' ? 'System Settings' : 'Highlighter Pro';
-        title.onclick = () => { currentDashTab = 'main'; renderDashboard(); };
-
-        const settingsBtn = document.createElement('div');
-        settingsBtn.innerHTML = '⚙️';
-        settingsBtn.style.cssText = `font-size:18px; cursor:pointer; transition:0.3s; opacity:${currentDashTab === 'settings' ? '1' : '0.4'};`;
-        settingsBtn.onmouseover = () => settingsBtn.style.transform = 'rotate(45deg)';
-        settingsBtn.onmouseout = () => settingsBtn.style.transform = 'rotate(0deg)';
-        settingsBtn.onclick = () => {
-            currentDashTab = currentDashTab === 'settings' ? 'main' : 'settings';
-            renderDashboard();
-        };
-
-        const toggleWrapper = document.createElement('div');
-        toggleWrapper.style.cssText = 'margin-left:auto; display:flex; align-items:center; gap:8px;';
-        toggleWrapper.innerHTML = `
-            <span style="font-size:10px; font-weight:600; color:rgba(255,255,255,0.5); letter-spacing:1px;">${isHighlighterEnabled ? 'ON' : 'OFF'}</span>
-            <label class="switch">
-                <input type="checkbox" id="masterToggle" ${isHighlighterEnabled ? 'checked' : ''}>
-                <span class="slider-toggle"></span>
-            </label>
-        `;
-
-        header.appendChild(title);
-        header.appendChild(settingsBtn);
-        header.appendChild(toggleWrapper);
-        dashBody.appendChild(header);
-
-        // Logic for Master Toggle
-        setTimeout(() => {
-            const masterToggle = dash.querySelector('#masterToggle');
-            if (masterToggle) {
-                masterToggle.onchange = (e) => {
-                    isHighlighterEnabled = e.target.checked;
-                    setStore(ENABLED_KEY, isHighlighterEnabled);
-                    toggleWrapper.querySelector('span').textContent = isHighlighterEnabled ? 'ON' : 'OFF';
-                    rebuildCSS();
-                };
-            }
-        }, 0);
-
-        if (currentDashTab === 'settings') {
-            renderSettingsTab(dashBody);
-        } else {
-            renderMainTab(dashBody);
-        }
-    }
-
-    function renderMainTab(container) {
-        if (!container) return;
-        // —— SLA NOTIFICATION CONTROL PANEL ——
-        const slaPanel = document.createElement('div');
-        slaPanel.className = 'sla-control-panel';
-        slaPanel.style.cssText = `
-            margin: 0 0 20px 0;
-            background: linear-gradient(135deg, rgba(255, 59, 59, 0.15), rgba(255, 150, 0, 0.1));
-            padding: 18px;
-            border-radius: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            position: relative;
-            overflow: hidden;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-        `;
-
-        // Header Panel
-        const slaHeader = document.createElement('div');
-        slaHeader.style.cssText = 'display:flex; align-items:center; gap:12px; margin-bottom:16px; position:relative; z-index:2;';
-        slaHeader.innerHTML = `
-            <div style="width:36px; height:36px; background:linear-gradient(135deg, #ff3b3b, #ff9500); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:18px; box-shadow:0 0 15px rgba(255, 59, 59, 0.4);">🔔</div>
-            <div>
-                <div style="font-size:14px; font-weight:800; color:#fff; letter-spacing:0.5px; text-transform:uppercase;">SLA Notifications</div>
-                <div style="font-size:10px; color:rgba(255,255,255,0.5); font-weight:400;">Kontrol Tanda & Bunyi Timer</div>
-            </div>
-        `;
-        slaPanel.appendChild(slaHeader);
-
-        // Toggle Wrapper
-        const slaToggles = document.createElement('div');
-        slaToggles.style.cssText = 'display:flex; flex-direction:column; gap:12px; position:relative; z-index:2;';
-
-        const createSlaToggle = (id, label, sub, color, isChecked, storageKey, eventType) => {
-            const row = document.createElement('div');
-            row.style.cssText = `
-                display:flex; align-items:center; justify-content:space-between;
-                background:rgba(0,0,0,0.4); padding:12px 14px; border-radius:12px;
-                border:1px solid rgba(255,255,255,0.05); transition:all 0.3s ease;
-            `;
-            row.onmouseenter = () => row.style.borderColor = color + '44';
-            row.onmouseleave = () => row.style.borderColor = 'rgba(255,255,255,0.05)';
-
-            row.innerHTML = `
-                <div style="display:flex; align-items:center; gap:12px;">
-                    <div style="width:10px; height:10px; background:${color}; border-radius:50%; box-shadow:0 0 10px ${color}"></div>
-                    <div>
-                        <div style="font-size:12px; font-weight:700; color:#fff;">${label}</div>
-                        <div style="font-size:9px; color:rgba(255,255,255,0.4); margin-top:2px;">${sub}</div>
-                    </div>
-                </div>
-                <label class="switch">
-                    <input type="checkbox" id="${id}" ${isChecked ? 'checked' : ''}>
-                    <span class="slider-toggle" style="background:${isChecked ? 'linear-gradient(135deg,' + color + ',#fff)' : 'rgba(255,255,255,0.1)'}"></span>
-                </label>
-            `;
-
-            const input = row.querySelector('input');
-            input.onchange = (e) => {
-                const enabled = e.target.checked;
-                setStore(storageKey, enabled);
-                row.querySelector('.slider-toggle').style.background = enabled ? `linear-gradient(135deg, ${color}, #fff)` : 'rgba(255,255,255,0.1)';
-
-                // Update local variable if needed (not strictly required since we refresh UI or other script reads storage)
-                if (id === 'slaNotif2minToggle') slaNotif2minEnabled = enabled;
-                if (id === 'slaNotif3minToggle') slaNotif3minEnabled = enabled;
-
-                // Kirim event ke script lain
-                window.dispatchEvent(new CustomEvent('slaNotifSettingChanged', { detail: { type: eventType, enabled } }));
-            };
-            return row;
-        };
-
-        slaToggles.appendChild(createSlaToggle('slaNotif2minToggle', 'Timer 2 Menit', '⚡ Peringatan Kuning', '#f2f205', slaNotif2minEnabled, SLA_NOTIF_2MIN_KEY, '2min'));
-        slaToggles.appendChild(createSlaToggle('slaNotif3minToggle', 'Timer 3 Menit', '🚨 Alert Merah Cepat', '#ff3b3b', slaNotif3minEnabled, SLA_NOTIF_3MIN_KEY, '3min'));
-
-        slaPanel.appendChild(slaToggles);
-        container.appendChild(slaPanel);
-
-        // —— Font Size Control (Old UI) ——
-        const sizeBox = document.createElement('div');
-        sizeBox.style.cssText = 'margin-bottom:25px; background:rgba(255,255,255,0.03); padding:15px; border-radius:12px; border:1px solid rgba(255,255,255,0.05);';
-        sizeBox.innerHTML = `
-            <div style="display:flex; justify-content:space-between; margin-bottom:10px; font-size:12px; color:rgba(255,255,255,0.6); font-weight:700; letter-spacing:1px;">
-                <span>FONT SIZE</span>
-                <span id="size-display" style="color:var(--neon-blue)">${globalFontSize}px</span>
-            </div>
-            <input type="range" id="sizeSlider" min="12" max="35" value="${globalFontSize}" style="width:100%; cursor:pointer; accent-color:#00d2ff;">
-        `;
-        container.appendChild(sizeBox);
-
-        const slider = sizeBox.querySelector('#sizeSlider');
-        const display = sizeBox.querySelector('#size-display');
-        slider.oninput = (e) => {
-            globalFontSize = e.target.value;
-            display.textContent = globalFontSize + 'px';
-            setStore(SIZE_KEY, globalFontSize);
-            rebuildCSS();
-        };
-
-        Object.entries(colorGroups).forEach(([name, group]) => {
-            const section = document.createElement('div');
-            section.style.marginBottom = '25px';
-
-            const colorTitle = document.createElement('div');
-            colorTitle.style.cssText = `color:inherit; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:2px; margin-bottom:12px; display:flex; align-items:center;`;
-            colorTitle.innerHTML = `
-                <span style="width:10px; height:10px; background:${group.grad}; border-radius:50%; display:inline-block; margin-right:8px; box-shadow:0 0 10px ${group.shadow}"></span>
-                <span style="color:${name.toLowerCase() === 'yellow' ? '#f9d423' : 'inherit'};">${name} Group</span>
-            `;
-            section.appendChild(colorTitle);
-
-            const listContainer = document.createElement('div');
-            listContainer.style.display = 'flex';
-            listContainer.style.flexWrap = 'wrap';
-            listContainer.style.gap = '6px';
-
-            group.words.forEach((word, i) => {
-                const chip = document.createElement('div');
-                chip.className = 'premium-chip';
-                chip.style.margin = '0'; // reset margin for flex gap
-
-                const span = document.createElement('span');
-                span.textContent = word;
-                span.style.fontSize = '13px';
-
-                const del = document.createElement('span');
-                del.className = 'chip-delete';
-                del.innerHTML = '✖';
-                del.onclick = (e) => { e.stopPropagation(); group.words.splice(i, 1); saveGroups(); };
-
-                chip.appendChild(span);
-                chip.appendChild(del);
-                listContainer.appendChild(chip);
-            });
-            section.appendChild(listContainer);
-
-            const inputGroup = document.createElement('div');
-            inputGroup.style.cssText = 'display:flex; gap:8px; margin-top:10px;';
-
-            const input = document.createElement('input');
-            input.className = 'modern-input';
-            input.placeholder = `Tambah ke ${name}...`;
-
-            const addBtn = document.createElement('button');
-            addBtn.innerHTML = '＋';
-            addBtn.style.cssText = `background:${group.grad}; color:${group.textColor}; border:none; border-radius:8px; width:40px; height:40px; cursor:pointer; font-size:20px; display:flex; align-items:center; justify-content:center; transition:0.2s; box-shadow: 0 4px 10px ${group.shadow};`;
-            addBtn.onmouseover = () => addBtn.style.transform = 'scale(1.1)';
-            addBtn.onmouseout = () => addBtn.style.transform = 'scale(1)';
-
-            addBtn.onclick = () => {
-                const val = input.value.trim();
-                if (val) { group.words.push(val); saveGroups(); input.value = ''; }
-            };
-
-            inputGroup.appendChild(input);
-            inputGroup.appendChild(addBtn);
-            section.appendChild(inputGroup);
-
-            container.appendChild(section);
-        });
-
-        // —— TABS SYSTEM ——
-        const hr = document.createElement('hr');
-        hr.style.cssText = 'border:none; border-top:1px solid rgba(255,255,255,0.1); margin:30px 0;';
-        container.appendChild(hr);
-
-        const resHeader = document.createElement('div');
-        resHeader.style.cssText = 'display:flex; align-items:center; margin-bottom:20px;';
-        resHeader.innerHTML = '<h3 style="margin:0; font-size:18px; color:var(--neon-green);">Auto-Response Pro</h3>';
-        container.appendChild(resHeader);
-
-        Object.entries(AUTO_RESPONSE_DATA).forEach(([groupName, data]) => {
-            const wrap = document.createElement('div');
-            wrap.style.cssText = 'margin-bottom:30px; padding:20px; background:rgba(0,0,0,0.3); border-radius:15px; border:1px solid rgba(255,255,255,0.1); box-shadow: 0 4px 15px rgba(0,0,0,0.2); transition: 0.3s; position:relative;';
-            wrap.onmouseenter = () => wrap.style.borderColor = 'rgba(57,255,20,0.5)';
-            wrap.onmouseleave = () => wrap.style.borderColor = 'rgba(255,255,255,0.1)';
-
-            const head = document.createElement('div');
-            head.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;';
-            head.innerHTML = `
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <div style="width:10px; height:10px; background:var(--neon-green); border-radius:50%; box-shadow: 0 0 10px var(--neon-green);"></div>
-                    <span style="font-weight:700; font-size:16px; color:#fff; text-shadow: 0 0 10px rgba(57,255,20,0.2);">${groupName}</span>
-                </div>
-            `;
-
-            const delGroup = document.createElement('span');
-            delGroup.innerHTML = '🗑️';
-            delGroup.title = 'Hapus Group';
-            delGroup.style.cssText = 'cursor:pointer; opacity:0.4; transition:0.2s; font-size:16px;';
-            delGroup.onmouseover = () => delGroup.style.opacity = '1';
-            delGroup.onmouseout = () => delGroup.style.opacity = '0.4';
-            delGroup.onclick = () => { if (confirm(`Hapus Group "${groupName}"?`)) { delete AUTO_RESPONSE_DATA[groupName]; saveResponses(); } };
-            head.appendChild(delGroup);
-            wrap.appendChild(head);
-
-            // Keywords Section
-            const twList = document.createElement('div');
-            twList.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;';
-            data.triggerWords.forEach((tw, idx) => {
-                const tag = document.createElement('span');
-                tag.style.cssText = 'font-size:11px; background:rgba(57,255,20,0.1); color:var(--neon-green); padding:5px 12px; border-radius:30px; border:1px solid rgba(57,255,20,0.3); cursor:pointer; font-weight:600;';
-                tag.textContent = tw + ' ×';
-                tag.onclick = () => { data.triggerWords.splice(idx, 1); saveResponses(); };
-                twList.appendChild(tag);
-            });
-            wrap.appendChild(twList);
-
-            const addTW = document.createElement('input');
-            addTW.className = 'modern-input';
-            addTW.placeholder = '+ Tambah keyword (Press Enter)...';
-            addTW.style.cssText = 'font-size:12px; height:35px; border-radius:10px; background:rgba(0,0,0,0.2); margin-bottom:20px;';
-            addTW.onkeydown = (e) => { if (e.key === 'Enter' && addTW.value.trim()) { data.triggerWords.push(addTW.value.trim()); saveResponses(); } };
-            wrap.appendChild(addTW);
-
-            // Templates Section
-            const templateLabel = document.createElement('div');
-            templateLabel.style.cssText = 'font-size:10px; font-weight:700; color:rgba(255,255,255,0.4); margin-bottom:10px; letter-spacing:1px;';
-            templateLabel.textContent = 'PESAN TEMPLATE';
-            wrap.appendChild(templateLabel);
-
-            const msgList = document.createElement('div');
-            msgList.style.cssText = 'display:flex; flex-direction:column; gap:12px; margin-bottom:15px;';
-
-            data.messages.forEach((msg, idx) => {
-                const mWrap = document.createElement('div');
-                mWrap.style.cssText = 'position:relative;';
-
-                const mArea = document.createElement('textarea');
-                mArea.className = 'modern-input';
-                mArea.style.cssText = 'height:auto; min-height:80px; font-size:12px; padding:12px 35px 12px 12px; background:rgba(255,255,255,0.02); resize:none; border-color:rgba(255,255,255,0.08); line-height:1.5; color:#fff; border-radius:12px;';
-                mArea.value = msg;
-                mArea.oninput = () => { data.messages[idx] = mArea.value; };
-
-                const mDel = document.createElement('span');
-                mDel.innerHTML = '✖';
-                mDel.style.cssText = 'position:absolute; top:12px; right:12px; color:#ff4d4f; cursor:pointer; font-size:12px; opacity:0.3; transition:0.2s;';
-                mDel.onmouseover = () => mDel.style.opacity = '1';
-                mDel.onmouseout = () => mDel.style.opacity = '0.3';
-                mDel.onclick = () => { if (confirm('Hapus template ini?')) { data.messages.splice(idx, 1); saveResponses(); } };
-
-                mWrap.appendChild(mArea);
-                mWrap.appendChild(mDel);
-                msgList.appendChild(mWrap);
-            });
-            wrap.appendChild(msgList);
-
-            // Control Buttons
-            const ctrlContainer = document.createElement('div');
-            ctrlContainer.style.cssText = 'display:flex; gap:10px; margin-top:10px;';
-
-            const addTempBtn = document.createElement('div');
-            addTempBtn.innerHTML = '＋ Add Template';
-            addTempBtn.style.cssText = 'flex:1; padding:10px; background:rgba(57,255,20,0.05); border:1px solid rgba(57,255,20,0.2); border-radius:10px; text-align:center; font-size:12px; color:var(--neon-green); cursor:pointer; font-weight:600; transition:0.2s;';
-            addTempBtn.onmouseover = () => { addTempBtn.style.background = 'rgba(57,255,20,0.1)'; addTempBtn.style.borderColor = 'var(--neon-green)'; };
-            addTempBtn.onmouseout = () => { addTempBtn.style.background = 'rgba(57,255,20,0.05)'; addTempBtn.style.borderColor = 'rgba(57,255,20,0.2)'; };
-            addTempBtn.onclick = () => { data.messages.push(""); renderDashboard(); };
-
-            const saveBtn = document.createElement('div');
-            saveBtn.innerHTML = '💾 SIMPAN SEMUA';
-            saveBtn.style.cssText = 'flex:1; padding:10px; background:var(--neon-green); color:#000; border-radius:10px; text-align:center; font-size:12px; cursor:pointer; font-weight:700; transition:0.2s; box-shadow: 0 4px 10px rgba(57,255,20,0.2);';
-            saveBtn.onmouseover = () => { saveBtn.style.transform = 'translateY(-2px)'; saveBtn.style.boxShadow = '0 6px 15px rgba(57,255,20,0.4)'; };
-            saveBtn.onmouseout = () => { saveBtn.style.transform = 'translateY(0)'; saveBtn.style.boxShadow = '0 4px 10px rgba(57,255,20,0.2)'; };
-            saveBtn.onclick = () => { saveResponses(); alert(`Group ${groupName} berhasil disimpan!`); };
-
-            ctrlContainer.appendChild(addTempBtn);
-            ctrlContainer.appendChild(saveBtn);
-            wrap.appendChild(ctrlContainer);
-
-            container.appendChild(wrap);
-        });
-
-        // NEW CATEGORY BUILDER
-        const builder = document.createElement('div');
-        builder.style.cssText = 'margin-top:20px; border:2px dashed rgba(255,255,255,0.1); padding:20px; border-radius:15px; background:rgba(255,255,255,0.02); text-align:center; transition:0.3s; cursor:pointer;';
-        builder.onmouseenter = () => { builder.style.borderColor = 'var(--neon-green)'; builder.style.background = 'rgba(57,255,20,0.02)'; };
-        builder.onmouseleave = () => { builder.style.borderColor = 'rgba(255,255,255,0.1)'; builder.style.background = 'rgba(255,255,255,0.02)'; };
-        builder.innerHTML = '<div style="font-size:12px; color:rgba(255,255,255,0.5); font-weight:700; letter-spacing:1px;">📁 TAMBAH KATEGORI BARU</div>';
-
-        builder.onclick = () => {
-            const name = prompt("Masukkan Nama Kategori Baru:");
-            if (name && name.trim()) {
-                const cleanName = name.trim();
-                if (!AUTO_RESPONSE_DATA[cleanName]) {
-                    AUTO_RESPONSE_DATA[cleanName] = { triggerWords: [], messages: ["Klik untuk mengedit..."] };
-                    saveResponses();
-                } else { alert('Kategori sudah ada!'); }
-            }
-        };
-        container.appendChild(builder);
-    }
-
-    function renderSettingsTab(container) {
-        if (!container) return;
-        const settingsContainer = document.createElement('div');
-        settingsContainer.style.cssText = 'display:flex; flex-direction:column; gap:15px; padding-bottom:30px; animation: slideIn 0.3s ease;';
-
-        const createSettingItem = (label, currentVal, onUpdate, isFileSupport = false) => {
-            const item = document.createElement('div');
-            item.style.cssText = 'background:rgba(0,0,0,0.3); padding:15px; border-radius:12px; border:1px solid rgba(255,255,255,0.1);';
-
-            const labelEl = document.createElement('div');
-            labelEl.style.cssText = 'font-size:10px; color:rgba(255,255,255,0.4); font-weight:700; margin-bottom:10px; letter-spacing:1px;';
-            labelEl.textContent = label.toUpperCase();
-            item.appendChild(labelEl);
-
-            const row = document.createElement('div');
-            row.style.cssText = 'display:flex; gap:8px; align-items:center;';
-
-            const valDisplay = document.createElement('div');
-            valDisplay.style.cssText = 'flex:1; font-size:11px; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; opacity:0.6;';
-            valDisplay.textContent = currentVal.startsWith('data:') ? '[IMAGE DATA]' : currentVal;
-            row.appendChild(valDisplay);
-
-            const btnGanti = document.createElement('button');
-            btnGanti.textContent = 'GANTI';
-            btnGanti.style.cssText = 'padding:6px 12px; background:rgba(255,255,255,0.1); color:white; border:none; border-radius:6px; font-size:10px; font-weight:700; cursor:pointer;';
-            btnGanti.onclick = () => {
-                const newVal = prompt(`Ganti ${label}:`, currentVal);
-                if (newVal !== null && newVal.trim()) onUpdate(newVal.trim());
-            };
-            row.appendChild(btnGanti);
-
-            if (isFileSupport) {
-                const btnUpload = document.createElement('button');
-                btnUpload.textContent = 'UPLOAD';
-                btnUpload.style.cssText = 'padding:6px 12px; background:linear-gradient(135deg, #00d2ff, #3a7bd5); color:white; border:none; border-radius:6px; font-size:10px; font-weight:700; cursor:pointer;';
-
-                const fileInput = document.createElement('input');
-                fileInput.type = 'file';
-                fileInput.accept = 'image/*';
-                fileInput.style.display = 'none';
-                fileInput.onchange = (e) => {
-                    const file = e.target.files[0];
-                    if (file) {
-                        const reader = new FileReader();
-                        reader.onload = (re) => {
-                            let result = re.target.result;
-                            // Jika untuk background, bungkus dengan url()
-                            if (label.toLowerCase().includes('background')) {
-                                result = `url(${result}) center/cover no-repeat`;
-                            }
-                            onUpdate(result);
-                        };
-                        reader.readAsDataURL(file);
-                    }
-                };
-
-                btnUpload.onclick = () => fileInput.click();
-                row.appendChild(btnUpload);
-                row.appendChild(fileInput);
-            }
-
-            item.appendChild(row);
-            return item;
-        };
-
-        settingsContainer.appendChild(createSettingItem('Profile / Icon URL', dashConfig.profileImg, (val) => {
-            dashConfig.profileImg = val; saveConfig(); renderDashboard();
-        }, true));
-
-        settingsContainer.appendChild(createSettingItem('Keterangan Label', dashConfig.mcLabel, (val) => {
-            dashConfig.mcLabel = val; saveConfig(); renderDashboard();
-        }));
-
-        settingsContainer.appendChild(createSettingItem('Background Dashboard', dashConfig.dashBg, (val) => {
-            dashConfig.dashBg = val; saveConfig(); renderDashboard();
-        }, true));
-
-        settingsContainer.appendChild(createSettingItem('Background Orba MC', dashConfig.bubbleBg, (val) => {
-            dashConfig.bubbleBg = val; saveConfig(); renderDashboard();
-        }, true));
-
-        // —— EXPORT / IMPORT SECTION ——
-        const storageTitle = document.createElement('div');
-        storageTitle.style.cssText = 'font-size:10px; color:rgba(255,255,255,0.4); font-weight:700; margin-top:10px; letter-spacing:1px; text-transform:uppercase;';
-        storageTitle.textContent = 'Backup & Data PC';
-        settingsContainer.appendChild(storageTitle);
-
-        const storageRow = document.createElement('div');
-        storageRow.style.cssText = 'display:flex; gap:10px;';
-
-        const btnExport = document.createElement('button');
-        btnExport.innerHTML = '📤 EXPORT';
-        btnExport.style.cssText = 'flex:1; padding:12px; background:rgba(0,242,96,0.1); border:1px solid rgba(0,242,96,0.3); color:#00f260; border-radius:10px; font-size:11px; font-weight:700; cursor:pointer; transition:0.2s;';
-        btnExport.onclick = () => {
-            const data = {
-                highlighter: GM_getValue(STORAGE_KEY),
-                autoResponse: GM_getValue(RESPONSE_KEY),
-                config: GM_getValue(CONFIG_KEY),
-                settings: {
-                    size: GM_getValue(SIZE_KEY),
-                    enabled: GM_getValue(ENABLED_KEY),
-                    sla2m: GM_getValue(SLA_NOTIF_2MIN_KEY),
-                    sla3m: GM_getValue(SLA_NOTIF_3MIN_KEY)
-                },
-                exportDate: new Date().toISOString()
-            };
-            const blob = new Blob([JSON.stringify(data, null, 4)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `HighlighterPro_Backup_${new Date().toLocaleDateString().replace(/\//g, '-')}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
-        };
-
-        const btnImport = document.createElement('button');
-        btnImport.innerHTML = '📥 IMPORT';
-        btnImport.style.cssText = 'flex:1; padding:12px; background:rgba(0,210,255,0.1); border:1px solid rgba(0,210,255,0.3); color:#00d2ff; border-radius:10px; font-size:11px; font-weight:700; cursor:pointer; transition:0.2s;';
-
-        const importFile = document.createElement('input');
-        importFile.type = 'file';
-        importFile.accept = '.json';
-        importFile.style.display = 'none';
-        importFile.onchange = (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (re) => {
-                try {
-                    const data = JSON.parse(re.target.result);
-                    if (data.highlighter) setStore(STORAGE_KEY, data.highlighter);
-                    if (data.autoResponse) setStore(RESPONSE_KEY, data.autoResponse);
-                    if (data.config) setStore(CONFIG_KEY, data.config);
-                    if (data.settings) {
-                        if (data.settings.size) setStore(SIZE_KEY, data.settings.size);
-                        if (data.settings.enabled !== undefined) setStore(ENABLED_KEY, data.settings.enabled);
-                        if (data.settings.sla2m !== undefined) setStore(SLA_NOTIF_2MIN_KEY, data.settings.sla2m);
-                        if (data.settings.sla3m !== undefined) setStore(SLA_NOTIF_3MIN_KEY, data.settings.sla3m);
-                    }
-                    alert('✅ Data Berhasil Diimport! Me-refresh halaman...');
-                    location.reload();
-                } catch (err) { alert('❌ Error: Format file tidak valid!'); }
-            };
-            reader.readAsText(file);
-        };
-        btnImport.onclick = () => importFile.click();
-
-        storageRow.appendChild(btnExport);
-        storageRow.appendChild(btnImport);
-        settingsContainer.appendChild(storageRow);
-        settingsContainer.appendChild(importFile);
-
-        const backBtn = document.createElement('button');
-        backBtn.textContent = ' Kembali';
-        backBtn.style.cssText = 'margin-top:10px; padding:12px; background:rgba(255,255,255,0.05); color:#fff; border:1px solid rgba(255,255,255,0.1); border-radius:12px; cursor:pointer; font-weight:700;';
-        backBtn.onclick = () => { currentDashTab = 'main'; renderDashboard(); };
-        settingsContainer.appendChild(backBtn);
-
-        container.appendChild(settingsContainer);
-    }
-
-    renderDashboard();
-
-
-    // === DASHBOARD TOGGLE & DRAGGING SYSTEM ===
-    function toggleDash() {
-        if (!dash) return;
-        const isVisible = dash.style.display === 'block';
-
-        if (isVisible) {
-            dash.style.opacity = '0';
-            const currentTransform = dash.style.transform.split('scale')[0] || `translate3d(${xOffset}px, ${yOffset + 100}px, 0)`;
-            dash.style.transform = `${currentTransform} scale(0.95) translateY(20px)`;
-            setTimeout(() => { dash.style.display = 'none'; }, 400);
-        } else {
-            dash.style.display = 'block';
-            updateDashPosition(); // Snap to current bubble pos
-            dash.offsetHeight; // Force reflow
-            const currentTransform = dash.style.transform.split('scale')[0];
-            dash.style.opacity = '1';
-            dash.style.transform = `${currentTransform} scale(1)`;
-
-            // Bubble bounce pulse
-            bubble.style.transform = `translate3d(${xOffset}px, ${yOffset}px, 0) scale(0.8)`;
-            setTimeout(() => { bubble.style.transform = `translate3d(${xOffset}px, ${yOffset}px, 0) scale(1)`; }, 200);
-        }
-    }
-
-    let initialX, initialY;
-
-    function dragStart(e) {
-        if (e.target === bubble || bubble.contains(e.target)) {
-            e.stopPropagation();
-            if (e.type === "touchstart") e.preventDefault();
-
-            const clientX = e.type === "touchstart" ? e.touches[0].clientX : e.clientX;
-            const clientY = e.type === "touchstart" ? e.touches[0].clientY : e.clientY;
-
-            isDragging = true;
-            dragMoved = false;
-            initialX = clientX - xOffset;
-            initialY = clientY - yOffset;
-            bubble.style.transition = 'none'; // Lock transition
-        }
-    }
-
-    function dragEnd(e) {
-        if (!isDragging) return;
-        e.stopPropagation();
-        isDragging = false;
-        bubble.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease';
-        setStore('MC_ORB_POS', { x: xOffset, y: yOffset });
-        setTimeout(() => { dragMoved = false; }, 50);
-    }
-
-    function drag(e) {
-        if (isDragging) {
-            e.stopPropagation();
-            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-            if (e.cancelable) e.preventDefault();
-            dragMoved = true;
-
-            const clientX = e.type === "touchmove" ? e.touches[0].clientX : e.clientX;
-            const clientY = e.type === "touchmove" ? e.touches[0].clientY : e.clientY;
-
-            let bx = clientX - initialX;
-            let by = clientY - initialY;
-
-            // Stay in viewport
-            const bRect = bubble.getBoundingClientRect();
-            xOffset = Math.max(0, Math.min(bx, window.innerWidth - (bRect.width || 70)));
-            yOffset = Math.max(0, Math.min(by, window.innerHeight - (bRect.height || 70)));
-
-            bubble.style.transform = `translate3d(${xOffset}px, ${yOffset}px, 0)`;
-            updateDashPosition();
-        }
-    }
-
-    function updateDashPosition() {
-        if (!dash || !bubble) return;
-        const bRect = bubble.getBoundingClientRect();
-        const dRect = dash.getBoundingClientRect();
-
-        let tx = bRect.left;
-        let ty = bRect.bottom + 10;
-
-        // Smart Re-positioning
-        if (tx + dRect.width > window.innerWidth) tx = window.innerWidth - dRect.width - 20;
-        if (tx < 10) tx = 10;
-        if (ty + dRect.height > window.innerHeight) ty = bRect.top - dRect.height - 10;
-        if (ty < 10) ty = 10;
-
-        const isVisible = dash.style.display === 'block';
-        dash.style.transform = `translate3d(${tx}px, ${ty}px, 0) ${isVisible ? 'scale(1)' : 'scale(0.95)'}`;
-    }
-
-    // Event Listeners
-    bubble.addEventListener('mousedown', dragStart);
-    document.addEventListener('mousemove', drag);
-    document.addEventListener('mouseup', dragEnd);
-    bubble.addEventListener('touchstart', dragStart, { passive: false });
-    document.addEventListener('touchmove', drag, { passive: false });
-    document.addEventListener('touchend', dragEnd);
-
-    // Prevent closing when clicking inside dashboard
-    dash.onclick = (e) => e.stopPropagation();
-
-    bubble.onclick = (e) => {
-        e.stopPropagation();
-        if (dragMoved) return;
-        toggleDash();
-    };
-
-    // Close when clicking anywhere outside
-    document.addEventListener('mousedown', (e) => {
-        const isVisible = dash.style.display === 'block';
-        if (isVisible && !dash.contains(e.target) && !bubble.contains(e.target)) {
-            toggleDash();
-        }
+    onRouteChange(() => {
+        debouncedStyling();
     });
+    // =========================
+    // === 🔴 Deteksi Spam Langsung Saat Pesan Baru Masuk ===
+    function setupLiveSpamDetector() {
+        // normalisasi teks (hapus tanda baca, ubah ke huruf kecil)
+        const normalize = txt => txt.replace(/[!?.]/g, '').trim().toLowerCase();
 
-    window.addEventListener('resize', () => {
-        const bRect = bubble.getBoundingClientRect();
-        xOffset = Math.min(xOffset, window.innerWidth - (bRect.width || 70));
-        yOffset = Math.min(yOffset, window.innerHeight - (bRect.height || 70));
-        bubble.style.transform = `translate3d(${xOffset}px, ${yOffset}px, 0)`;
-        updateDashPosition();
-    });
+        // tempat menyimpan teks pesan yang sudah pernah muncul
+        const seenMessages = new Map();
 
-    // Shortcut removed by user request (Alt+D)
-    // document.addEventListener('keydown', e => { ... });
+        // fungsi untuk menandai pesan spam
+        const markAsSpam = (el, count) => {
+            el.style.color = '#ff0000';
+            el.style.fontWeight = '900';
+            el.style.backgroundColor = 'rgba(255, 0, 0, 0.2)';
+            el.style.borderLeft = '6px solid #ff0000';
+            el.style.boxShadow = 'inset 0 0 10px rgba(0,0,0,0.1)';
+            el.setAttribute('title', `Spam terdeteksi (${count}x)`);
+        };
+        // fungsi untuk memproses satu pesan
+        const processMessage = (el) => {
+            // Ambil semua teks termasuk <span> dan <a> di dalam bubble chat
+            const text = normalize(
+                Array.from(el.querySelectorAll('*'))
+                    .map(n => n.textContent)
+                    .join(' ')
+                    .trim()
+            );
 
+            if (!text) return;
+            const count = (seenMessages.get(text) || 0) + 1;
+            seenMessages.set(text, count);
 
+            // Tandai spam kalau muncul 2 kali atau lebih
+            if (count >= 2) markAsSpam(el, count);
+        };
 
-    // === Context Menu Logic ===
-    let contextMenu;
-    // ... rest of logic stays same or fits below ...
+        // proses semua pesan yang sudah ada saat awal
+        document.querySelectorAll('[data-testid="message-text"], .message__text, .message, .message-text')
+            .forEach(processMessage);
 
-    document.addEventListener('contextmenu', e => {
-        const selectedText = window.getSelection().toString().trim();
-        if (!selectedText) return; // nothing selected
-        e.preventDefault(); // prevent normal right-click
-
-        // remove old menu if exists
-        if (contextMenu) contextMenu.remove();
-
-        // create custom menu
-        contextMenu = document.createElement('div');
-        contextMenu.style.cssText = `
-position: fixed;
-top: ${e.clientY}px;
-left: ${e.clientX}px;
-background: white;
-border: 2px solid #111;
-border-radius: 8px;
-box-shadow: 4px 4px 0 #111;
-padding: 8px;
-z-index: 99999;
-font-family: "Bangers", "Comic Sans MS", cursive;
-font-size: 14px;
-`;
-
-        const title = document.createElement('div');
-        title.textContent = `Add "${selectedText}" to:`;
-        title.style.marginBottom = '6px';
-        contextMenu.appendChild(title);
-
-        Object.keys(colorGroups).forEach(name => {
-            const btn = document.createElement('div');
-            btn.textContent = name;
-            btn.style.cssText = `
-color: ${colorGroups[name].textColor};
-padding: 4px 8px;
-cursor: pointer;
-border-radius: 6px;
-`;
-            btn.onmouseenter = () => btn.style.background = '#eee';
-            btn.onmouseleave = () => btn.style.background = 'transparent';
-            btn.onclick = () => {
-                colorGroups[name].words.push(selectedText);
-                saveGroups();
-                contextMenu.remove();
-                alert(`Added "${selectedText}" to ${name}!`);
-            };
-            contextMenu.appendChild(btn);
-        });
-
-        document.body.appendChild(contextMenu);
-    });
-
-    // remove menu when clicking elsewhere
-    document.addEventListener('click', () => {
-        if (contextMenu) contextMenu.remove();
-    });
-
-    // === AUTO RESPONSE PRO INTEGRATION ===
-
-    // Flatten AUTO_RESPONSE_DATA to wordResponses for quick lookup
-    // NOW MERGING instead of overwriting
-    let wordResponses = {};
-    function rebuildWordResponses() {
-        wordResponses = {};
-        Object.entries(AUTO_RESPONSE_DATA).forEach(([groupName, data]) => {
-            data.triggerWords.forEach(w => {
-                const key = w.toLowerCase().trim();
-                if (!wordResponses[key]) {
-                    wordResponses[key] = [];
-                }
-                // Add messages and remove duplicates
-                data.messages.forEach(msg => {
-                    if (msg && msg.trim() && !wordResponses[key].includes(msg)) {
-                        wordResponses[key].push(msg);
+        // pantau pesan baru yang masuk
+        const chatContainer = document.querySelector('[data-testid="chat-messages-list"]') || document.body;
+        const observer = new MutationObserver(mutations => {
+            for (const m of mutations) {
+                m.addedNodes.forEach(node => {
+                    if (node.nodeType === 1) {
+                        const msg = node.querySelector('[data-testid="message-text"], .message__text, .message, .message-text');
+                        if (msg) processMessage(msg);
                     }
                 });
-            });
-        });
-    }
-    rebuildWordResponses();
-
-    // Modify rebuildRegex to also include Auto-Response triggers
-    const originalRebuildRegex = rebuildRegex;
-    rebuildRegex = function () {
-        wordMap = {};
-        const allWords = [];
-
-        // Add color groups
-        Object.entries(colorGroups).forEach(([name, group]) => {
-            group.words.forEach(word => {
-                const w = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                if (!allWords.includes(w)) allWords.push(w);
-                wordMap[word.toLowerCase()] = `hl-${name}`;
-            });
-        });
-
-        // Add Auto-Response triggers (if not already in color groups)
-        Object.entries(AUTO_RESPONSE_DATA).forEach(([groupName, data]) => {
-            data.triggerWords.forEach(word => {
-                const w = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                if (!allWords.includes(w)) {
-                    allWords.push(w);
-                    wordMap[word.toLowerCase()] = 'hl-AutoResponse'; // Green-ish default
-                }
-            });
-        });
-
-        regex = allWords.length ? new RegExp(`\\b(${allWords.join('|')})\\b`, 'gi') : null;
-        rebuildWordResponses(); // also update lookup map
-    };
-
-    // Add CSS for default Auto-Response highlight
-    const originalRebuildCSS = rebuildCSS;
-    rebuildCSS = function () {
-        originalRebuildCSS();
-        style.textContent += `
-            .hl-AutoResponse {
-                background: ${isHighlighterEnabled ? 'linear-gradient(135deg, #00f260, #0575e6)' : 'transparent'} !important;
-                color: ${isHighlighterEnabled ? '#fff' : 'inherit'} !important;
-                font-size: ${globalFontSize}px !important;
-                padding: ${isHighlighterEnabled ? '2px 12px' : '0'};
-                border-radius: 50px;
-                box-shadow: ${isHighlighterEnabled ? '0 4px 15px rgba(0, 242, 96, 0.4)' : 'none'};
-                font-weight: ${isHighlighterEnabled ? '700' : 'normal'};
-                display: inline-block;
-                margin: 0 ${isHighlighterEnabled ? '4' : '0'}px;
-                cursor: pointer;
-                border: ${isHighlighterEnabled ? '1px solid rgba(255,255,255,0.2)' : 'none'};
-                transition: all 0.3s ease;
-            }
-        `;
-    };
-
-    rebuildCSS();
-    rebuildRegex();
-
-    // === Manga-style popup ===
-    let popup = document.getElementById('hl-popup');
-    if (!popup) {
-        popup = document.createElement('div');
-        popup.id = 'hl-popup';
-        popup.style.cssText = `
-            position:absolute; background:white; border:3px solid #111; border-radius:10px;
-            box-shadow:5px 5px 0 #111; padding:12px; font-family:"Lexend",sans-serif;
-            font-size:14px; color:#111; z-index:999999; display:none; flex-direction:column;
-            gap:8px; animation:popupIn 0.15s ease-out; max-width:350px; border-right: 6px solid #111;
-        `;
-        document.body.appendChild(popup);
-
-        const pStyle = document.createElement('style');
-        pStyle.textContent = `
-            @keyframes popupIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-            .popup-item {
-                padding:10px 14px; border:2px solid #111; border-radius:8px;
-                box-shadow:2px 2px 0 #111; background:white; cursor:pointer;
-                text-align:left; white-space: pre-wrap; line-height: 1.4;
-                transition:all 0.1s ease; font-weight: 500;
-            }
-            .popup-item:hover { background:#ffeb3b; transform:translate(-2px,-2px); box-shadow:4px 4px 0 #111; }
-        `;
-        document.head.appendChild(pStyle);
-
-        document.addEventListener('click', () => popup.style.display = 'none');
-        popup.addEventListener('click', e => e.stopPropagation());
-    }
-
-    function getMessageBox() {
-        // Cari elemen yang paling mungkin menjadi input chat
-        const selectors = [
-            '#chat-feed-text-area-id',
-            '[data-testid="chat-input"]',
-            '[data-testid="message-box"]',
-            '.lc-input-box [contenteditable="true"]',
-            '[contenteditable="true"][role="textbox"]'
-        ];
-
-        for (let s of selectors) {
-            const el = document.querySelector(s);
-            if (el) return el;
-        }
-
-        const all = document.querySelectorAll('[contenteditable="true"]');
-        for (let el of all) {
-            if (el.closest && el.closest('#esah-dashboard')) continue;
-            return el;
-        }
-        return document.querySelector('textarea');
-    }
-
-    let isInserting = false;
-    function insertIntoMessageBox(text) {
-        if (isInserting) return;
-        isInserting = true;
-
-        const box = getMessageBox();
-        if (!box) {
-            isInserting = false;
-            return;
-        }
-
-        // AGGRESSIVE FOCUS (Seperti Perfect Keyboard mengaktifkan jendela target)
-        box.focus();
-
-        // Gunakan kursor di posisi terakhir jika kursor tidak ada
-        const sel = window.getSelection();
-        if (!sel.rangeCount || !box.contains(sel.anchorNode)) {
-            const range = document.createRange();
-            range.selectNodeContents(box);
-            range.collapse(false);
-            sel.removeAllRanges();
-            sel.addRange(range);
-        }
-
-        try {
-            // TRIK "PERFECT MACRO": Gunakan format yang paling disukai LiveChat
-            // Kita pecah teks dan bungkus setiap baris baru dengan <div> asli
-            const lines = text.split('\n');
-            const htmlFormatted = lines.map(line => `<div>${line.length > 0 ? line : '<br>'}</div>`).join('');
-
-            // 1. Teknik Keamanan Utama: Simulasi Paste Event
-            // Ini adalah cara Perfect Keyboard mengirim data agar formatnya tetap "Rich Text" (Rapi)
-            const dt = new DataTransfer();
-            dt.setData('text/plain', text);
-            dt.setData('text/html', htmlFormatted);
-
-            const pasteEvent = new ClipboardEvent('paste', {
-                clipboardData: dt,
-                bubbles: true,
-                cancelable: true
-            });
-
-            const wasHandled = box.dispatchEvent(pasteEvent);
-
-            // 2. Jalur Kedua: Jika sistem chat menolak event "paste", suntikkan HTML secara paksa
-            // Kita beri jeda 20ms untuk melihat apakah teks sudah masuk
-            setTimeout(() => {
-                const currentText = box.innerText || box.textContent || "";
-                if (currentText.trim().length === 0) {
-                    // Masukkan baris demi baris menggunakan perintah sistem pengetikan (Native Typing)
-                    const success = document.execCommand('insertHTML', false, htmlFormatted);
-
-                    if (!success) {
-                        // Jika insertHTML juga gagal, paksa dengan insertText murni (Fallback terakhir)
-                        document.execCommand('insertText', false, text);
-                    }
-                }
-
-                // 3. SINKRONISASI: Paksa sistem LiveChat untuk menyalakan tombol "Send"
-                box.dispatchEvent(new Event('input', { bubbles: true }));
-                box.dispatchEvent(new Event('change', { bubbles: true }));
-
-                isInserting = false;
-            }, 30);
-
-        } catch (e) {
-            console.error("Macro System Error:", e);
-            document.execCommand('insertText', false, text);
-            box.dispatchEvent(new Event('input', { bubbles: true }));
-            isInserting = false;
-        }
-    }
-
-    function showPopupForElement(el, responses) {
-        if (!responses || responses.length === 0) return;
-        popup.innerHTML = '<div style="font-size:10px; font-weight:bold; color:#888; margin-bottom:4px; text-transform:uppercase; letter-spacing:1px;">Template Response:</div>';
-
-        responses.forEach(r => {
-            const item = document.createElement('div');
-            item.className = 'popup-item';
-            item.textContent = r; // Menggunakan textContent agar aman, tapi CSS pre-wrap menjaga format
-            item.onclick = (e) => {
-                e.stopPropagation();
-                popup.style.display = 'none';
-                insertIntoMessageBox(r);
-            };
-            popup.appendChild(item);
-        });
-
-        const rect = el.getBoundingClientRect();
-        popup.style.display = 'flex';
-        popup.style.top = (rect.bottom + window.scrollY + 8) + 'px';
-        popup.style.left = (rect.left + window.scrollX) + 'px';
-    }
-
-    function attachClickToHighlights() {
-        const els = document.querySelectorAll('[class*="hl-"], [data-hl="1"]');
-        els.forEach(el => {
-            if (el.dataset.hlClickable === '1') return;
-            const textLower = el.textContent.toLowerCase().trim();
-            if (wordResponses[textLower]) {
-                el.style.cursor = 'pointer';
-                el.dataset.hlClickable = '1';
-                el.addEventListener('click', e => {
-                    e.stopPropagation();
-                    showPopupForElement(el, wordResponses[textLower]);
-                });
             }
         });
+
+        observer.observe(chatContainer, { childList: true, subtree: true });
+        console.log('✅ Live spam detector aktif');
     }
 
-    // Connect existing observer logic to click attachment
-    const originalHighlightMessages = highlightMessages;
-    highlightMessages = function () {
-        originalHighlightMessages();
-        attachClickToHighlights();
-    };
+    // aktifkan deteksi spam
+    setupLiveSpamDetector();
 
-    // === INISIALISASI AKHIR ===
-    // Panggil highlightMessages() setelah SEMUA setup selesai (termasuk Auto-Response)
-    highlightMessages();
-
-    // Juga panggil attachClickToHighlights secara berkala untuk menangani elemen yang mungkin terlewat
-    setInterval(() => {
-        attachClickToHighlights();
-    }, 2000);
-
-    console.log('✅ Auto-Response Pro Harden: Newline conversion & anti-double active.');
-
+    waitForElement('.chat-item', init);
 })();
