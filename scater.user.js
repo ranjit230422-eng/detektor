@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         LiveChat + REGC AUTO FULL — Scan -> Sheet D:J -> Debit K -> N Done
 // @namespace    linetogel-livechat-regc-auto-full
-// @version      6.4.5
-// @description  V6.4.5 GMT+7 FIX + notifikasi claim compact: patokan tanggal tetap GMT+7; notifikasi claim kedaluwarsa dibuat kecil agar tidak menutupi layar.
+// @version      6.5.7
+// @description  V6.5.7 logo LINE TOGEL pada background dibuat tajam, penuh, tidak pudar, dan tidak buram; tema ungu tetap dipertahankan.
 // @author       OpenAI
 // @match        https://my.livechatinc.com/*
 // @match        https://regc.idnlive.live/*
@@ -100,7 +100,7 @@
 
     // Versi terbaru mengambil alih UI lama bila lebih dari satu versi tidak sengaja aktif.
     // Ini mencegah script lama memblokir perbaikan melalui guard boolean yang sama.
-    const LCST_BUILD_VERSION = '5.8.3';
+    const LCST_BUILD_VERSION = '5.9.5';
     const lcstExistingInstance = window.__LC_BUBBLE_SCREENSHOT_ACTIVE_ONLY__;
     if (lcstExistingInstance && typeof lcstExistingInstance === 'object' && lcstExistingInstance.version === LCST_BUILD_VERSION) return;
     try {
@@ -114,6 +114,9 @@
     const POS_KEY = 'lc_bubble_screenshot_tool_position_active_only_v46_clean_final';
     const DB_KEY  = 'screenshot_tool_db_v1';
     const Z_TOP   = 2147483647;
+    const LCST_DASHBOARD_LOGO_URL = 'https://line32170.com/assets/img/ei/logo.png';
+    let lcstDashboardLogoDataUrl = '';
+    let lcstDashboardLogoPromise = null;
 
     /******************************************************************
      * GOOGLE SHEET AUTO APPEND V1
@@ -1582,8 +1585,779 @@
                 box-shadow:0 0 0 3px rgba(34,197,94,.10)!important;
             }
 
+            /* =========================================================
+               BUBBLE GAMBAR CUSTOM
+               Bubble memakai gambar Postimg; dashboard memakai logo LINE TOGEL.
+               Fungsi klik, drag, dan pembuka panel tetap aktif.
+               ========================================================= */
+            #lcst-bubble-fixed{
+                width:94px!important;
+                height:94px!important;
+                border-radius:50%!important;
+                border:2px solid rgba(255,255,255,.96)!important;
+                background-color:#fffaf3!important;
+                background-image:
+                    linear-gradient(145deg,rgba(255,255,255,.34) 0%,transparent 34%,rgba(122,15,26,.07) 100%),
+                    url("https://i.postimg.cc/jSc32qYs/85c5a789-2ae2-4b4f-897d-9aab6a0c6b4f.png"),
+                    radial-gradient(circle at 32% 20%,#ffffff 0%,#fffdf8 30%,#fff1dc 66%,#e8bd74 100%)!important;
+                background-repeat:no-repeat,no-repeat,no-repeat!important;
+                background-position:center center,center center,center center!important;
+                background-size:100% 100%,78% auto,100% 100%!important;
+                overflow:visible!important;
+                isolation:isolate!important;
+                box-shadow:
+                    0 8px 13px rgba(91,32,22,.20),
+                    0 22px 42px rgba(91,32,22,.30),
+                    0 0 0 5px rgba(255,255,255,.46),
+                    0 0 0 8px rgba(218,165,70,.15),
+                    0 0 30px rgba(221,45,54,.25),
+                    inset 0 2px 3px rgba(255,255,255,1),
+                    inset 0 -10px 19px rgba(126,31,27,.12)!important;
+            }
+            #lcst-bubble-fixed:before{
+                content:""!important;
+                display:block!important;
+                position:absolute!important;
+                inset:4px!important;
+                width:auto!important;
+                height:auto!important;
+                border-radius:50%!important;
+                border:1px solid rgba(255,255,255,.82)!important;
+                background:
+                    radial-gradient(ellipse at 35% 15%,rgba(255,255,255,.88) 0%,rgba(255,255,255,.20) 27%,transparent 44%),
+                    linear-gradient(155deg,transparent 48%,rgba(108,14,25,.10) 100%)!important;
+                box-shadow:inset 0 0 16px rgba(255,255,255,.32)!important;
+                pointer-events:none!important;
+                z-index:2!important;
+                animation:lcstLogoGlass 3.2s ease-in-out infinite!important;
+            }
+            #lcst-bubble-fixed:after{
+                content:""!important;
+                display:block!important;
+                position:absolute!important;
+                inset:-9px!important;
+                border-radius:50%!important;
+                background:conic-gradient(
+                    from 0deg,
+                    transparent 0 12%,
+                    rgba(255,198,72,.92) 18%,
+                    transparent 27% 48%,
+                    rgba(224,30,49,.86) 56%,
+                    transparent 65% 82%,
+                    rgba(255,228,145,.86) 90%,
+                    transparent 100%
+                )!important;
+                opacity:.78!important;
+                filter:blur(1px) drop-shadow(0 0 7px rgba(224,30,49,.30))!important;
+                pointer-events:none!important;
+                z-index:-1!important;
+                animation:lcstLogoOrbit 7s linear infinite!important;
+            }
+            #lcst-bubble-fixed .lcst-nova-ring{
+                display:block!important;
+                inset:-7px!important;
+                border:1px solid rgba(255,220,133,.72)!important;
+                filter:drop-shadow(0 0 7px rgba(208,36,49,.34))!important;
+                z-index:3!important;
+                animation:lcstLogoRing 10s linear infinite!important;
+            }
+            #lcst-bubble-fixed .lcst-nova-ring:before{
+                background:#ffd166!important;
+                box-shadow:0 0 12px #ffbe32,0 0 22px rgba(255,190,50,.62)!important;
+            }
+            #lcst-bubble-fixed .lcst-nova-ring:after{
+                background:#e11d3f!important;
+                box-shadow:0 0 12px #e11d3f,0 0 22px rgba(225,29,63,.62)!important;
+            }
+            #lcst-bubble-fixed .lcst-nova-lens,
+            #lcst-bubble-fixed .lcst-nova-caption{
+                display:none!important;
+            }
+            #lcst-bubble-fixed .lcst-nova-online{
+                display:block!important;
+                right:2px!important;
+                top:7px!important;
+                width:11px!important;
+                height:11px!important;
+                background:#22d36f!important;
+                border:2px solid #ffffff!important;
+                box-shadow:0 0 0 3px rgba(34,211,111,.16),0 0 15px #22d36f!important;
+                animation:lcstLogoOnline 1.8s ease-in-out infinite!important;
+            }
+            #lcst-bubble-fixed:hover{
+                transform:translateY(-6px) scale(1.075)!important;
+                border-color:#ffffff!important;
+                box-shadow:
+                    0 12px 17px rgba(91,32,22,.18),
+                    0 30px 58px rgba(91,32,22,.34),
+                    0 0 0 6px rgba(255,255,255,.54),
+                    0 0 0 10px rgba(218,165,70,.18),
+                    0 0 46px rgba(224,30,49,.34),
+                    inset 0 2px 3px #ffffff,
+                    inset 0 -11px 20px rgba(126,31,27,.13)!important;
+            }
+            #lcst-bubble-fixed.lcst-dragging{
+                transform:scale(1.085)!important;
+                cursor:grabbing!important;
+                opacity:.96!important;
+            }
+            @keyframes lcstLogoOrbit{to{transform:rotate(360deg)}}
+            @keyframes lcstLogoRing{to{transform:rotate(-360deg)}}
+            @keyframes lcstLogoGlass{
+                0%,100%{opacity:.70;transform:translateY(0)}
+                50%{opacity:1;transform:translateY(1px)}
+            }
+            @keyframes lcstLogoOnline{
+                0%,100%{transform:scale(.86);opacity:.76}
+                50%{transform:scale(1.13);opacity:1}
+            }
+
+            /* =========================================================
+               DASHBOARD RUBY PREMIUM V6.5.0
+               - Logo LINE TOGEL menjadi background dashboard.
+               - Bubble kembali memakai gambar Postimg sebelumnya.
+               - Seluruh workflow dan fungsi scanner tidak disentuh.
+               ========================================================= */
+
+            /* Background dashboard saat bubble dibuka */
+            #lcst-panel-fixed{
+                background-color:#26030d!important;
+                background-image:
+                    linear-gradient(145deg,rgba(37,2,12,.52) 0%,rgba(78,5,20,.40) 48%,rgba(38,3,13,.50) 100%),
+                    url("https://line32170.com/assets/img/ei/logo.png"),
+                    radial-gradient(circle at 7% 2%,rgba(255,197,61,.34),transparent 31%),
+                    radial-gradient(circle at 94% 5%,rgba(255,45,68,.32),transparent 30%),
+                    radial-gradient(circle at 50% 105%,rgba(255,165,49,.18),transparent 38%),
+                    linear-gradient(145deg,#24030d 0%,#5c071d 47%,#1d020a 100%)!important;
+                background-repeat:no-repeat,no-repeat,no-repeat,no-repeat,no-repeat,no-repeat!important;
+                background-position:center center,center 48%,left top,right top,center bottom,center center!important;
+                background-size:100% 100%,72vw auto,100% 100%,100% 100%,100% 100%,100% 100%!important;
+                background-attachment:fixed,fixed,fixed,fixed,fixed,fixed!important;
+                color:#202331!important;
+            }
+            #lcst-panel-fixed:before{
+                content:""!important;
+                display:block!important;
+                position:fixed!important;
+                inset:0!important;
+                z-index:0!important;
+                pointer-events:none!important;
+                opacity:.34!important;
+                background-image:
+                    linear-gradient(rgba(255,221,139,.075) 1px,transparent 1px),
+                    linear-gradient(90deg,rgba(255,116,93,.07) 1px,transparent 1px)!important;
+                background-size:34px 34px!important;
+                mask-image:linear-gradient(to bottom,#000,transparent 92%)!important;
+            }
+            #lcst-panel-fixed:after{
+                content:""!important;
+                display:block!important;
+                position:fixed!important;
+                inset:0!important;
+                z-index:0!important;
+                pointer-events:none!important;
+                opacity:.30!important;
+                background:
+                    linear-gradient(118deg,transparent 0 37%,rgba(255,229,176,.24) 46%,transparent 55%),
+                    radial-gradient(ellipse at 50% -12%,rgba(255,214,126,.35),transparent 58%)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-shell{
+                position:relative!important;
+                z-index:2!important;
+            }
+            #lcst-dashboard-brand-bg{
+                position:fixed!important;
+                left:50%!important;
+                top:52%!important;
+                width:min(1120px,84vw)!important;
+                height:min(730px,76vh)!important;
+                transform:translate(-50%,-50%)!important;
+                display:flex!important;
+                align-items:center!important;
+                justify-content:center!important;
+                overflow:visible!important;
+                border-radius:0!important;
+                border:0!important;
+                background:transparent!important;
+                box-shadow:none!important;
+                pointer-events:none!important;
+                user-select:none!important;
+                z-index:1!important;
+                opacity:1!important;
+                filter:none!important;
+                animation:none!important;
+            }
+            #lcst-dashboard-logo-bg{
+                display:block!important;
+                position:relative!important;
+                width:88%!important;
+                height:62%!important;
+                margin:0!important;
+                padding:0!important;
+                border:0!important;
+                object-fit:contain!important;
+                object-position:center!important;
+                transform:none!important;
+                image-rendering:auto!important;
+                opacity:1!important;
+                filter:
+                    saturate(1.34)
+                    contrast(1.18)
+                    brightness(1.06)
+                    drop-shadow(0 12px 16px rgba(22,0,5,.34))
+                    drop-shadow(0 0 16px rgba(255,204,85,.24))!important;
+                pointer-events:none!important;
+                user-select:none!important;
+                z-index:2!important;
+                animation:lcstDashboardLogoFloat 5.8s ease-in-out infinite!important;
+            }
+            #lcst-dashboard-logo-fallback{
+                position:absolute!important;
+                left:50%!important;
+                top:50%!important;
+                transform:translate(-50%,-50%)!important;
+                width:100%!important;
+                text-align:center!important;
+                color:#ffedbd!important;
+                font:1000 clamp(54px,8.5vw,142px)/.88 Inter,Segoe UI,Arial,sans-serif!important;
+                letter-spacing:clamp(5px,1.15vw,18px)!important;
+                text-shadow:
+                    0 3px 0 rgba(255,255,255,.12),
+                    0 12px 34px rgba(0,0,0,.42),
+                    0 0 45px rgba(255,179,55,.30)!important;
+                white-space:nowrap!important;
+                opacity:1!important;
+                z-index:1!important;
+            }
+            #lcst-dashboard-logo-fallback small{
+                display:block!important;
+                margin-top:18px!important;
+                color:rgba(255,218,143,.74)!important;
+                font:900 clamp(9px,1vw,15px)/1.2 Inter,Segoe UI,Arial,sans-serif!important;
+                letter-spacing:clamp(4px,.8vw,11px)!important;
+            }
+            #lcst-panel-fixed.lcst-dashboard-logo-loaded #lcst-dashboard-logo-fallback{
+                opacity:0!important;
+            }
+            #lcst-panel-fixed.lcst-dashboard-logo-error #lcst-dashboard-logo-bg{
+                display:none!important;
+            }
+            @keyframes lcstDashboardLogoFloat{
+                0%,100%{transform:translateY(0) scale(1);opacity:1}
+                50%{transform:translateY(-8px) scale(1.018);opacity:1}
+            }
+
+            /* Efek glass agar logo background tetap terlihat lembut */
+            #lcst-panel-fixed .lcst-nova-topbar{
+                background:
+                    radial-gradient(circle at 50% -38%,rgba(216,180,254,.34),transparent 47%),
+                    radial-gradient(circle at 4% 50%,rgba(236,72,153,.15),transparent 30%),
+                    radial-gradient(circle at 96% 45%,rgba(99,102,241,.24),transparent 31%),
+                    linear-gradient(135deg,#1d0a35 0%,#3b1766 31%,#5b21b6 62%,#341257 100%)!important;
+                backdrop-filter:blur(18px) saturate(145%)!important;
+                border-color:rgba(216,180,254,.34)!important;
+                box-shadow:
+                    0 20px 52px rgba(48,13,82,.32),
+                    0 0 0 1px rgba(255,255,255,.035),
+                    inset 0 1px 0 rgba(255,255,255,.22),
+                    inset 0 -1px 0 rgba(126,34,206,.28)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-topbar:before{
+                background:linear-gradient(180deg,#f0abfc,#c084fc 46%,#818cf8 78%,#fbbf24)!important;
+                box-shadow:0 0 22px rgba(216,180,254,.56)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-topbar:after{
+                background:radial-gradient(circle,rgba(233,213,255,.19),transparent 67%)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-eyebrow{
+                color:#f0abfc!important;
+                text-shadow:0 0 13px rgba(240,171,252,.30)!important;
+            }
+            #lcst-panel-fixed .lcst-title{
+                color:#ffffff!important;
+                text-shadow:0 3px 15px rgba(18,3,31,.45),0 0 20px rgba(216,180,254,.16)!important;
+            }
+            #lcst-panel-fixed .lcst-subtitle{
+                color:rgba(233,213,255,.84)!important;
+            }
+            #lcst-panel-fixed .lcst-version{
+                background:rgba(251,191,36,.17)!important;
+                border-color:rgba(253,224,71,.34)!important;
+                color:#fde68a!important;
+                box-shadow:0 0 13px rgba(251,191,36,.10)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-live-chip{
+                background:rgba(16,185,129,.16)!important;
+                border-color:rgba(110,231,183,.34)!important;
+                color:#a7f3d0!important;
+                box-shadow:inset 0 1px 0 rgba(255,255,255,.10)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-close{
+                background:linear-gradient(135deg,#f43f5e,#e11d48)!important;
+                border-color:rgba(255,228,230,.34)!important;
+                color:#ffffff!important;
+                box-shadow:0 10px 23px rgba(190,24,93,.26),inset 0 1px 0 rgba(255,255,255,.20)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-close:hover{
+                background:linear-gradient(135deg,#fb7185,#e11d48)!important;
+            }
+
+            /* Logo resmi LINE TOGEL menggantikan ikon scanner pada header */
+            #lcst-panel-fixed .lcst-nova-logo{
+                position:relative!important;
+                width:200px!important;
+                min-width:200px!important;
+                height:76px!important;
+                flex:0 0 200px!important;
+                display:flex!important;
+                align-items:center!important;
+                justify-content:center!important;
+                padding:0!important;
+                overflow:visible!important;
+                border-radius:0!important;
+                border:0!important;
+                background:none!important;
+                box-shadow:none!important;
+            }
+            #lcst-panel-fixed .lcst-nova-logo:before,
+            #lcst-panel-fixed .lcst-nova-logo:after{
+                display:none!important;
+            }
+            #lcst-header-logo-img{
+                position:relative!important;
+                display:block!important;
+                width:100%!important;
+                height:100%!important;
+                max-width:100%!important;
+                max-height:100%!important;
+                object-fit:contain!important;
+                object-position:center!important;
+                margin:0!important;
+                padding:0!important;
+                border:0!important;
+                opacity:0!important;
+                filter:
+                    saturate(1.20)
+                    contrast(1.08)
+                    drop-shadow(0 8px 10px rgba(47,0,12,.34))
+                    drop-shadow(0 15px 22px rgba(122,7,34,.24))
+                    drop-shadow(0 0 15px rgba(255,194,67,.30))!important;
+                transition:opacity .25s ease!important;
+                z-index:2!important;
+            }
+            #lcst-panel-fixed .lcst-header-logo-fallback{
+                position:absolute!important;
+                inset:0!important;
+                display:grid!important;
+                place-items:center!important;
+                color:#ffe4a6!important;
+                font:1000 24px/1 Inter,Segoe UI,Arial,sans-serif!important;
+                letter-spacing:3px!important;
+                text-shadow:0 3px 10px rgba(0,0,0,.38),0 0 15px rgba(255,191,61,.32)!important;
+                z-index:1!important;
+                transition:opacity .2s ease!important;
+            }
+            #lcst-panel-fixed.lcst-header-logo-loaded #lcst-header-logo-img{
+                opacity:1!important;
+            }
+            #lcst-panel-fixed.lcst-header-logo-loaded .lcst-header-logo-fallback{
+                opacity:0!important;
+            }
+            #lcst-panel-fixed.lcst-header-logo-error #lcst-header-logo-img{
+                display:none!important;
+            }
+
+            /* Logo header berada tepat di tengah dan mengambang */
+            #lcst-panel-fixed .lcst-nova-topbar{
+                position:sticky!important;
+                overflow:visible!important;
+                min-height:100px!important;
+            }
+            #lcst-panel-fixed .lcst-nova-topbar .lcst-brand{
+                position:static!important;
+            }
+            #lcst-panel-fixed .lcst-nova-brand-copy,
+            #lcst-panel-fixed .lcst-nova-top-actions{
+                position:relative!important;
+                z-index:6!important;
+            }
+            #lcst-panel-fixed .lcst-nova-logo{
+                position:absolute!important;
+                left:50%!important;
+                top:50%!important;
+                margin:0!important;
+                transform:translate(-50%,-50%)!important;
+                z-index:8!important;
+                isolation:isolate!important;
+                overflow:visible!important;
+                pointer-events:none!important;
+                animation:lcstHeaderLogoCenterFloat 3.4s ease-in-out infinite!important;
+                background:none!important;
+                border:0!important;
+                box-shadow:none!important;
+            }
+            #lcst-panel-fixed .lcst-nova-logo:before,
+            #lcst-panel-fixed .lcst-nova-logo:after{
+                display:none!important;
+            }
+            @keyframes lcstHeaderLogoCenterFloat{
+                0%,100%{transform:translate(-50%,-50%) translateY(-2px) scale(1)}
+                50%{transform:translate(-50%,-50%) translateY(-8px) scale(1.035)}
+            }
+            @keyframes lcstHeaderLogoMobileFloat{
+                0%,100%{transform:translateY(0) scale(1)}
+                50%{transform:translateY(-6px) scale(1.035)}
+            }
+            #lcst-panel-fixed .lcst-card,
+            #lcst-panel-fixed .lcst-nova-status,
+            #lcst-panel-fixed .lcst-nova-stat,
+            #lcst-panel-fixed .lcst-nova-stat.ok,
+            #lcst-panel-fixed .lcst-nova-stat.bad,
+            #lcst-panel-fixed .lcst-nova-stat.user,
+            #lcst-panel-fixed .lcst-nova-stat.mode,
+            #lcst-panel-fixed .lcst-nova-stat.live{
+                background:
+                    radial-gradient(circle at 10% 0%,rgba(216,180,254,.16),transparent 34%),
+                    radial-gradient(circle at 95% 100%,rgba(129,140,248,.14),transparent 38%),
+                    linear-gradient(145deg,rgba(29,10,53,.82),rgba(59,23,102,.78) 52%,rgba(76,29,149,.74))!important;
+                backdrop-filter:none!important;
+                border-color:rgba(216,180,254,.28)!important;
+                color:#f8f2ff!important;
+                box-shadow:
+                    0 18px 42px rgba(30,7,54,.30),
+                    inset 0 1px 0 rgba(255,255,255,.13),
+                    inset 0 -1px 0 rgba(126,34,206,.18)!important;
+            }
+
+            /* Hero dan kartu informasi */
+            #lcst-panel-fixed .lcst-nova-status-icon{
+                background:rgba(192,132,252,.16)!important;
+                border-color:rgba(216,180,254,.30)!important;
+                box-shadow:0 0 20px rgba(168,85,247,.14)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-status-icon svg{
+                stroke:#e9d5ff!important;
+                filter:drop-shadow(0 0 7px rgba(216,180,254,.30))!important;
+            }
+            #lcst-panel-fixed .lcst-nova-status .lcst-status-title{
+                color:#f0abfc!important;
+            }
+            #lcst-panel-fixed .lcst-nova-status .lcst-ocr-box{
+                color:#ffffff!important;
+                text-shadow:0 2px 11px rgba(10,0,25,.35)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-status .lcst-progress{
+                background:rgba(17,5,35,.56)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-status .lcst-progress span{
+                background:linear-gradient(90deg,#c084fc,#8b5cf6,#6366f1,#f0abfc)!important;
+                box-shadow:0 0 15px rgba(192,132,252,.55)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-stat-label{
+                color:#f0abfc!important;
+            }
+            #lcst-panel-fixed .lcst-nova-stat strong,
+            #lcst-panel-fixed .lcst-nova-stat .lcst-user-edit{
+                color:#ffffff!important;
+            }
+            #lcst-panel-fixed .lcst-nova-stat small{
+                color:rgba(233,213,255,.76)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-stat .lcst-inline-copy{
+                color:#e9d5ff!important;
+                background:rgba(192,132,252,.12)!important;
+                border-color:rgba(216,180,254,.26)!important;
+            }
+
+            /* Sidebar, periode, dan panduan cepat */
+            #lcst-panel-fixed .lcst-nova-section-head b,
+            #lcst-panel-fixed .lcst-nova-guide-row b{
+                color:#ffffff!important;
+            }
+            #lcst-panel-fixed .lcst-nova-section-head small,
+            #lcst-panel-fixed .lcst-nova-guide-row small,
+            #lcst-panel-fixed .lcst-nova-guide-title{
+                color:rgba(233,213,255,.76)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-step,
+            #lcst-panel-fixed .lcst-nova-section-head.orange .lcst-nova-step,
+            #lcst-panel-fixed .lcst-nova-guide-row>span{
+                background:rgba(192,132,252,.16)!important;
+                border-color:rgba(216,180,254,.30)!important;
+                color:#f5d0fe!important;
+                box-shadow:inset 0 1px 0 rgba(255,255,255,.10)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-guide-row{
+                border-color:rgba(216,180,254,.14)!important;
+            }
+
+            /* Semua input dibuat ungu gelap, tidak ada kotak putih */
+            #lcst-panel-fixed .lcst-input,
+            #lcst-panel-fixed #lcst-output{
+                background:linear-gradient(145deg,rgba(18,5,37,.90),rgba(43,13,76,.88))!important;
+                border-color:rgba(216,180,254,.28)!important;
+                color:#f8f2ff!important;
+                box-shadow:inset 0 2px 10px rgba(5,0,14,.30),inset 0 1px 0 rgba(255,255,255,.06)!important;
+            }
+            #lcst-panel-fixed .lcst-input::placeholder,
+            #lcst-panel-fixed #lcst-output::placeholder{
+                color:rgba(221,214,254,.52)!important;
+            }
+            #lcst-panel-fixed .lcst-input:focus,
+            #lcst-panel-fixed #lcst-output:focus{
+                background:linear-gradient(145deg,rgba(24,7,48,.96),rgba(55,18,94,.94))!important;
+                border-color:rgba(216,180,254,.66)!important;
+                box-shadow:0 0 0 4px rgba(168,85,247,.14),0 0 22px rgba(139,92,246,.13)!important;
+            }
+
+            /* Status rekening dan status scan */
+            #lcst-panel-fixed .lcst-scan-state,
+            #lcst-panel-fixed .lcst-scan-state.waiting,
+            #lcst-panel-fixed .lcst-scan-state.scanning,
+            #lcst-panel-fixed .lcst-scan-state.success,
+            #lcst-panel-fixed .lcst-scan-state.partial,
+            #lcst-panel-fixed .lcst-scan-state.failed{
+                background:linear-gradient(145deg,rgba(32,10,61,.90),rgba(61,22,103,.84))!important;
+                border-color:rgba(216,180,254,.24)!important;
+                box-shadow:0 10px 24px rgba(20,3,39,.24),inset 0 1px 0 rgba(255,255,255,.09)!important;
+            }
+            #lcst-panel-fixed .lcst-scan-state-label{
+                color:#d8b4fe!important;
+            }
+            #lcst-panel-fixed .lcst-scan-state-detail{
+                color:rgba(233,213,255,.68)!important;
+            }
+            #lcst-panel-fixed .lcst-scan-state.waiting .lcst-scan-state-text{color:#c4b5fd!important}
+            #lcst-panel-fixed .lcst-scan-state.scanning .lcst-scan-state-text{color:#67e8f9!important}
+            #lcst-panel-fixed .lcst-scan-state.success .lcst-scan-state-text{color:#6ee7b7!important}
+            #lcst-panel-fixed .lcst-scan-state.partial .lcst-scan-state-text{color:#fde68a!important}
+            #lcst-panel-fixed .lcst-scan-state.failed .lcst-scan-state-text{color:#fda4af!important}
+
+            /* Output Excel ikut ungu */
+            #lcst-panel-fixed .lcst-nova-output-card .lcst-nova-kicker{
+                color:#f0abfc!important;
+            }
+            #lcst-panel-fixed .lcst-nova-output-card h4{
+                color:#ffffff!important;
+                text-shadow:0 2px 12px rgba(10,0,25,.36)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-output-card p{
+                color:rgba(233,213,255,.74)!important;
+            }
+            #lcst-panel-fixed #lcst-output{
+                color:#f5e9ff!important;
+                caret-color:#f0abfc!important;
+            }
+
+            /* WORKSPACE transparan: logo terlihat di belakang galeri */
+            #lcst-panel-fixed .lcst-nova-main,
+            #lcst-panel-fixed .lcst-nova-gallery-card,
+            #lcst-panel-fixed #lcst-image-grid{
+                background:transparent!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card{
+                border:1px solid rgba(255,218,137,.34)!important;
+                backdrop-filter:none!important;
+                box-shadow:
+                    0 22px 48px rgba(18,0,5,.24),
+                    inset 0 1px 0 rgba(255,245,219,.18)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-head{
+                padding:14px 15px!important;
+                border:1px solid rgba(255,218,137,.24)!important;
+                border-radius:18px!important;
+                background:linear-gradient(135deg,rgba(52,2,15,.62),rgba(112,8,31,.43))!important;
+                backdrop-filter:blur(8px) saturate(118%)!important;
+                box-shadow:0 13px 30px rgba(18,0,5,.18),inset 0 1px 0 rgba(255,236,190,.15)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-head .lcst-nova-kicker{
+                color:#ffd57c!important;
+                text-shadow:0 0 12px rgba(255,184,56,.26)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-head h4{
+                color:#fff4df!important;
+                text-shadow:0 2px 13px rgba(0,0,0,.34)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-head p{
+                color:rgba(255,231,210,.82)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-img-card{
+                background:rgba(255,255,255,.08)!important;
+                border-color:rgba(255,218,137,.26)!important;
+                backdrop-filter:none!important;
+                box-shadow:
+                    0 15px 28px rgba(20,0,5,.23),
+                    inset 0 1px 0 rgba(255,245,219,.15)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-img-card:hover{
+                border-color:rgba(255,218,137,.55)!important;
+                box-shadow:
+                    0 20px 38px rgba(20,0,5,.30),
+                    0 0 24px rgba(255,180,53,.14)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-img-media,
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-img-card img{
+                background:transparent!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-img-label{
+                color:rgba(255,232,215,.82)!important;
+                background:rgba(47,2,14,.48)!important;
+                border-top-color:rgba(255,218,137,.16)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-empty{
+                background:rgba(54,3,17,.30)!important;
+                border-color:rgba(255,218,137,.28)!important;
+                color:#ffe1ba!important;
+                backdrop-filter:blur(5px)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-empty b{
+                color:#fff3dd!important;
+            }
+
+            /* Bubble memakai kembali background gambar sebelumnya */
+            #lcst-bubble-fixed{
+                width:86px!important;
+                height:86px!important;
+                border-radius:50%!important;
+                border:2px solid rgba(255,255,255,.94)!important;
+                background-color:#171717!important;
+                background-image:url("https://i.postimg.cc/jSc32qYs/85c5a789-2ae2-4b4f-897d-9aab6a0c6b4f.png")!important;
+                background-repeat:no-repeat!important;
+                background-position:center center!important;
+                background-size:cover!important;
+                overflow:hidden!important;
+                isolation:isolate!important;
+                box-shadow:
+                    0 10px 16px rgba(69,26,18,.22),
+                    0 23px 48px rgba(69,26,18,.34),
+                    0 0 0 5px rgba(255,255,255,.38),
+                    0 0 0 8px rgba(255,176,32,.13),
+                    0 0 30px rgba(239,45,57,.22)!important;
+            }
+            #lcst-bubble-fixed:before,
+            #lcst-bubble-fixed:after,
+            #lcst-bubble-fixed .lcst-nova-ring,
+            #lcst-bubble-fixed .lcst-nova-lens,
+            #lcst-bubble-fixed .lcst-nova-caption,
+            #lcst-bubble-fixed .lcst-nova-online{
+                display:none!important;
+            }
+            #lcst-bubble-fixed:hover{
+                transform:translateY(-5px) scale(1.07)!important;
+                border-color:#ffffff!important;
+                box-shadow:
+                    0 13px 19px rgba(69,26,18,.20),
+                    0 29px 58px rgba(69,26,18,.38),
+                    0 0 0 6px rgba(255,255,255,.44),
+                    0 0 0 9px rgba(255,176,32,.16),
+                    0 0 42px rgba(239,45,57,.30)!important;
+            }
+            #lcst-bubble-fixed.lcst-dragging{
+                transform:scale(1.075)!important;
+                cursor:grabbing!important;
+                opacity:.96!important;
+            }
+
+            @media(max-width:820px){
+                #lcst-panel-fixed{
+                    background-position:center center,center 34%,left top,right top,center bottom,center center!important;
+                    background-size:100% 100%,88vw auto,100% 100%,100% 100%,100% 100%,100% 100%!important;
+                }
+                #lcst-dashboard-brand-bg{
+                    width:88vw!important;
+                    height:52vh!important;
+                    top:43%!important;
+                }
+                #lcst-dashboard-logo-bg{width:88%!important;height:45%!important}
+                #lcst-panel-fixed .lcst-nova-logo{
+                    width:160px!important;
+                    min-width:160px!important;
+                    height:66px!important;
+                    flex-basis:160px!important;
+                    position:relative!important;
+                    left:auto!important;
+                    top:auto!important;
+                    margin:0 auto 10px!important;
+                    transform:none!important;
+                    animation:lcstHeaderLogoMobileFloat 3.4s ease-in-out infinite!important;
+                }
+                #lcst-panel-fixed .lcst-nova-topbar .lcst-brand{
+                    width:100%!important;
+                    display:flex!important;
+                    flex-direction:column!important;
+                    align-items:center!important;
+                    text-align:center!important;
+                }
+            }
+
         `;
         document.head.appendChild(style);
+    }
+
+    /*
+     * Memuat logo dashboard lewat jalur userscript agar tidak hilang karena
+     * pembatasan hotlink/CSP halaman LiveChat. URL langsung tetap dipakai
+     * sebagai fallback sambil menunggu data gambar selesai dimuat.
+     */
+    function lcstApplyDashboardLogo(img) {
+        if (!img) return;
+        img.referrerPolicy = 'no-referrer';
+        img.src = lcstDashboardLogoDataUrl || LCST_DASHBOARD_LOGO_URL;
+
+        if (lcstDashboardLogoDataUrl) return;
+        if (typeof GM_xmlhttpRequest !== 'function') return;
+
+        if (!lcstDashboardLogoPromise) {
+            lcstDashboardLogoPromise = new Promise(function (resolve, reject) {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: LCST_DASHBOARD_LOGO_URL,
+                    responseType: 'blob',
+                    timeout: 20000,
+                    headers: {
+                        'Accept': 'image/png,image/*;q=0.9,*/*;q=0.5'
+                    },
+                    onload: function (response) {
+                        try {
+                            if (response.status && (response.status < 200 || response.status >= 300)) {
+                                reject(new Error('Logo HTTP ' + response.status));
+                                return;
+                            }
+                            const blob = response.response instanceof Blob
+                                ? response.response
+                                : new Blob([response.response], { type: 'image/png' });
+                            if (!blob || !blob.size) {
+                                reject(new Error('Logo kosong'));
+                                return;
+                            }
+                            const reader = new FileReader();
+                            reader.onload = function () {
+                                const dataUrl = String(reader.result || '');
+                                if (!dataUrl.startsWith('data:image/')) {
+                                    reject(new Error('Format logo tidak valid'));
+                                    return;
+                                }
+                                lcstDashboardLogoDataUrl = dataUrl;
+                                resolve(dataUrl);
+                            };
+                            reader.onerror = function () { reject(new Error('Logo gagal dibaca')); };
+                            reader.readAsDataURL(blob);
+                        } catch (error) {
+                            reject(error);
+                        }
+                    },
+                    onerror: function () { reject(new Error('Logo gagal dimuat')); },
+                    ontimeout: function () { reject(new Error('Logo timeout')); }
+                });
+            });
+        }
+
+        lcstDashboardLogoPromise.then(function (dataUrl) {
+            if (img && img.isConnected) img.src = dataUrl;
+        }).catch(function () {
+            lcstDashboardLogoPromise = null;
+            if (img && img.isConnected && !img.src) img.src = LCST_DASHBOARD_LOGO_URL;
+        });
     }
 
     function createBubble() {
@@ -1593,8 +2367,8 @@
         const bubble = document.createElement('button');
         bubble.id = 'lcst-bubble-fixed';
         bubble.type = 'button';
-        bubble.title = 'Buka OCR Bright Ruby';
-        bubble.setAttribute('aria-label', 'Buka OCR Bright Ruby');
+        bubble.title = 'Buka Scanner LINE TOGEL';
+        bubble.setAttribute('aria-label', 'Buka Scanner LINE TOGEL');
         bubble.innerHTML = `
             <span class="lcst-nova-ring" aria-hidden="true"></span>
             <span class="lcst-nova-lens" aria-hidden="true">
@@ -1612,8 +2386,8 @@
 
         const saved = safeJSONParse(localStorage.getItem(POS_KEY), null);
         if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
-            bubble.style.left = Math.max(6, Math.min(innerWidth - 84, saved.left)) + 'px';
-            bubble.style.top = Math.max(6, Math.min(innerHeight - 84, saved.top)) + 'px';
+            bubble.style.left = Math.max(10, Math.min(innerWidth - bubble.offsetWidth - 10, saved.left)) + 'px';
+            bubble.style.top = Math.max(10, Math.min(innerHeight - bubble.offsetHeight - 10, saved.top)) + 'px';
             bubble.style.right = 'auto';
             bubble.style.bottom = 'auto';
         }
@@ -8652,12 +9426,8 @@
                 <header class="lcst-topbar lcst-nova-topbar">
                     <div class="lcst-brand">
                         <div class="lcst-brand-logo lcst-nova-logo" aria-hidden="true">
-                            <svg viewBox="0 0 56 56" fill="none">
-                                <path d="M15 22v-6a3 3 0 0 1 3-3h6M32 13h6a3 3 0 0 1 3 3v6M41 34v6a3 3 0 0 1-3 3h-6M24 43h-6a3 3 0 0 1-3-3v-6"/>
-                                <circle cx="28" cy="28" r="9"/>
-                                <circle cx="28" cy="28" r="3"/>
-                                <path d="M18 28h20"/>
-                            </svg>
+                            <span class="lcst-header-logo-fallback">LT</span>
+                            <img id="lcst-header-logo-img" alt="" aria-hidden="true" decoding="async">
                         </div>
                         <div class="lcst-nova-brand-copy">
                             <div class="lcst-nova-eyebrow">LINETOGEL BRIGHT RUBY EDITION</div>
@@ -8794,7 +9564,48 @@
                 </div>
             </div>
         `;
+
+        const dashboardBrand = document.createElement('div');
+        dashboardBrand.id = 'lcst-dashboard-brand-bg';
+        dashboardBrand.setAttribute('aria-hidden', 'true');
+
+        const dashboardLogo = document.createElement('img');
+        dashboardLogo.id = 'lcst-dashboard-logo-bg';
+        dashboardLogo.alt = '';
+        dashboardLogo.setAttribute('aria-hidden', 'true');
+        dashboardLogo.decoding = 'async';
+
+        const dashboardFallback = document.createElement('div');
+        dashboardFallback.id = 'lcst-dashboard-logo-fallback';
+        dashboardFallback.innerHTML = 'LINETOGEL<small>BRIGHT RUBY EDITION</small>';
+
+        dashboardLogo.addEventListener('load', function () {
+            panel.classList.add('lcst-dashboard-logo-loaded');
+            panel.classList.remove('lcst-dashboard-logo-error');
+        });
+        dashboardLogo.addEventListener('error', function () {
+            panel.classList.remove('lcst-dashboard-logo-loaded');
+            panel.classList.add('lcst-dashboard-logo-error');
+        });
+
+        dashboardBrand.appendChild(dashboardFallback);
+        dashboardBrand.appendChild(dashboardLogo);
+        panel.prepend(dashboardBrand);
         document.body.appendChild(panel);
+        lcstApplyDashboardLogo(dashboardLogo);
+
+        const headerLogo = panel.querySelector('#lcst-header-logo-img');
+        if (headerLogo) {
+            headerLogo.addEventListener('load', function () {
+                panel.classList.add('lcst-header-logo-loaded');
+                panel.classList.remove('lcst-header-logo-error');
+            });
+            headerLogo.addEventListener('error', function () {
+                panel.classList.remove('lcst-header-logo-loaded');
+                panel.classList.add('lcst-header-logo-error');
+            });
+            lcstApplyDashboardLogo(headerLogo);
+        }
 
         scan.ocrPeriods = scan.ocrPeriods || [];
         scan.ocrTexts = scan.ocrTexts || [];
