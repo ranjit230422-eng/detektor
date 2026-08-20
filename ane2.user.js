@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         LiveChat Duplicate Message Highlighter - DANGER ALERT
-// @namespace    http://tampermonkey.net/
+// @namespace    https://www.tampermonkey.net/
 // @version      2025-01-21
 // @description  Highlight duplikat yang Jelas, Tegas, dan Berwibawa
 // @author       You
