@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         AGWL2 Auto Reset Password Member
-// @namespace    tampermonkey-agwl2-reset-password-member
+// @namespace    https://www.tampermonkey.net/
 // @version      1.4.0
 // @description  Panel reset password mode senyawa maksimal: prioritas panel mini-window terpisah di samping popup agar klik panel tidak membuat Edit Player List hilang; fallback tetap seperti versi awal, close panel ikut close popup, auto generate, isi form, submit, dan copy kata-kata otomatis.
 // @match        *://agwl2.admitoto.com/*
