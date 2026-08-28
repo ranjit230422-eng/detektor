@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         LiveChat OCR Claim — WIB/WITA/WIT + Batas 02.00
 // @namespace    linetogel-livechat-ocr-claim-fixed
-// @version      7.4.0
-// @description  Rapid Unified OCR: kode, tanggal, jam, dan GMT selesai bersamaan dengan crop lebih ringan, maksimal fallback ketat, serta kode antarpaket anti-duplikat.
+// @version      7.7.1
+// @description  Multi Admin Reliable: ketiga alamat admin dicoba mandiri, endpoint hasil login diprioritaskan, sedangkan OCR kode/tanggal/GMT tetap seperti V7.7.0.
 // @author       OpenAI
 // @match        https://my.livechatinc.com/*
 // @run-at       document-idle
@@ -26,7 +26,7 @@
 
     // Versi terbaru mengambil alih UI lama bila lebih dari satu versi tidak sengaja aktif.
     // Ini mencegah script lama memblokir perbaikan melalui guard boolean yang sama.
-    const LCST_BUILD_VERSION = '7.4.0-rapid-unified-ocr';
+    const LCST_BUILD_VERSION = '7.7.1-reliable-three-admin-sources';
     const lcstExistingInstance = window.__LC_BUBBLE_SCREENSHOT_ACTIVE_ONLY__;
     if (lcstExistingInstance && typeof lcstExistingInstance === 'object' && lcstExistingInstance.version === LCST_BUILD_VERSION) return;
     try {
@@ -1252,7 +1252,9 @@
             #lcst-output{height:142px!important;margin:0!important;border-radius:15px!important;background:#fffdfb!important;border-color:rgba(181,131,56,.12)!important;color:#7c1d1d!important;font-size:10px!important}
 
             /* Matikan efek berat saat OCR, desain tetap sama */
-            #lcst-panel-fixed.lcst-performance-mode{background:#fff8f2!important}
+            #lcst-panel-fixed.lcst-performance-mode{
+                background:linear-gradient(180deg,#081b45 0%,#061534 55%,#040f28 100%)!important
+            }
             #lcst-panel-fixed.lcst-performance-mode:before{display:none!important}
             #lcst-panel-fixed.lcst-performance-mode .lcst-nova-sidebar{position:static!important}
 
@@ -1469,7 +1471,9 @@
             .lcst-pill.green{background:#effdf5!important;color:#15803d!important;border-color:rgba(34,197,94,.18)!important}
             .lcst-pill.red{background:#fff0f3!important;color:#be123c!important;border-color:rgba(225,29,72,.18)!important}
 
-            #lcst-panel-fixed.lcst-performance-mode{background:#fffaf8!important}
+            #lcst-panel-fixed.lcst-performance-mode{
+                background:linear-gradient(180deg,#081b45 0%,#061534 55%,#040f28 100%)!important
+            }
 
             /* V5.6.1: mode pemindahan gambar super ringan.
                Efek berat dimatikan hanya selama drag agar kartu mengikuti pointer tanpa patah-patah. */
@@ -3337,16 +3341,52 @@
      * mengambil nama pemilik dan nomor rekening. Nama bank dibuang otomatis.
      ******************************************************************/
 
-    const LCST_ADMIN_PLAYER_URL = 'https://agwl2.admitoto.com/agentplayerlist.php';
+    const LCST_ADMIN_SOURCES = [
+        {
+            loginUrl: 'https://agwl2.admitoto.com/',
+            playerUrl: 'https://agwl2.admitoto.com/agentplayerlist.php'
+        },
+        {
+            loginUrl: 'http://agwl2.suksesbogil.com/?passkey=WH9eRDBqtriK4pL',
+            playerUrl: 'http://agwl2.suksesbogil.com/agentplayerlist.php?passkey=WH9eRDBqtriK4pL'
+        },
+        {
+            loginUrl: 'http://agwl2.idnpaito.com/?passkey=WH9eRDBqtriK4pL',
+            playerUrl: 'http://agwl2.idnpaito.com/agentplayerlist.php?passkey=WH9eRDBqtriK4pL'
+        }
+    ];
+    const LCST_ADMIN_ALLOWED_HOSTS = new Set(LCST_ADMIN_SOURCES.map((source) => {
+        try { return new URL(source.loginUrl).hostname.toLowerCase(); } catch (e) { return ''; }
+    }).filter(Boolean));
     const LCST_ADMIN_TIMEOUT = 6500;
     const LCST_ADMIN_PREFERRED_TIMEOUT = 2800;
+    const LCST_ADMIN_MAX_ATTEMPTS = 30;
     const LCST_ADMIN_MEMORY_TTL = 30 * 60 * 1000;
     const LCST_ADMIN_LOCAL_DB_TTL = 30 * 60 * 1000;
     const LCST_ADMIN_PROFILE_TTL = 7 * 24 * 60 * 60 * 1000;
-    const LCST_ADMIN_PROFILE_KEY = 'lcst_admin_request_profile_v642';
+    const LCST_ADMIN_PROFILE_KEY = 'lcst_admin_request_profile_v770';
     const LCST_ADMIN_UID_TOKEN = '__LCST_UID__';
     const lcstBankMemoryCache = new Map();
     const lcstBankLookupInflight = new Map();
+
+    function lcstIsAllowedAdminUrl(value) {
+        try {
+            const url = new URL(String(value || ''));
+            return (url.protocol === 'http:' || url.protocol === 'https:') &&
+                LCST_ADMIN_ALLOWED_HOSTS.has(url.hostname.toLowerCase());
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function lcstAdminUrlWithParams(baseUrl, params) {
+        const url = new URL(baseUrl);
+        const additions = params instanceof URLSearchParams
+            ? params
+            : new URLSearchParams(params || {});
+        additions.forEach((value, key) => url.searchParams.set(key, value));
+        return url.href;
+    }
 
     function lcstValidLookupUserId(value) {
         const userId = String(value || '').trim().toLowerCase();
@@ -3792,9 +3832,15 @@
         const out = [];
         const add = (method, url, data) => {
             try {
-                const fullUrl = new URL(url || baseUrl, baseUrl).href;
-                if (!/^https:\/\/agwl2\.admitoto\.com\//i.test(fullUrl)) return;
-                out.push({ method: String(method || 'GET').toUpperCase(), url: fullUrl, data: data || '' });
+                const base = new URL(baseUrl);
+                const target = new URL(url || baseUrl, baseUrl);
+                // Tautan passkey harus tetap dibawa ketika form memakai action relatif.
+                if (target.hostname === base.hostname &&
+                    !target.searchParams.has('passkey') && base.searchParams.has('passkey')) {
+                    target.searchParams.set('passkey', base.searchParams.get('passkey'));
+                }
+                if (!lcstIsAllowedAdminUrl(target.href)) return;
+                out.push({ method: String(method || 'GET').toUpperCase(), url: target.href, data: data || '' });
             } catch (e) {}
         };
 
@@ -3860,7 +3906,7 @@
             data: replaceUid(req.data),
             savedAt: Date.now()
         };
-        if (!/^https:\/\/agwl2\.admitoto\.com\//i.test(profile.url.replace(LCST_ADMIN_UID_TOKEN, encodedUid))) return null;
+        if (!lcstIsAllowedAdminUrl(profile.url.replace(LCST_ADMIN_UID_TOKEN, encodedUid))) return null;
         if (!profile.url.includes(LCST_ADMIN_UID_TOKEN) && !profile.data.includes(LCST_ADMIN_UID_TOKEN)) return null;
         return profile;
     }
@@ -3876,7 +3922,7 @@
             url: hydrate(profile.url),
             data: hydrate(profile.data)
         };
-        if (!/^https:\/\/agwl2\.admitoto\.com\//i.test(req.url)) return null;
+        if (!lcstIsAllowedAdminUrl(req.url)) return null;
         return req;
     }
 
@@ -3906,10 +3952,16 @@
         if (!forceRefresh && cached && Date.now() - cached.time < LCST_ADMIN_MEMORY_TTL) return cached.value;
 
         const common = lcstBuildCommonAdminParams(uid);
+        let loginRequiredSeen = false;
+        let usableAdminResponseSeen = false;
 
         const parseAdminResponse = (response, req) => {
             const parsed = lcstExtractBankResult(response.text, uid);
             if (parsed.loginRequired) return { loginRequired: true, parsed, response, req };
+            // Respons HTTP yang bukan halaman login membuktikan setidaknya satu
+            // alamat admin/passkey sudah dapat dimasuki. Karena itu halaman login
+            // dari domain lain tidak boleh menimpa status seluruh pencarian.
+            usableAdminResponseSeen = true;
             if (parsed.result) {
                 const value = { ...parsed.result, userId: uid, source: response.finalUrl || req.url };
                 return { value, parsed, response, req };
@@ -3959,18 +4011,19 @@
                 return preferred.value;
             }
             if (preferred && preferred.loginRequired) {
-                throw lcstCreateLookupError('ADMIN_LOGIN_REQUIRED', 'Sesi login admin belum aktif.');
+                // Profil lama boleh kedaluwarsa pada satu domain. Tetap coba dua
+                // tautan passkey lain sebelum menyatakan login belum aktif.
+                loginRequiredSeen = true;
             }
         }
 
-        // Fallback pertama: empat pola umum tetap dikirim bersamaan. Server yang mengenali
-        // salah satu langsung menang; hasil wajib tetap cocok dengan User ID yang diminta.
-        const directRequests = [
-            { method: 'POST', url: LCST_ADMIN_PLAYER_URL, data: common.toString() },
-            { method: 'GET', url: LCST_ADMIN_PLAYER_URL + '?' + new URLSearchParams({ username: uid, search: uid }).toString(), data: '' },
-            { method: 'GET', url: LCST_ADMIN_PLAYER_URL + '?' + new URLSearchParams({ userid: uid, keyword: uid }).toString(), data: '' },
-            { method: 'GET', url: LCST_ADMIN_PLAYER_URL + '?' + new URLSearchParams({ 'search[value]': uid, sSearch: uid }).toString(), data: '' }
-        ];
+        // Satu POST ringan per alamat lebih dahulu. Ini menambah dukungan dua link
+        // passkey tanpa langsung mengirim 12 request yang dapat membuat halaman berat.
+        const directRequests = LCST_ADMIN_SOURCES.map((source) => ({
+            method: 'POST',
+            url: source.playerUrl,
+            data: common.toString()
+        }));
 
         const preferredKey = preferredRequest ? lcstAdminRequestKey(preferredRequest) : '';
         const directUnique = preferredKey
@@ -3984,27 +4037,55 @@
         }
 
         const directResults = direct.results || await Promise.all(direct.tasks || []);
-        if (directResults.some(item => item && item.loginRequired)) {
-            throw lcstCreateLookupError('ADMIN_LOGIN_REQUIRED', 'Sesi login admin belum aktif.');
-        }
+        if (directResults.some(item => item && item.loginRequired)) loginRequiredSeen = true;
 
         const queue = [];
         const seen = new Set((directUnique.length ? directUnique : directRequests).map(lcstAdminRequestKey));
         let lastError = directResults.map(item => item && item.error).filter(Boolean).pop() || null;
         let attempts = (directUnique.length ? directUnique : directRequests).length;
 
-        directResults.forEach(item => {
+        // Ketiga login dicoba pada batch pertama agar satu domain yang lambat/tidak
+        // aktif tidak menahan domain lain. Setelah itu pola pencarian diinterleave.
+        LCST_ADMIN_SOURCES.forEach((source) => {
+            queue.push({ method: 'GET', url: source.loginUrl, data: '' });
+        });
+        LCST_ADMIN_SOURCES.forEach((source) => {
+            queue.push({ method: 'GET', url: source.playerUrl, data: '' });
+        });
+        LCST_ADMIN_SOURCES.forEach((source) => {
+            queue.push({
+                method: 'GET',
+                url: lcstAdminUrlWithParams(source.playerUrl, { username: uid, search: uid }),
+                data: ''
+            });
+        });
+        LCST_ADMIN_SOURCES.forEach((source) => {
+            queue.push({
+                method: 'GET',
+                url: lcstAdminUrlWithParams(source.playerUrl, { userid: uid, keyword: uid }),
+                data: ''
+            });
+        });
+        LCST_ADMIN_SOURCES.forEach((source) => {
+            queue.push({
+                method: 'GET',
+                url: lcstAdminUrlWithParams(source.playerUrl, { 'search[value]': uid, sSearch: uid }),
+                data: ''
+            });
+        });
+        // Endpoint/form yang ditemukan dari respons server adalah jalur paling
+        // akurat. Taruh di depan antrean agar tidak kalah oleh tebakan URL umum.
+        directResults.slice().reverse().forEach(item => {
             if (!item || !item.parsed || !item.response || !item.req) return;
             const discovered = lcstDiscoverAdminRequests(item.parsed.document, item.response.finalUrl || item.req.url, uid);
-            discovered.forEach(req => queue.push(req));
+            discovered.slice().reverse().forEach(req => queue.unshift(req));
         });
-        queue.push({ method: 'GET', url: LCST_ADMIN_PLAYER_URL, data: '' });
 
         // Fallback lama tetap ada, tetapi endpoint hasil discovery dikerjakan per batch 3,
         // bukan satu request -> tunggu -> request berikutnya.
-        while (queue.length && attempts < 10) {
+        while (queue.length && attempts < LCST_ADMIN_MAX_ATTEMPTS) {
             const batch = [];
-            while (queue.length && batch.length < 3 && attempts < 10) {
+            while (queue.length && batch.length < 3 && attempts < LCST_ADMIN_MAX_ATTEMPTS) {
                 const req = queue.shift();
                 const key = req.method + '|' + req.url + '|' + req.data;
                 if (seen.has(key)) continue;
@@ -4021,19 +4102,22 @@
                 return raced.first.value;
             }
             const batchResults = raced.results || await Promise.all(raced.tasks || []);
-            if (batchResults.some(item => item && item.loginRequired)) {
-                throw lcstCreateLookupError('ADMIN_LOGIN_REQUIRED', 'Sesi login admin belum aktif.');
-            }
+            if (batchResults.some(item => item && item.loginRequired)) loginRequiredSeen = true;
             batchResults.forEach((item, idx) => {
                 const req = batch[idx];
                 if (item && item.error) lastError = item.error;
                 if (item && item.parsed && item.response) {
                     const discovered = lcstDiscoverAdminRequests(item.parsed.document, item.response.finalUrl || req.url, uid);
-                    discovered.forEach(nextReq => queue.push(nextReq));
+                    // Setelah GET link passkey berhasil, form daftar pemain yang
+                    // sebenarnya langsung dikerjakan pada batch berikutnya.
+                    discovered.slice().reverse().forEach(nextReq => queue.unshift(nextReq));
                 }
             });
         }
 
+        if (loginRequiredSeen && !usableAdminResponseSeen) {
+            throw lcstCreateLookupError('ADMIN_LOGIN_REQUIRED', 'Sesi login admin belum aktif pada semua alamat yang tersedia.');
+        }
         if (lastError && attempts <= 1) throw lastError;
         throw lcstCreateLookupError('BANK_NOT_FOUND', 'Data Bank untuk User ID ' + uid + ' tidak ditemukan pada daftar pemain.');
     }
@@ -4148,22 +4232,23 @@
     const LCST_STRICT_DOUBLE_MARKER = true;
     const LCST_MIN_BET_ODDS = 1.60;
 
-    // V5.7.7 TURBO: perangkat dengan sedikitnya 4 logical CPU memakai worker
-    // metadata terpisah. Periode tetap dibaca worker utama, sedangkan taruhan
-    // dan tanggal/jam target gambar ke-2/5 dikerjakan bersamaan tanpa mengubah hasil.
+    // V7.6 RESPONSIVE: jumlah worker dibatasi berdasarkan CPU/RAM nyata.
+    // Browser yang tidak melaporkan deviceMemory dianggap 4 GB, bukan 8 GB,
+    // supaya script tidak membuat terlalu banyak worker dan membuat LiveChat nge-lag.
     const LCST_CPU_THREADS = Math.max(1, Number(navigator.hardwareConcurrency) || 4);
-    const LCST_DEVICE_MEMORY_GB = Math.max(0, Number(navigator.deviceMemory) || 8);
-    const LCST_TURBO_PARALLEL_OCR = LCST_CPU_THREADS >= 4;
-
-    // ULTRA FAST V6.3.7:
-    // - maksimal 2 paket (6 gambar) dapat membaca PERIODE secara paralel pada perangkat kuat.
-    // - worker ke-3 hanya diaktifkan bila CPU/RAM cukup; perangkat ringan otomatis kembali ke jalur stabil lama.
-    // - Validasi periode, taruhan, dan timestamp tetap mengikuti alur asli.
-    const LCST_DUAL_PACKAGE_OCR = LCST_CPU_THREADS >= 4 && LCST_DEVICE_MEMORY_GB >= 4;
-    // V6.4.3: pada perangkat kuat worker timestamp boleh hidup bersama mode 2 paket.
-    // Ini membuat pembacaan kode, taruhan, dan tanggal/jam benar-benar overlap.
-    const LCST_TURBO_TIMESTAMP_WORKER =
-        LCST_CPU_THREADS >= 8 && LCST_DEVICE_MEMORY_GB >= 8;
+    const LCST_REPORTED_DEVICE_MEMORY_GB = Number(navigator.deviceMemory);
+    const LCST_DEVICE_MEMORY_GB = Number.isFinite(LCST_REPORTED_DEVICE_MEMORY_GB) &&
+        LCST_REPORTED_DEVICE_MEMORY_GB > 0
+        ? LCST_REPORTED_DEVICE_MEMORY_GB
+        : 4;
+    const LCST_MAX_OCR_WORKERS = LCST_CPU_THREADS >= 12 && LCST_DEVICE_MEMORY_GB >= 12
+        ? 3
+        : (LCST_CPU_THREADS >= 4 && LCST_DEVICE_MEMORY_GB >= 4 ? 2 : 1);
+    const LCST_DUAL_PACKAGE_OCR = LCST_MAX_OCR_WORKERS >= 2;
+    const LCST_TURBO_PARALLEL_OCR = LCST_MAX_OCR_WORKERS >= 3;
+    // Worker ke-4 sengaja dimatikan. Timestamp berbagi worker metadata supaya
+    // penggunaan RAM stabil dan halaman tetap responsif selama scan.
+    const LCST_TURBO_TIMESTAMP_WORKER = LCST_MAX_OCR_WORKERS >= 4;
 
     // V6.6.0 — Batas claim berdasarkan waktu yang terbaca pada GAMBAR KE-2 / KE-5.
     // WIB/GMT+7 dipakai langsung, WITA/GMT+8 dikurangi 1 jam, dan
@@ -4535,6 +4620,53 @@
         return timestamp.hasTime
             ? lcstNormalizeTimestampToWib(timestamp, sourceGmtOffsetMinutes)
             : timestamp;
+    }
+
+    // V7.6 FAST TRUSTED DATE: delapan digit tanggal sudah tersedia di periode
+    // 19 digit yang terkunci pada dua bulatan. OCR timestamp tidak perlu membaca
+    // tanggal yang sama lagi; cukup ambil HH:mm[:ss] dari crop baris waktu.
+    function lcstParseClockWithTrustedPeriod(rawText, fallbackPeriod, source, confidence, sourceGmtOffsetMinutes) {
+        const dateInfo = lcstParseClaimDateFromPeriod(fallbackPeriod);
+        if (!dateInfo) return null;
+
+        const original = String(rawText == null ? '' : rawText)
+            .replace(/\r/g, '\n')
+            .replace(/[\t ]+/g, ' ')
+            .trim();
+        const numeric = lcstFixOcrNumericText(original);
+        // Jalur cepat mensyaratkan ':' pertama agar tanggal seperti 08.28 tidak
+        // salah dianggap 08:28. Format bertitik tetap ditangani parser lengkap.
+        let match = /\b([0-2]?\d)\s*:\s*([0-5]\d)(?:\s*[:.]\s*([0-5]\d))?\s*(A\.?M\.?|P\.?M\.?)?/i.exec(numeric);
+        let clock = match
+            ? lcstParseClockParts(match[1], match[2], match[3], match[4])
+            : null;
+
+        // Cadangan aman bila tanda ':' hilang: hanya terima satu token 6 digit
+        // HHMMSS. Token 4 digit sengaja tidak dipakai karena dapat tertukar MMDD.
+        if (!clock) {
+            const rows = original.split(/\n+/)
+                .map((line) => String(line || '').replace(/\D/g, ''))
+                .filter((digits) => digits.length === 6);
+            for (const digits of rows) {
+                clock = lcstParseClockParts(
+                    digits.slice(0, 2),
+                    digits.slice(2, 4),
+                    digits.slice(4, 6),
+                    ''
+                );
+                if (clock) break;
+            }
+        }
+
+        if (!clock) return null;
+        return lcstMakeImageTimestamp(
+            dateInfo,
+            clock,
+            original,
+            source || 'image-2-time-with-period-date',
+            Number(confidence) || 0,
+            sourceGmtOffsetMinutes
+        );
     }
 
     function lcstParseImageTimestampText(rawText, fallbackPeriod, nowValue, sourceGmtOffsetMinutes) {
@@ -4941,10 +5073,15 @@
     const lcstArrangeCanvasCache = new Map();
     const lcstImageAnalysisCache = new Map();
     const lcstPeriodResultCache = new Map();
-    const LCST_BLOB_CACHE_LIMIT = 32;
-    const LCST_ARRANGE_CANVAS_CACHE_LIMIT = 32;
-    const LCST_ANALYSIS_CACHE_LIMIT = 32;
-    const LCST_RESULT_CACHE_LIMIT = 32;
+    // Satu screenshot resolusi tinggi dapat memakan puluhan MB ketika menjadi
+    // canvas. Cache disesuaikan dengan buffer scan agar RAM tidak terus menumpuk.
+    const LCST_BLOB_CACHE_LIMIT = 16;
+    const LCST_ARRANGE_CANVAS_CACHE_LIMIT = 12;
+    const LCST_ANALYSIS_CACHE_LIMIT = 12;
+    const LCST_RESULT_CACHE_LIMIT = 24;
+    // Setelah jalur cepat gagal, batasi jumlah recognize() mahal. Delapan pass
+    // sudah mencakup direct lock, dua baris, consensus, dan satu konfirmasi.
+    const LCST_MAX_CODE_FALLBACK_PASSES = 8;
     let lcstWorkerWarmupStarted = false;
     let lcstWorkerGeneration = 0;
 
@@ -4999,7 +5136,8 @@
                 url: src,
                 responseType: 'blob',
                 anonymous: false,
-                timeout: 25000,
+                // Attachment gagal tidak boleh menahan seluruh scan sampai 25 detik.
+                timeout: 10000,
                 onload: (res) => {
                     if (res.status >= 200 && res.status < 300 && res.response) {
                         try {
@@ -5218,38 +5356,14 @@
 
     function warmupOCRWorker() {
         const primaryReady = !!(lcstSharedWorker || lcstSharedWorkerInit);
-        const secondaryReady = !LCST_DUAL_PACKAGE_OCR || !!(lcstSecondaryWorker || lcstSecondaryWorkerInit);
-        const metadataReady = !LCST_TURBO_PARALLEL_OCR || !!(lcstMetadataWorker || lcstMetadataWorkerInit);
-        const timestampReady = !LCST_TURBO_TIMESTAMP_WORKER || !!(lcstTimestampWorker || lcstTimestampWorkerInit);
-        if (lcstWorkerWarmupStarted || (primaryReady && secondaryReady && metadataReady && timestampReady)) return;
+        if (lcstWorkerWarmupStarted || primaryReady) return;
         lcstWorkerWarmupStarted = true;
         setTimeout(() => {
-            // V7.4 RESPONSIVE WARMUP: primary disiapkan lebih dahulu agar browser
-            // tidak mengompilasi beberapa worker berat pada detik yang sama. Setelah
-            // primary siap, seluruh helper perangkat kuat disiapkan paralel. Ketika
-            // tombol SCAN ditekan worker tanggal/GMT sudah siap tanpa memblokir UI.
-            (async () => {
-                await getSharedOCRWorker(null)
-                    .catch((err) => console.warn('[LCST OCR warmup]', err));
-
-                const helpers = [];
-                if (LCST_DUAL_PACKAGE_OCR) {
-                    helpers.push(
-                        getSecondaryOCRWorker().catch((err) => console.warn('[LCST OCR second warmup]', err))
-                    );
-                }
-                if (LCST_TURBO_PARALLEL_OCR) {
-                    helpers.push(
-                        getMetadataOCRWorker().catch((err) => console.warn('[LCST OCR metadata warmup]', err))
-                    );
-                }
-                if (LCST_TURBO_TIMESTAMP_WORKER) {
-                    helpers.push(
-                        getTimestampOCRWorker().catch((err) => console.warn('[LCST OCR time warmup]', err))
-                    );
-                }
-                await Promise.allSettled(helpers);
-            })()
+            // Hanya worker utama dipanaskan. Versi lama langsung mengompilasi
+            // 3-4 worker ketika panel dibuka dan membuat LiveChat tersendat.
+            // Worker tambahan dibuat secara lazy hanya ketika tombol SCAN ditekan.
+            getSharedOCRWorker(null)
+                .catch((err) => console.warn('[LCST OCR warmup]', err))
                 .finally(() => { lcstWorkerWarmupStarted = false; });
         }, 0);
     }
@@ -5279,9 +5393,23 @@
     function loadImageElement(src) {
         return new Promise((resolve, reject) => {
             const img = new Image();
+            let settled = false;
+            const finish = (error) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                img.onload = null;
+                img.onerror = null;
+                if (error) reject(error);
+                else resolve(img);
+            };
+            const timer = setTimeout(() => {
+                try { img.src = ''; } catch (e) {}
+                finish(new Error('Pemuatan gambar OCR melewati 12 detik.'));
+            }, 12000);
             img.decoding = 'async';
-            img.onload = () => resolve(img);
-            img.onerror = () => reject(new Error('Gambar gagal dimuat untuk OCR.'));
+            img.onload = () => finish(null);
+            img.onerror = () => finish(new Error('Gambar gagal dimuat untuk OCR.'));
             img.src = src;
         });
     }
@@ -5719,19 +5847,20 @@
                 }
                 completed++;
                 if (typeof onProgress === 'function') onProgress(completed, list.length);
-                // Beri browser satu kesempatan menggambar setelah setiap dua analisis.
-                // Pemilihan tetap cepat, tetapi panel tidak terasa membeku saat 8–12
-                // screenshot sedang diukur/dideteksi marker-nya.
-                if (completed < list.length && completed % 2 === 0) {
+                // Analisis warna/marker berjalan di main thread. Yield setiap gambar
+                // agar input, scroll, dan render LiveChat tidak membeku.
+                if (completed < list.length) {
                     await waitForChatPaint(0);
                 }
             }
         };
 
-        // Muat dan ukur maksimal empat gambar bersamaan. Deteksi berat tetap hanya
-        // berjalan pada kandidat Riwayat, sehingga auto-susun lebih cepat tanpa membebani semua gambar.
+        // Promise paralel tidak membuat analisis canvas menjadi multi-thread. Batasi
+        // dua runner (tiga hanya pada perangkat sangat kuat) agar CPU tidak melonjak.
         const workers = [];
-        const autoArrangeLimit = LCST_CPU_THREADS >= 4 ? 6 : 3;
+        const autoArrangeLimit = LCST_CPU_THREADS >= 12 && LCST_DEVICE_MEMORY_GB >= 12
+            ? 3
+            : (LCST_CPU_THREADS >= 4 ? 2 : 1);
         const concurrency = Math.min(autoArrangeLimit, Math.max(1, list.length));
         for (let i = 0; i < concurrency; i++) workers.push(runner());
         await Promise.all(workers);
@@ -5961,9 +6090,8 @@
        ========================================================= */
     const LCST_MAX_SELECTED_IMAGES = 6;
     const LCST_MAX_SELECTED_PACKAGES = 2;
-    // Kumpulkan kandidat ekstra, tetapi dashboard/output akhir tetap 6 gambar.
-    // Buffer 12 kandidat memberi ruang untuk membuang URL/fingerprint duplikat dari
-    // paket pertama dan kedua tanpa harus menjalankan deep scan kedua kali.
+    // Pertahankan buffer 12 kandidat agar aturan pemilihan dan keunikan gambar
+    // paket tetap sama. Optimasi V7.6 hanya menyentuh jalur OCR kode/timestamp.
     const LCST_SCAN_CANDIDATE_LIMIT = 12;
 
     function lcstStableImageSourceKey(src) {
@@ -7114,18 +7242,20 @@
         ];
         return variants
             .filter((rect) => rect.width >= 70 && rect.height >= 20)
-            .map((rect) => ({ name: rect.name, canvas: cropCanvas(sourceCanvas, rect) }));
+            // Canvas dibuat saat pass benar-benar diperlukan. Biasanya pass pertama
+            // sudah berhasil, jadi crop lebar kedua tidak lagi disalin sia-sia.
+            .map((rect) => ({ name: rect.name, rect }));
     }
 
     function buildClaimTimezoneCropCanvases(sourceCanvas, marker) {
         if (!sourceCanvas) return [];
         const width = sourceCanvas.width;
         const height = sourceCanvas.height;
-        // V7.4 RAPID GMT: hanya dua area yang secara nyata memuat label GMT/WIB.
+        // V7.6 RAPID GMT: hanya area yang secara nyata memuat label GMT/WIB.
         // Versi lama menyalin enam area (termasuk gambar penuh) walaupun sebagian
         // besar tidak pernah membantu, sehingga klik SCAN terasa macet.
         const rects = [
-            { name: 'timezone-top-left', left: 0, top: 0, width: width * 0.60, height: Math.max(40, height * 0.40) }
+            { name: 'timezone-top-left', left: 0, top: 0, width: width * 0.55, height: Math.max(40, height * 0.30) }
         ];
 
         if (marker) {
@@ -7143,7 +7273,7 @@
 
         return rects
             .filter((rect) => rect.width >= 80 && rect.height >= 25)
-            .map((rect) => ({ name: rect.name, canvas: cropCanvas(sourceCanvas, rect) }));
+            .map((rect) => ({ name: rect.name, rect }));
     }
 
     async function lcstSetTimestampOcrMode(worker) {
@@ -7177,12 +7307,11 @@
 
         const crops = buildClaimTimezoneCropCanvases(sourceCanvas, marker);
         let resultInfo = null;
-        // V7.4 RAPID GMT: maksimal dua pass kecil. Jangan pernah OCR gambar penuh.
-        // Jalur umum tidak masuk ke sini karena GMT sudah ikut crop timestamp.
+        // V7.6 RAPID GMT: satu pass kecil pada header. Area transaksi sudah dibaca
+        // oleh OCR timestamp, jadi mengulangnya hanya menambah antrean dan lag.
         const passPlan = [];
         [
-            { name: 'timezone-top-left', mode: 'soft', psm: 6 },
-            { name: 'timezone-transaction-row', mode: 'soft', psm: 11 }
+            { name: 'timezone-top-left', mode: 'soft', psm: 11 }
         ].forEach((pass) => {
             const index = crops.findIndex((item) => item.name === pass.name);
             if (index >= 0) passPlan.push({ index, mode: pass.mode, psm: pass.psm });
@@ -7196,7 +7325,8 @@
             if (usedPassKeys.has(key)) continue;
             usedPassKeys.add(key);
             try {
-                const prepared = renderPreparedVariant(item.canvas, pass.mode, false, 132);
+                if (!item.canvas) item.canvas = cropCanvas(sourceCanvas, item.rect);
+                const prepared = renderPreparedVariant(item.canvas, pass.mode, false, 96);
                 const result = await recognizePrepared(worker, prepared, pass.psm);
                 const raw = String(result && result.data && result.data.text || '');
                 const offset = lcstFindExplicitGmtOffsetMinutes(raw);
@@ -7235,7 +7365,16 @@
                     source: sourceName || 'ocr'
                 };
             }
-            const parsed = lcstParseImageTimestampText(textValue, fallbackPeriod);
+            let parsed = lcstParseImageTimestampText(textValue, fallbackPeriod);
+            if (!parsed || !parsed.hasTime || parsed.source === 'period-date-fallback') {
+                const trustedTime = lcstParseClockWithTrustedPeriod(
+                    textValue,
+                    fallbackPeriod,
+                    sourceName || 'image-2-time-with-period-date',
+                    Number(confidence) || 0
+                );
+                if (trustedTime && trustedTime.hasTime) parsed = trustedTime;
+            }
             if (parsed && parsed.hasTime && parsed.source !== 'period-date-fallback') {
                 parsed.source = sourceName || parsed.source;
                 parsed.confidence = Number(confidence) || parsed.confidence || 0;
@@ -7251,11 +7390,18 @@
         }
 
         const crops = buildClaimTimestampCropCanvases(sourceCanvas, marker);
+        const hasTrustedPeriodDate = !!lcstParseClaimDateFromPeriod(fallbackPeriod);
         const runTimestampPass = async (item, psm, mode) => {
             try {
-                // 132px cukup untuk karakter tanggal/GMT dan jauh lebih ringan
-                // daripada canvas gabungan 188px yang dipakai fallback kode.
-                const prepared = renderPreparedVariant(item.canvas, mode, false, 132);
+                if (!item.canvas) item.canvas = cropCanvas(sourceCanvas, item.rect);
+                // Jika tanggal sudah dikunci dari periode, tinggi 96px cukup untuk
+                // membaca jam/zona. Jalur tanpa tanggal tepercaya tetap memakai 132px.
+                const prepared = renderPreparedVariant(
+                    item.canvas,
+                    mode,
+                    false,
+                    hasTrustedPeriodDate ? 96 : 132
+                );
                 const result = await recognizePrepared(worker, prepared, psm);
                 const raw = String(result && result.data && result.data.text || '');
                 considerRawText(raw, item.name + '-psm' + psm, Number(result && result.data && result.data.confidence) || 0);
@@ -7266,13 +7412,14 @@
             await lcstSetTimestampOcrMode(worker);
             timestampModeActive = true;
 
-            // V7.4 RAPID TIMESTAMP: satu crop kecil lebih dahulu. Crop kedua hanya
-            // dipakai bila tanggal/jam atau GMT belum lengkap; Otsu hanya memulihkan
-            // tanggal/jam yang gagal. Maksimal tiga pass, bukan 5+ seperti versi lama.
+            // Satu crop kecil lebih dahulu. Crop kedua dan Otsu hanya dipakai bila
+            // tanggal/jam belum terbaca; pencarian GMT ditangani satu crop header.
             if (crops[0]) {
-                await runTimestampPass(crops[0], 6, 'soft');
+                // Dengan tanggal tepercaya dari kode, area ini hanya satu baris jam.
+                // PSM 7 dan tinggi 96px lebih cepat daripada mode paragraf PSM 6.
+                await runTimestampPass(crops[0], hasTrustedPeriodDate ? 7 : 6, 'soft');
             }
-            if ((!bestTimestamp || !explicitTimezone) && crops[1]) {
+            if (!bestTimestamp && crops[1]) {
                 await runTimestampPass(crops[1], 6, 'soft');
             }
             if (!bestTimestamp && crops[0]) {
@@ -8880,6 +9027,8 @@
             const topVotes = new Map();
             const bottomVotes = new Map();
             const rawTexts = [];
+            let topResult = null;
+            let bottomResult = null;
 
             const run = async (activeWorker, canvas, kind, label) => {
                 const prepared = lcstRenderHyperFastPrepared(canvas, 'soft');
@@ -8897,19 +9046,32 @@
 
             const secondWorker = helperWorker && helperWorker !== worker ? helperWorker : null;
             if (secondWorker) {
-                await Promise.all([
+                const results = await Promise.all([
                     run(worker, topLine, 'top', 'fast-strict-top'),
                     run(secondWorker, bottomLine, 'bottom', 'fast-strict-bottom')
                 ]);
+                topResult = results[0] || null;
+                bottomResult = results[1] || null;
             } else {
-                await run(worker, topLine, 'top', 'fast-strict-top');
-                await run(worker, bottomLine, 'bottom', 'fast-strict-bottom');
+                topResult = await run(worker, topLine, 'top', 'fast-strict-top');
+                bottomResult = await run(worker, bottomLine, 'bottom', 'fast-strict-bottom');
             }
 
             const picked = chooseFinalPeriod(topVotes, bottomVotes, 2);
             const rowMinConfidence = (marker.confidence || 0) >= 82 ? 48 : 53;
-            if (!lcstFastPeriodReliable(picked, rowMinConfidence)) return null;
-            if ((marker.confidence || 0) < 50) return null;
+            if (!lcstFastPeriodReliable(picked, rowMinConfidence) || (marker.confidence || 0) < 50) {
+                return {
+                    period: '',
+                    confidence: 0,
+                    text: rawTexts.join('\n'),
+                    passes: 2,
+                    quickSeed: {
+                        topResult,
+                        bottomResult,
+                        passCount: 2
+                    }
+                };
+            }
 
             return {
                 period: picked.period,
@@ -8962,11 +9124,21 @@
                     hyperFast: true
                 };
             }
+            return {
+                period: '',
+                confidence: 0,
+                text: String(result && result.data && result.data.text || ''),
+                passes: 1,
+                quickSeed: {
+                    combinedResult: result,
+                    passCount: 1
+                }
+            };
         } catch (e) {}
         return null;
     }
 
-    async function ocrMarkerLockedCode(sourceCanvas, marker, worker, onProgress) {
+    async function ocrMarkerLockedCode(sourceCanvas, marker, worker, onProgress, quickSeed) {
         const rects = buildTransactionCropRects(sourceCanvas, marker);
         const topVotes = new Map();
         const bottomVotes = new Map();
@@ -8975,14 +9147,44 @@
         const zeroNineCorrections = [];
         const tightBottomConsensusLog = [];
         const directMarkerLockLog = [];
+        const seed = quickSeed && typeof quickSeed === 'object' ? quickSeed : {};
+        const seededCombinedResult = seed.combinedResult || null;
+        const seededTopResult = seed.topResult || null;
+        const seededBottomResult = seed.bottomResult || null;
         let lockedBottomValue = '';
-        let usedPasses = 0;
+        let usedPasses = Math.max(0, Math.min(
+            LCST_MAX_CODE_FALLBACK_PASSES,
+            Number(seed.passCount) || 0
+        ));
+        const canRunFallbackPass = () => usedPasses < LCST_MAX_CODE_FALLBACK_PASSES;
 
         const logResult = (label, result) => {
             rawTexts.push('[' + label + ']\n' + ((result && result.data && result.data.text) || ''));
         };
 
+        // Gunakan ulang seluruh hasil jalur cepat. Versi sebelumnya membuang
+        // hasil ini lalu meng-OCR crop soft yang sama sekali lagi.
+        if (seededCombinedResult) {
+            logResult('seed/hyper-fast-soft', seededCombinedResult);
+            collectCombinedVotes(
+                seededCombinedResult,
+                topVotes,
+                bottomVotes,
+                'seed-hyper-fast-soft',
+                5.2
+            );
+        }
+        if (seededTopResult) {
+            logResult('seed/fast-strict-top', seededTopResult);
+            collectLineVotes(seededTopResult, 'top', topVotes, 'seed-fast-strict-top', 5.8);
+        }
+        if (seededBottomResult) {
+            logResult('seed/fast-strict-bottom', seededBottomResult);
+            collectLineVotes(seededBottomResult, 'bottom', bottomVotes, 'seed-fast-strict-bottom', 5.8);
+        }
+
         const runLine = async (canvas, kind, mode, label, weight) => {
+            if (!canRunFallbackPass()) return null;
             await yieldToDashboard();
             if (onProgress) onProgress('Baris terkunci • ' + label + ' • ' + mode);
             try {
@@ -8999,6 +9201,7 @@
         };
 
         const runCombined = async (canvas, mode, label, weight) => {
+            if (!canRunFallbackPass()) return null;
             await yieldToDashboard();
             if (onProgress) onProgress('Baris terkunci • ' + label + ' • gabungan ' + mode);
             try {
@@ -9031,7 +9234,8 @@
             }
 
             const passes = [
-                { mode: 'soft', psm: 6, weight: 1 },
+                // Soft sudah dijalankan oleh hyper-fast seed; jangan ulang crop sama.
+                ...(!seededCombinedResult ? [{ mode: 'soft', psm: 6, weight: 1 }] : []),
                 { mode: 'strong', psm: 6, weight: 1 },
                 { mode: 'otsu', psm: 6, weight: 1 }
             ];
@@ -9039,7 +9243,22 @@
             const reads = [];
             const passWinners = [];
 
+            if (seededCombinedResult) {
+                const seededExact = exactTenDigitLinesFromRecognition(seededCombinedResult);
+                seededExact.forEach((item) => {
+                    const read = {
+                        value: item.value,
+                        confidence: item.confidence,
+                        mode: 'seed-soft',
+                        psm: 6
+                    };
+                    reads.push(read);
+                    passWinners.push(read);
+                });
+            }
+
             for (const pass of passes) {
+                if (!canRunFallbackPass()) break;
                 await yieldToDashboard();
 
                 if (onProgress) {
@@ -9244,6 +9463,7 @@
             const maxPasses = Math.min(3, variants.length);
 
             for (let i = 0; i < maxPasses; i++) {
+                if (!canRunFallbackPass()) break;
                 const variant = variants[i];
                 await yieldToDashboard();
 
@@ -9488,6 +9708,13 @@
             );
         };
 
+        // Gabungan tiga pass awal (window + atas + bawah) sering sudah cukup.
+        // Nilai ini dulu dibuang sehingga fallback selalu mulai dari nol.
+        const seededPicked = chooseFinalPeriod(topVotes, bottomVotes, usedPasses);
+        if (isReliable(seededPicked, false) && lcstTopPeriodDateValid(seededPicked.top.value)) {
+            return makeReturn(seededPicked);
+        }
+
         const directLockResult = await runDirectMarkerBottomLock();
         if (directLockResult && directLockResult.fastPicked) {
             return makeReturn(directLockResult.fastPicked);
@@ -9516,8 +9743,10 @@
             // FAST PATH PATEN:
             // - Bila 10 digit bawah sudah dikunci langsung dari marker, OCR bawah tidak diulang.
             // - Hasil sangat jelas berhenti cepat; hasil ragu tetap masuk seluruh fallback lama.
-            await runLine(topLine, 'top', 'soft', rect.name + '/atas', 1.90);
-            if (!lockedBottomValue) {
+            if (rectIndex !== 0 || !seededTopResult) {
+                await runLine(topLine, 'top', 'soft', rect.name + '/atas', 1.90);
+            }
+            if (!lockedBottomValue && (rectIndex !== 0 || !seededBottomResult)) {
                 await runLine(bottomLine, 'bottom', 'soft', rect.name + '/bawah', 2.00);
             }
             await runTightBottomConsensus(bottomLine, rect.name + '/bawah-10-digit');
@@ -9687,9 +9916,20 @@
             );
         }
 
-        // V6.4.3: metadata dimulai SEKARANG, bersamaan dengan OCR periode.
-        // Timestamp tidak membutuhkan periode untuk membaca teks nyata pada screenshot;
-        // periode hanya fallback bila tanggal benar-benar tidak terbaca.
+        // V7.6: taruhan tetap dimulai paralel, tetapi timestamp menunggu date-key
+        // tepercaya dari kode. Versi lama membaca tanggal lengkap tanpa periode,
+        // lalu sering mengulang 2-4 pass sebelum akhirnya memakai tanggal kode juga.
+        let resolvePeriodForMetadata = null;
+        let periodMetadataResolved = false;
+        const periodForMetadataPromise = new Promise((resolve) => {
+            resolvePeriodForMetadata = resolve;
+        });
+        const signalPeriodForMetadata = (period) => {
+            if (periodMetadataResolved) return;
+            periodMetadataResolved = true;
+            resolvePeriodForMetadata(String(period || '').trim());
+        };
+
         const earlyMetadataPromise = (async () => {
             let betInfo = { value: null, belowMin: false };
             let claimTimestamp = null;
@@ -9700,25 +9940,35 @@
             if (!metadataWorker) {
                 return { betInfo, claimTimestamp, betAttempted, timestampAttempted };
             }
+
+            const readTimestampAfterCode = async (activeWorker) => {
+                const trustedPeriod = await periodForMetadataPromise;
+                if (!trustedPeriod || !activeWorker) return null;
+                timestampAttempted = true;
+                return readClaimTimestampFromSecondImage(
+                    sourceCanvas,
+                    marker,
+                    activeWorker,
+                    trustedPeriod,
+                    ''
+                ).catch(() => null);
+            };
+
             if (timestampWorker && timestampWorker !== metadataWorker) {
                 betAttempted = true;
-                timestampAttempted = true;
                 const meta = await Promise.all([
                     readBetOddsForNotification(sourceCanvas, marker, metadataWorker).catch(() => null),
-                    readClaimTimestampFromSecondImage(sourceCanvas, marker, timestampWorker, '', '').catch(() => null)
+                    readTimestampAfterCode(timestampWorker)
                 ]);
                 betInfo = meta[0] || betInfo;
                 claimTimestamp = meta[1] || null;
             } else {
-                // Tetap overlap dengan OCR periode, hanya dua metadata ini yang serial
-                // pada satu helper worker. Kegagalan satu bagian tidak membatalkan lainnya.
+                // Pada perangkat dua-worker, waktu/GMT diprioritaskan segera setelah
+                // kode siap. Sebelumnya pembacaan ini harus menunggu OCR taruhan.
+                claimTimestamp = await readTimestampAfterCode(metadataWorker);
                 betAttempted = true;
                 betInfo = await readBetOddsForNotification(sourceCanvas, marker, metadataWorker)
                     .catch(() => betInfo);
-                timestampAttempted = true;
-                claimTimestamp = await readClaimTimestampFromSecondImage(
-                    sourceCanvas, marker, metadataWorker, '', ''
-                ).catch(() => null);
             }
             return { betInfo, claimTimestamp, betAttempted, timestampAttempted };
         })();
@@ -9726,19 +9976,72 @@
         // Satu pass paling kecil dahulu. Jika belum terbaca dan marker cukup kuat,
         // coba dua baris crop kecil. Jalur ini jauh lebih ringan daripada fallback penuh;
         // fallback lama tetap dipakai bila hasil cepat tidak benar-benar meyakinkan.
-        let focused = await lcstQuickPeriodFromLockedMarker(sourceCanvas, marker, worker, onProgress);
-        if ((!focused || !focused.period) && Number(marker.confidence || 0) >= 52) {
-            const helperPeriodWorker = await helperPeriodWorkerPromise;
-            focused = await lcstQuickRowsFromLockedMarker(
-                sourceCanvas,
-                marker,
-                worker,
-                helperPeriodWorker,
-                onProgress
-            );
+        let focused = null;
+        const progressiveSeed = {
+            combinedResult: null,
+            topResult: null,
+            bottomResult: null,
+            passCount: 0
+        };
+        const mergeQuickSeed = (value) => {
+            const seed = value && value.quickSeed;
+            if (!seed) return;
+            if (seed.combinedResult) progressiveSeed.combinedResult = seed.combinedResult;
+            if (seed.topResult) progressiveSeed.topResult = seed.topResult;
+            if (seed.bottomResult) progressiveSeed.bottomResult = seed.bottomResult;
+            progressiveSeed.passCount += Math.max(0, Number(seed.passCount) || 0);
+        };
+        try {
+            focused = await lcstQuickPeriodFromLockedMarker(sourceCanvas, marker, worker, onProgress);
+            mergeQuickSeed(focused);
+            if ((!focused || !focused.period) && Number(marker.confidence || 0) >= 52) {
+                const helperPeriodWorker = await helperPeriodWorkerPromise;
+                focused = await lcstQuickRowsFromLockedMarker(
+                    sourceCanvas,
+                    marker,
+                    worker,
+                    helperPeriodWorker,
+                    onProgress
+                );
+                mergeQuickSeed(focused);
+            }
+            if (!focused || !focused.period) {
+                focused = await ocrMarkerLockedCode(
+                    sourceCanvas,
+                    marker,
+                    worker,
+                    onProgress,
+                    progressiveSeed
+                );
+            }
+        } finally {
+            signalPeriodForMetadata(focused && focused.period ? focused.period : '');
         }
-        if (!focused || !focused.period) {
-            focused = await ocrMarkerLockedCode(sourceCanvas, marker, worker, onProgress);
+
+        // V7.6 PRIORITY RESULT: tampilkan kode segera setelah terkunci. Validasi
+        // taruhan dan tanggal semalam tetap berjalan, tetapi tidak lagi menahan
+        // input periode sehingga pengguna tidak merasa scanner macet.
+        if (focused && focused.period && overrides && typeof overrides.onCodeReady === 'function') {
+            const earlySource = focused.fastStrictRows
+                ? 'fast-strict-row-v760'
+                : (focused.ultraFast ? 'ultra-scan-direct-v760' : 'double-marker-row-lock-v45');
+            try {
+                overrides.onCodeReady({
+                    period: focused.period,
+                    text: focused.text || '',
+                    confidence: focused.confidence || 0,
+                    markerFound: true,
+                    markerConfidence: marker.confidence || 0,
+                    markerCandidateCount: analysis && analysis.markerCandidates
+                        ? analysis.markerCandidates.length
+                        : 0,
+                    markerOccurrence: Number(marker.selectedOccurrence) || 0,
+                    markerOccurrenceCount: Number(marker.selectedOccurrenceCount) || 1,
+                    source: earlySource,
+                    passes: focused.passes || 0,
+                    error: ''
+                });
+            } catch (e) {}
         }
 
         // Kode, tanggal, jam, dan GMT diselesaikan sebagai satu hasil. Pembacaan
@@ -9811,9 +10114,9 @@
                 markerFound: true, markerConfidence: marker.confidence, marker,
                 preview: focused.preview || '', passes: focused.passes || 0,
                 source: focused.fastStrictRows
-                    ? 'fast-strict-row-v700'
+                    ? 'fast-strict-row-v760'
                     : (focused.ultraFast
-                        ? 'ultra-scan-direct-v643'
+                        ? 'ultra-scan-direct-v760'
                         : 'double-marker-row-lock-v45'),
                 error: focused.period ? '' : 'Kode belum terbaca.'
             };
@@ -9883,8 +10186,8 @@
                         </div>
                         <div class="lcst-nova-brand-copy">
                             <div class="lcst-nova-eyebrow">LINETOGEL • AURORA PERFORMANCE</div>
-                            <h3 class="lcst-title">Scan Studio Turbo <span class="lcst-version">7.4</span></h3>
-                            <div class="lcst-subtitle">Rapid Unified OCR • kode + tanggal + jam + GMT tampil bersamaan</div>
+                            <h3 class="lcst-title">Scan Studio Turbo <span class="lcst-version">7.6</span></h3>
+                            <div class="lcst-subtitle">Single Progressive OCR • tanpa scan kode berulang • tanggal/jam lebih ringan</div>
                         </div>
                     </div>
                     <div class="lcst-nova-top-actions">
@@ -9925,7 +10228,7 @@
                         <div class="lcst-nova-stat mode">
                             <span class="lcst-nova-stat-label">OCR MODE</span>
                             <strong>FAST ROW LOCK 9+10</strong>
-                            <small>Direct pass cepat + fallback akurat</small>
+                            <small>Pass awal dipakai ulang • fallback anti-lag</small>
                         </div>
                         <div class="lcst-nova-stat live">
                             <span class="lcst-nova-stat-label">WAKTU ONLINE WIB</span>
@@ -10513,6 +10816,17 @@
         function updateClaimPeriodInputState(input) {
             if (!input) return;
             const row = parseInt(input.getAttribute('data-lcst-period-row') || '0', 10);
+            if (state.scan.metadataPendingRows && state.scan.metadataPendingRows[row]) {
+                state.scan.claimExpiredRows = state.scan.claimExpiredRows || [];
+                state.scan.claimDeadlineByRow = state.scan.claimDeadlineByRow || [];
+                state.scan.claimExpiredRows[row] = false;
+                state.scan.claimDeadlineByRow[row] = null;
+                input.title = 'Kode sudah terkunci. Validasi taruhan dan tanggal semalam sedang berjalan.';
+                input.style.borderColor = 'rgba(6,182,212,.58)';
+                input.style.color = '#0891b2';
+                input.style.background = 'rgba(236,254,255,.92)';
+                return;
+            }
             const imageTimestamp = state.scan.claimTimestampByRow && state.scan.claimTimestampByRow[row]
                 ? state.scan.claimTimestampByRow[row]
                 : null;
@@ -11234,6 +11548,34 @@
                         : ('Paket ' + (row + 1) + ' dari ' + rows)
                 );
 
+                const publishCodeReady = (earlyResult) => {
+                    if (state.closed || !earlyResult || !earlyResult.period) return;
+                    state.scan.ocrTexts[row] = earlyResult.text || '';
+                    state.scan.ocrPeriods[row] = earlyResult.period;
+                    state.scan.ocrMeta[row] = {
+                        confidence: earlyResult.confidence || 0,
+                        markerConfidence: earlyResult.markerConfidence || 0,
+                        markerFound: !!earlyResult.markerFound,
+                        markerCandidateCount: earlyResult.markerCandidateCount || 0,
+                        markerOccurrence: earlyResult.markerOccurrence || 0,
+                        markerOccurrenceCount: earlyResult.markerOccurrenceCount || 1,
+                        source: earlyResult.source || '',
+                        passes: earlyResult.passes || 0,
+                        error: ''
+                    };
+                    // metadataPendingRows tetap true: kode boleh terlihat, tetapi
+                    // output/copy menunggu taruhan serta aturan tanggal semalam selesai.
+                    syncSinglePeriodInput(row);
+                    updateOcrBadgeRow(row);
+                    setOcrStatus(
+                        'Paket <b>' + (row + 1) + '/' + rows +
+                        '</b> • kode sudah terkunci: <b style="color:#91f5b7">' +
+                        cssEscapeText(earlyResult.period) +
+                        '</b><br>Memvalidasi taruhan, tanggal/jam, dan aturan tanggal semalam...',
+                        Math.min(94, overallBase + 11)
+                    );
+                };
+
                 let result;
                 try {
                     result = await ocrImagePeriod(
@@ -11252,7 +11594,8 @@
                         },
                         {
                             ...(workerOverrides || {}),
-                            markerSelection: markerSelectionByRow[row]
+                            markerSelection: markerSelectionByRow[row],
+                            onCodeReady: publishCodeReady
                         }
                     );
                 } catch (err) {
@@ -11397,9 +11740,13 @@
                     })();
                     await Promise.all([first, second]);
                 } else if (rows === 1 && LCST_DUAL_PACKAGE_OCR) {
-                    // Worker kedua baru ditunggu bila direct-pass gagal. Jadi scan pertama
-                    // tetap mulai segera, lalu dua baris kecil dapat dibaca bersamaan.
-                    await processRow(0, { helperPeriodWorker: secondaryPromise });
+                    // Untuk satu paket, worker kedua lebih efektif membaca taruhan +
+                    // timestamp secara paralel dengan kode daripada hanya menunggu
+                    // fallback dua baris yang jarang dibutuhkan.
+                    await processRow(0, {
+                        metadataWorker: secondaryPromise,
+                        timestampWorker: secondaryPromise
+                    });
                 } else {
                     for (let row = 0; row < rows; row++) {
                         await processRow(row, null);
