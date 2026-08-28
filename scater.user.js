@@ -1,18 +1,15 @@
 // ==UserScript==
-// @name         LiveChat + REGC AUTO FULL — Scan -> Sheet D:J -> Debit K -> N Done
-// @namespace    linetogel-livechat-regc-auto-full
-// @version      6.5.7
-// @description  V6.5.7 logo LINE TOGEL pada background dibuat tajam, penuh, tidak pudar, dan tidak buram; tema ungu tetap dipertahankan.
+// @name         LiveChat OCR Claim — WIB/WITA/WIT + Batas 02.00
+// @namespace    linetogel-livechat-ocr-claim-fixed
+// @version      7.4.0
+// @description  Rapid Unified OCR: kode, tanggal, jam, dan GMT selesai bersamaan dengan crop lebih ringan, maksimal fallback ketat, serta kode antarpaket anti-duplikat.
 // @author       OpenAI
 // @match        https://my.livechatinc.com/*
-// @match        https://regc.idnlive.live/*
 // @run-at       document-idle
 // @grant        GM_setClipboard
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
-// @grant        GM_addValueChangeListener
-// @grant        GM_registerMenuCommand
 // @connect      *
 // @require      https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js
 // @noframes
@@ -20,77 +17,6 @@
 
 (function () {
   'use strict';
-
-  /********************************************************************
-   * KONFIGURASI BERSAMA LIVECHAT + REGC
-   * ---------------------------------------------------------------
-   * URL Web App /exec cukup disimpan SATU KALI melalui menu Tampermonkey:
-   * "LINETOGEL: Set Google Apps Script /exec"
-   * Nilainya disimpan dengan GM_setValue sehingga sama untuk kedua domain.
-   ********************************************************************/
-  const LT_COMBINED_WEBAPP_KEY = 'lt_combined_webapp_exec_v1';
-  const LT_COMBINED_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbw9xsfQz9GrMDUjGklnd1pTr_CQbGxmwGdda6uH9T9kam5cLyziDcB-MeWVh5Pv4uQP/exec';
-  const LT_COMBINED_SECRET = 'LCST_FfQHZMVN7MLW44yiqfh5beuCiWPDhiIW';
-  const LT_REGC_WAKE_KEY = 'lt_regc_background_wake_v3';
-
-  function ltCombinedValidExecUrl(value) {
-    return /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec(?:\?.*)?$/i.test(String(value || '').trim());
-  }
-
-  function ltCombinedGetWebAppUrl() {
-    try {
-      const saved = GM_getValue(LT_COMBINED_WEBAPP_KEY, '');
-      return saved && String(saved).trim() ? String(saved).trim() : LT_COMBINED_DEFAULT_URL;
-    } catch (e) {
-      return LT_COMBINED_DEFAULT_URL;
-    }
-  }
-
-  function ltCombinedSetWebAppUrl() {
-    const current = ltCombinedGetWebAppUrl();
-    const initial = ltCombinedValidExecUrl(current) ? current : '';
-    const entered = window.prompt(
-      'Tempel URL Google Apps Script Web App yang berakhir /exec.\n\nURL ini dipakai bersama oleh LiveChat dan REGC:',
-      initial
-    );
-    if (entered == null) return;
-    const value = String(entered).trim();
-    if (!ltCombinedValidExecUrl(value)) {
-      window.alert('URL belum valid. Harus berupa https://script.google.com/macros/s/.../exec');
-      return;
-    }
-    GM_setValue(LT_COMBINED_WEBAPP_KEY, value);
-    window.alert('URL /exec tersimpan. Reload tab LiveChat dan REGC agar konfigurasi aktif.');
-  }
-
-  try {
-    if (typeof GM_registerMenuCommand === 'function') {
-      GM_registerMenuCommand('LINETOGEL: Set Google Apps Script /exec', ltCombinedSetWebAppUrl);
-      GM_registerMenuCommand('LINETOGEL: Lihat URL /exec aktif', function () {
-        const current = ltCombinedGetWebAppUrl();
-        window.alert(ltCombinedValidExecUrl(current) ? current : 'URL /exec belum dipasang.');
-      });
-    }
-  } catch (e) {}
-
-  const LT_COMBINED_WEBAPP_URL = ltCombinedGetWebAppUrl();
-
-  // Sekali per tab: bila URL belum dipasang, beri petunjuk tanpa menghentikan UI utama.
-  if (!ltCombinedValidExecUrl(LT_COMBINED_WEBAPP_URL)) {
-    setTimeout(function () {
-      try {
-        const id = 'lt-combined-config-warning';
-        if (document.getElementById(id) || !document.body) return;
-        const box = document.createElement('div');
-        box.id = id;
-        box.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:2147483647;background:#151515;color:#fff;border:1px solid #f0b429;border-radius:12px;padding:12px 14px;font:600 12px/1.45 Arial;box-shadow:0 10px 30px rgba(0,0,0,.4);max-width:340px';
-        box.innerHTML = '<b style="color:#ffd166">AUTO SHEET/REGC BELUM TERHUBUNG</b><br>Pasang URL Apps Script <b>/exec</b> sekali lewat menu Tampermonkey:<br><b>LINETOGEL: Set Google Apps Script /exec</b>';
-        document.body.appendChild(box);
-        setTimeout(function(){ try { box.remove(); } catch(e){} }, 15000);
-      } catch (e) {}
-    }, 1500);
-  }
-
 
   /**************** LIVECHAT MODULE ****************/
 (function () {
@@ -100,7 +26,7 @@
 
     // Versi terbaru mengambil alih UI lama bila lebih dari satu versi tidak sengaja aktif.
     // Ini mencegah script lama memblokir perbaikan melalui guard boolean yang sama.
-    const LCST_BUILD_VERSION = '5.9.5';
+    const LCST_BUILD_VERSION = '7.4.0-rapid-unified-ocr';
     const lcstExistingInstance = window.__LC_BUBBLE_SCREENSHOT_ACTIVE_ONLY__;
     if (lcstExistingInstance && typeof lcstExistingInstance === 'object' && lcstExistingInstance.version === LCST_BUILD_VERSION) return;
     try {
@@ -117,19 +43,6 @@
     const LCST_DASHBOARD_LOGO_URL = 'https://line32170.com/assets/img/ei/logo.png';
     let lcstDashboardLogoDataUrl = '';
     let lcstDashboardLogoPromise = null;
-
-    /******************************************************************
-     * GOOGLE SHEET AUTO APPEND V1
-     * Target spreadsheet: 1TxjwKCt1l3rsjDZqg7l4C7f3-naFXUDqYqe2ejjvN1s
-     * Kolom tujuan: D:J (7 kolom)
-     *
-     * WAJIB: setelah Apps Script di-deploy sebagai Web App, ganti URL
-     * LCST_SHEET_WEBAPP_URL di bawah dengan URL yang berakhir /exec.
-     ******************************************************************/
-    const LCST_SHEET_WEBAPP_URL = LT_COMBINED_WEBAPP_URL;
-    const LCST_SHEET_SECRET = LT_COMBINED_SECRET;
-    const LCST_SHEET_LAST_BATCH_KEY = 'lcst_sheet_last_success_batch_v581';
-    const LCST_SHEET_TIMEOUT = 30000;
 
     let lastScan = { userId: 'user', marker: null, markerText: 'Tidak terdeteksi', images: [], allIds: [] };
 
@@ -2290,6 +2203,208 @@
                 }
             }
 
+            /* =========================================================
+               AURORA PERFORMANCE UI V7
+               Modern, konsisten, dan lebih ringan saat scanner bekerja.
+               ========================================================= */
+            #lcst-panel-fixed{
+                --aurora-bg:#060817;
+                --aurora-card:#10142b;
+                --aurora-card-2:#151a38;
+                --aurora-line:rgba(148,163,255,.22);
+                --aurora-purple:#8b5cf6;
+                --aurora-cyan:#22d3ee;
+                --aurora-mint:#5eead4;
+                --aurora-text:#f8fafc;
+                --aurora-muted:#a8b2d1;
+                background:
+                    radial-gradient(circle at 8% 0%,rgba(124,58,237,.25),transparent 34%),
+                    radial-gradient(circle at 92% 4%,rgba(34,211,238,.17),transparent 31%),
+                    radial-gradient(circle at 50% 110%,rgba(14,165,233,.12),transparent 42%),
+                    linear-gradient(145deg,#050713 0%,#0a0d20 48%,#070a18 100%)!important;
+                color:var(--aurora-text)!important;
+            }
+            #lcst-panel-fixed:before{
+                display:block!important;
+                opacity:.22!important;
+                background-image:
+                    linear-gradient(rgba(129,140,248,.08) 1px,transparent 1px),
+                    linear-gradient(90deg,rgba(34,211,238,.06) 1px,transparent 1px)!important;
+                background-size:42px 42px!important;
+            }
+            #lcst-panel-fixed:after{
+                display:block!important;
+                opacity:.42!important;
+                background:
+                    radial-gradient(circle at 18% 22%,rgba(139,92,246,.16),transparent 25%),
+                    radial-gradient(circle at 83% 72%,rgba(34,211,238,.10),transparent 27%)!important;
+            }
+            #lcst-dashboard-brand-bg{display:none!important}
+
+            #lcst-panel-fixed .lcst-nova-topbar{
+                min-height:96px!important;
+                background:
+                    radial-gradient(circle at 50% -42%,rgba(34,211,238,.21),transparent 48%),
+                    linear-gradient(135deg,#11152f 0%,#211344 48%,#101b3a 100%)!important;
+                border:1px solid rgba(165,180,252,.28)!important;
+                backdrop-filter:none!important;
+                box-shadow:0 18px 45px rgba(1,4,16,.38),inset 0 1px 0 rgba(255,255,255,.10)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-topbar:before{
+                background:linear-gradient(180deg,#67e8f9,#8b5cf6 55%,#f472b6)!important;
+                box-shadow:0 0 20px rgba(34,211,238,.35)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-topbar:after{opacity:.45!important}
+            #lcst-panel-fixed .lcst-nova-logo{animation:none!important}
+            #lcst-header-logo-img{
+                filter:saturate(1.08) contrast(1.05) drop-shadow(0 8px 16px rgba(2,6,23,.42))!important;
+            }
+            #lcst-panel-fixed .lcst-nova-eyebrow{color:#67e8f9!important;text-shadow:none!important}
+            #lcst-panel-fixed .lcst-title{color:#fff!important;text-shadow:0 3px 14px rgba(2,6,23,.45)!important}
+            #lcst-panel-fixed .lcst-subtitle{color:#bdc7e6!important}
+            #lcst-panel-fixed .lcst-version{
+                color:#cffafe!important;
+                background:rgba(34,211,238,.12)!important;
+                border-color:rgba(103,232,249,.28)!important;
+                box-shadow:none!important;
+            }
+            #lcst-panel-fixed .lcst-nova-live-chip{
+                color:#a7f3d0!important;
+                background:rgba(16,185,129,.12)!important;
+                border-color:rgba(110,231,183,.27)!important;
+            }
+
+            #lcst-panel-fixed .lcst-card,
+            #lcst-panel-fixed .lcst-nova-status,
+            #lcst-panel-fixed .lcst-nova-stat,
+            #lcst-panel-fixed .lcst-nova-stat.ok,
+            #lcst-panel-fixed .lcst-nova-stat.bad,
+            #lcst-panel-fixed .lcst-nova-stat.user,
+            #lcst-panel-fixed .lcst-nova-stat.mode,
+            #lcst-panel-fixed .lcst-nova-stat.live{
+                background:
+                    linear-gradient(145deg,rgba(17,21,47,.96),rgba(13,17,39,.98))!important;
+                border-color:var(--aurora-line)!important;
+                color:var(--aurora-text)!important;
+                backdrop-filter:none!important;
+                box-shadow:0 15px 36px rgba(1,4,16,.28),inset 0 1px 0 rgba(255,255,255,.055)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-status-icon,
+            #lcst-panel-fixed .lcst-nova-step,
+            #lcst-panel-fixed .lcst-nova-section-head.orange .lcst-nova-step,
+            #lcst-panel-fixed .lcst-nova-guide-row>span{
+                color:#cffafe!important;
+                background:linear-gradient(145deg,rgba(34,211,238,.13),rgba(139,92,246,.14))!important;
+                border-color:rgba(103,232,249,.25)!important;
+                box-shadow:inset 0 1px 0 rgba(255,255,255,.07)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-status-icon svg{stroke:#67e8f9!important;filter:none!important}
+            #lcst-panel-fixed .lcst-nova-status .lcst-status-title,
+            #lcst-panel-fixed .lcst-nova-stat-label,
+            #lcst-panel-fixed .lcst-nova-kicker{color:#67e8f9!important}
+            #lcst-panel-fixed .lcst-nova-status .lcst-progress{background:rgba(2,6,23,.72)!important}
+            #lcst-panel-fixed .lcst-nova-status .lcst-progress span{
+                background:linear-gradient(90deg,#22d3ee,#6366f1,#a855f7)!important;
+                box-shadow:0 0 14px rgba(34,211,238,.34)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-stat strong,
+            #lcst-panel-fixed .lcst-nova-section-head b,
+            #lcst-panel-fixed .lcst-nova-guide-row b,
+            #lcst-panel-fixed .lcst-nova-gallery-head h4,
+            #lcst-panel-fixed .lcst-nova-output-card h4{color:#f8fafc!important}
+            #lcst-panel-fixed .lcst-nova-stat small,
+            #lcst-panel-fixed .lcst-nova-section-head small,
+            #lcst-panel-fixed .lcst-nova-guide-row small,
+            #lcst-panel-fixed .lcst-nova-gallery-head p,
+            #lcst-panel-fixed .lcst-nova-output-card p{color:var(--aurora-muted)!important}
+
+            #lcst-panel-fixed .lcst-input,
+            #lcst-panel-fixed #lcst-output{
+                color:#eef2ff!important;
+                background:linear-gradient(145deg,rgba(5,9,25,.96),rgba(12,18,42,.96))!important;
+                border-color:rgba(129,140,248,.28)!important;
+                box-shadow:inset 0 2px 10px rgba(0,0,0,.24)!important;
+            }
+            #lcst-panel-fixed .lcst-input:focus,
+            #lcst-panel-fixed #lcst-output:focus{
+                border-color:rgba(34,211,238,.66)!important;
+                box-shadow:0 0 0 4px rgba(34,211,238,.10)!important;
+            }
+            #lcst-panel-fixed .lcst-scan-state,
+            #lcst-panel-fixed .lcst-scan-state.waiting,
+            #lcst-panel-fixed .lcst-scan-state.scanning,
+            #lcst-panel-fixed .lcst-scan-state.success,
+            #lcst-panel-fixed .lcst-scan-state.partial,
+            #lcst-panel-fixed .lcst-scan-state.failed{
+                background:linear-gradient(145deg,rgba(8,13,33,.94),rgba(18,23,52,.92))!important;
+                border-color:rgba(129,140,248,.22)!important;
+                box-shadow:inset 0 1px 0 rgba(255,255,255,.045)!important;
+            }
+
+            #lcst-panel-fixed .lcst-nova-gallery-card,
+            #lcst-panel-fixed .lcst-nova-main,
+            #lcst-panel-fixed #lcst-image-grid{background:transparent!important}
+            #lcst-panel-fixed .lcst-nova-gallery-card{
+                border-color:rgba(129,140,248,.25)!important;
+                box-shadow:0 18px 42px rgba(1,4,16,.30)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-head{
+                background:linear-gradient(135deg,rgba(17,24,55,.96),rgba(31,18,65,.94))!important;
+                border-color:rgba(129,140,248,.25)!important;
+                backdrop-filter:none!important;
+                box-shadow:inset 0 1px 0 rgba(255,255,255,.055)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-img-card{
+                background:#0a0f26!important;
+                border-color:rgba(129,140,248,.24)!important;
+                box-shadow:0 12px 26px rgba(1,4,16,.28)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-img-card:hover{
+                border-color:rgba(34,211,238,.54)!important;
+                box-shadow:0 16px 33px rgba(1,4,16,.34),0 0 20px rgba(34,211,238,.08)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-img-label{
+                color:#cbd5e1!important;
+                background:#0b1027!important;
+                border-top-color:rgba(129,140,248,.18)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-empty{
+                color:#cbd5e1!important;
+                background:rgba(8,13,33,.86)!important;
+                border-color:rgba(129,140,248,.25)!important;
+                backdrop-filter:none!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-empty b{color:#f8fafc!important}
+
+            #lcst-panel-fixed .lcst-nova-scan-btn{
+                background:linear-gradient(135deg,#06b6d4 0%,#6366f1 48%,#8b5cf6 100%)!important;
+                border:1px solid rgba(207,250,254,.25)!important;
+                color:#fff!important;
+                box-shadow:0 13px 30px rgba(79,70,229,.28),inset 0 1px 0 rgba(255,255,255,.20)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-scan-btn:hover{
+                transform:translateY(-2px)!important;
+                box-shadow:0 17px 36px rgba(34,211,238,.20),0 8px 25px rgba(124,58,237,.24)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-btn-icon{background:rgba(255,255,255,.15)!important}
+
+            #lcst-bubble-fixed{
+                width:82px!important;
+                height:82px!important;
+                border:2px solid rgba(207,250,254,.82)!important;
+                box-shadow:0 18px 42px rgba(2,6,23,.38),0 0 0 5px rgba(99,102,241,.14),0 0 26px rgba(34,211,238,.22)!important;
+            }
+            #lcst-bubble-fixed:hover{
+                transform:translateY(-4px) scale(1.055)!important;
+                box-shadow:0 23px 48px rgba(2,6,23,.42),0 0 0 6px rgba(139,92,246,.18),0 0 34px rgba(34,211,238,.28)!important;
+            }
+
+            @media(max-width:820px){
+                #lcst-panel-fixed .lcst-nova-topbar{min-height:auto!important}
+                #lcst-panel-fixed .lcst-nova-logo{animation:none!important}
+                #lcst-bubble-fixed{width:72px!important;height:72px!important}
+            }
+
         `;
         document.head.appendChild(style);
     }
@@ -2383,6 +2498,10 @@
             <span class="lcst-nova-online" aria-hidden="true"></span>
         `;
         document.body.appendChild(bubble);
+
+        // Saat pointer mendekati bubble, mulai persiapan non-visual lebih awal.
+        // Seluruh OCR tetap berada di Web Worker sehingga hover/click tidak diblokir.
+        bubble.addEventListener('pointerenter', warmupOCRWorker, { once: true, passive: true });
 
         const saved = safeJSONParse(localStorage.getItem(POS_KEY), null);
         if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
@@ -3044,9 +3163,9 @@
         };
     }
 
-    // ULTRA FAST V6.4.1 — jalur cepat mengumpulkan BUFFER kandidat terbaru.
-    // Hasil akhir tetap maksimal 6 gambar, tetapi kandidat ekstra diperlukan agar
-    // Gambar 3 dan 6 (Kemenangan Total) tidak memakai screenshot yang sama bila ada alternatif.
+    // AURORA FAST V7 — jalur cepat mengumpulkan BUFFER kandidat terbaru.
+    // Hasil akhir tetap maksimal 6 gambar. Buffer kandidat disediakan agar seluruh
+    // slot Paket 1 dan Paket 2 memakai screenshot/fingerprint berbeda bila tersedia.
     async function scanOneScopeFastLatest(active, onProgress, label) {
         const root = active && active.scope;
         if (!root) return null;
@@ -3078,7 +3197,7 @@
             let count = collectCurrent();
             if (onProgress) onProgress((label || 'Scan cepat') + ' • terbaru dulu • <b>' + count + '</b> gambar.');
 
-            // Jangan berhenti tepat di 6. Ambil kandidat tambahan agar dua Kemenangan Total bisa berbeda.
+            // Jangan berhenti tepat di 6. Ambil buffer agar seluruh slot antarpaket bisa unik.
             if (count >= LCST_SCAN_CANDIDATE_LIMIT) {
                 const finalMarker = findMarker(root, active.markerHint);
                 return {
@@ -3094,8 +3213,8 @@
             }
 
             if (canScroll) {
-                // Maksimal 12 lompatan viewport ke arah atas. Biasanya 1–4 langkah sudah dapat 6 gambar.
-                for (let stepNo = 0; stepNo < 12; stepNo++) {
+                // Maksimal 8 lompatan viewport. Berhenti lebih awal ketika dua putaran tidak menambah gambar.
+                for (let stepNo = 0; stepNo < 8; stepNo++) {
                     const currentTop = Number(root.scrollTop) || 0;
                     if (currentTop <= 2) break;
 
@@ -3118,7 +3237,7 @@
                     }
 
                     if (count >= LCST_SCAN_CANDIDATE_LIMIT) break;
-                    if (stableRounds >= 3 && stepNo >= 4) break;
+                    if (stableRounds >= 2 && stepNo >= 3) break;
                 }
             }
         } finally {
@@ -3153,7 +3272,7 @@
         }
 
         // 1) Jalur instan: baru berhenti tanpa scroll bila buffer kandidat sudah penuh.
-        // Bila baru ada 6 gambar, tetap cari beberapa kandidat tambahan untuk mencegah WIN duplikat.
+        // Bila baru ada 6 gambar, tetap cari kandidat tambahan untuk mencegah duplikat antarpaket.
         const instant = scanPageFromActive(active);
         if (instant && instant.images && instant.images.length >= LCST_SCAN_CANDIDATE_LIMIT) {
             if (onProgress) onProgress('ULTRA FAST • <b>' + instant.images.length + '</b> gambar tersedia • memilih kandidat terbaru.');
@@ -3963,6 +4082,10 @@
         for (let i = 0; i < imgs.length; i += packageSize) {
             const rowIdx = Math.floor(i / packageSize);
 
+            // Kode boleh tampil lebih dahulu di input, tetapi output baru dibuka
+            // setelah validasi taruhan dan timestamp paket tersebut selesai.
+            if (scan.metadataPendingRows && scan.metadataPendingRows[rowIdx]) continue;
+
             // Paket dengan Taruhan di bawah 1,60 tidak dimasukkan ke output,
             // sehingga paket tersebut tidak dapat tersalin lewat COPY OUTPUT
             // maupun melalui salin manual dari kotak output.
@@ -3991,145 +4114,6 @@
             out += String(scan.userId || '').trim().toLowerCase() + '\t' + urls.join('\t') + '\t' + rn.rek + '\t' + rn.nama + '\t' + period + '\n';
         }
         return out;
-    }
-
-    function lcstSheetIsConfigured() {
-        return /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec(?:\?.*)?$/i.test(String(LCST_SHEET_WEBAPP_URL || '').trim());
-    }
-
-    function lcstSheetHash(value) {
-        const text = String(value == null ? '' : value);
-        let h1 = 0x811c9dc5;
-        for (let i = 0; i < text.length; i++) {
-            h1 ^= text.charCodeAt(i);
-            h1 = Math.imul(h1, 0x01000193);
-        }
-        return ('00000000' + (h1 >>> 0).toString(16)).slice(-8);
-    }
-
-    function lcstBuildSheetRows(scan) {
-        const rekInput = document.getElementById('lcst-rek-all');
-        const rn = parseRekNama(rekInput ? rekInput.value : '');
-        const imgs = scan.images || [];
-        const packageSize = getPackageSizeFromImages(imgs);
-        const rows = [];
-
-        for (let i = 0; i < imgs.length; i += packageSize) {
-            const rowIdx = Math.floor(i / packageSize);
-
-            // Sama seperti COPY OUTPUT: paket berbahaya tidak dikirim ke Sheet.
-            if (scan.betBelowMinRows && scan.betBelowMinRows[rowIdx]) continue;
-
-            const periodInput = document.getElementById('lcst-prd-' + rowIdx);
-            const inputPeriod = periodInput ? periodInput.value.trim() : '';
-            const ocrPeriod = scan.ocrPeriods && scan.ocrPeriods[rowIdx] ? String(scan.ocrPeriods[rowIdx]).trim() : '';
-            const period = inputPeriod || ocrPeriod;
-
-            // Hanya hasil scan yang benar-benar memiliki periode valid yang dikirim otomatis.
-            // Paket OCR gagal tetap dibiarkan untuk pencatatan manual.
-            if (!period || /^MENUNGGU OCR/i.test(period)) continue;
-
-            const imageClaimTimestamp = scan.claimTimestampByRow && scan.claimTimestampByRow[rowIdx]
-                ? scan.claimTimestampByRow[rowIdx]
-                : null;
-            const claimDeadline = lcstCheckClaimDeadline(imageClaimTimestamp, period);
-            scan.claimExpiredRows = scan.claimExpiredRows || [];
-            scan.claimDeadlineByRow = scan.claimDeadlineByRow || [];
-            scan.claimExpiredRows[rowIdx] = !!claimDeadline.expired;
-            scan.claimDeadlineByRow[rowIdx] = claimDeadline;
-            if (claimDeadline.expired) continue;
-
-            const urls = imgs.slice(i, i + packageSize);
-            while (urls.length < 3) urls.push('');
-
-            // Tepat 7 kolom => D, E, F, G, H, I, J.
-            rows.push([
-                String(scan.userId || '').trim().toLowerCase(),
-                String(urls[0] || ''),
-                String(urls[1] || ''),
-                String(urls[2] || ''),
-                String(rn.rek || '').trim(),
-                String(rn.nama || '').trim(),
-                period
-            ]);
-        }
-        return rows;
-    }
-
-    function lcstPostRowsToSheet(rows) {
-        return new Promise((resolve, reject) => {
-            if (!lcstSheetIsConfigured()) {
-                const err = new Error('URL Web App Google Sheet belum dipasang. Ganti LCST_SHEET_WEBAPP_URL dengan URL /exec hasil Deploy Apps Script.');
-                err.code = 'SHEET_NOT_CONFIGURED';
-                reject(err);
-                return;
-            }
-            if (!Array.isArray(rows) || !rows.length) {
-                resolve({ ok: true, inserted: 0, skipped: true, message: 'Tidak ada baris valid untuk dikirim.' });
-                return;
-            }
-
-            const normalized = rows.map(row => Array.from({ length: 7 }, (_, i) => String((row || [])[i] == null ? '' : (row || [])[i])));
-            const batchKey = lcstSheetHash(JSON.stringify(normalized));
-            const lastBatch = localStorage.getItem(LCST_SHEET_LAST_BATCH_KEY) || '';
-            if (lastBatch === batchKey) {
-                resolve({ ok: true, inserted: 0, duplicate: true, batchKey, message: 'Batch ini sudah pernah berhasil dikirim.' });
-                return;
-            }
-
-            const payload = {
-                secret: LCST_SHEET_SECRET,
-                batchKey,
-                source: 'LiveChat OCR v5.8.1',
-                sentAt: new Date().toISOString(),
-                rows: normalized
-            };
-
-            GM_xmlhttpRequest({
-                method: 'POST',
-                url: LCST_SHEET_WEBAPP_URL,
-                headers: { 'Content-Type': 'application/json;charset=UTF-8' },
-                data: JSON.stringify(payload),
-                timeout: LCST_SHEET_TIMEOUT,
-                onload: (res) => {
-                    let data = null;
-                    try { data = JSON.parse(res.responseText || '{}'); } catch (e) {}
-                    if (res.status >= 200 && res.status < 300 && data && data.ok) {
-                        localStorage.setItem(LCST_SHEET_LAST_BATCH_KEY, batchKey);
-                        // Bangunkan worker REGC lintas tab segera setelah D:J berhasil masuk.
-                        // GM_setValue + GM_addValueChangeListener bekerja lintas domain untuk userscript yang sama.
-                        try {
-                            GM_setValue(LT_REGC_WAKE_KEY, {
-                                ts: Date.now(),
-                                source: 'livechat-append',
-                                inserted: Number(data.inserted || 0),
-                                startRow: Number(data.startRow || 0),
-                                endRow: Number(data.endRow || 0)
-                            });
-                        } catch (ignore) {}
-                        resolve(data);
-                        return;
-                    }
-                    const message = data && data.error
-                        ? data.error
-                        : ('HTTP ' + res.status + ' dari Web App Google Sheet.');
-                    const err = new Error(message);
-                    err.code = 'SHEET_HTTP_ERROR';
-                    err.status = res.status;
-                    reject(err);
-                },
-                onerror: () => {
-                    const err = new Error('Gagal terhubung ke Web App Google Sheet.');
-                    err.code = 'SHEET_NETWORK_ERROR';
-                    reject(err);
-                },
-                ontimeout: () => {
-                    const err = new Error('Koneksi ke Google Sheet timeout.');
-                    err.code = 'SHEET_TIMEOUT';
-                    reject(err);
-                }
-            });
-        });
     }
 
     function copyText(text) {
@@ -4174,24 +4158,26 @@
     // ULTRA FAST V6.3.7:
     // - maksimal 2 paket (6 gambar) dapat membaca PERIODE secara paralel pada perangkat kuat.
     // - worker ke-3 hanya diaktifkan bila CPU/RAM cukup; perangkat ringan otomatis kembali ke jalur stabil lama.
-    // - Google Sheet, validasi periode, taruhan, timestamp, dan REGC tidak diubah.
+    // - Validasi periode, taruhan, dan timestamp tetap mengikuti alur asli.
     const LCST_DUAL_PACKAGE_OCR = LCST_CPU_THREADS >= 4 && LCST_DEVICE_MEMORY_GB >= 4;
     // V6.4.3: pada perangkat kuat worker timestamp boleh hidup bersama mode 2 paket.
     // Ini membuat pembacaan kode, taruhan, dan tanggal/jam benar-benar overlap.
     const LCST_TURBO_TIMESTAMP_WORKER =
         LCST_CPU_THREADS >= 8 && LCST_DEVICE_MEMORY_GB >= 8;
 
-    // V6.4.0 — Batas claim berdasarkan waktu yang terbaca pada GAMBAR KE-2 / KE-5.
-    // Kolom screenshot menampilkan "Waktu (GMT+X)". Semua timestamp wajib dinormalisasi
-    // ke GMT+7 / Asia/Jakarta sebelum tanggal claim dihitung. Contoh GMT+8 -> WIB = -1 jam.
-    // Jika pengurangan melewati 00:00, tanggal otomatis mundur satu hari.
+    // V6.6.0 — Batas claim berdasarkan waktu yang terbaca pada GAMBAR KE-2 / KE-5.
+    // WIB/GMT+7 dipakai langsung, WITA/GMT+8 dikurangi 1 jam, dan
+    // WIT/GMT+9 dikurangi 2 jam. Pergeseran melewati 00.00 ikut mengubah tanggal.
+    // Tanggal semalam hanya berlaku untuk transaksi 23.00–23.59 WIB dan hanya
+    // dapat diklaim sampai sebelum pukul 02.00 WIB.
     const LCST_CLAIM_TIME_ZONE = 'Asia/Jakarta';
     const LCST_TARGET_GMT_OFFSET_MINUTES = 7 * 60;
     const LCST_HISTORY_DEFAULT_GMT_OFFSET_MINUTES = LCST_TARGET_GMT_OFFSET_MINUTES;
     const LCST_CLAIM_CUTOFF_MINUTES = 2 * 60;
+    const LCST_NIGHT_CLAIM_START_MINUTES = 23 * 60;
     const LCST_NUMERIC_OCR_WHITELIST = '0123456789';
-    // GMT/UTC/+ ikut diizinkan agar header "Waktu (GMT+8)" dapat dibaca OCR.
-    const LCST_TIMESTAMP_OCR_WHITELIST = '0123456789:/.-+() AMPampGMTgmtUTCutcWIBwib';
+    // GMT/UTC/WIB/WITA/WIT ikut diizinkan agar zona gambar dapat dibaca OCR.
+    const LCST_TIMESTAMP_OCR_WHITELIST = '0123456789:/.-+−() AMPampGMTgmtUTCutcWIBwibWITAita';
 
     // Selisih terhadap jam perangkat. Nilainya diperbarui dari header Date server
     // secara non-blocking agar proses scan tidak menunggu koneksi internet.
@@ -4364,44 +4350,115 @@
         return { hour, minute, second, minutesOfDay: hour * 60 + minute };
     }
 
-    function lcstParseGmtOffsetMinutes(rawText) {
-        const text = String(rawText == null ? '' : rawText)
+    function lcstIsValidGmtOffsetMinutes(offsetMinutes) {
+        const total = Number(offsetMinutes);
+        return Number.isInteger(total) && total >= -12 * 60 && total <= 14 * 60;
+    }
+
+    function lcstParseGmtHourMinute(signRaw, hourRaw, minuteRaw) {
+        const sign = String(signRaw || '+') === '-' ? -1 : 1;
+        const hour = Number(hourRaw);
+        const minute = minuteRaw == null || minuteRaw === '' ? 0 : Number(minuteRaw);
+        if (!Number.isInteger(hour) || !Number.isInteger(minute)) return null;
+        if (hour < 0 || hour > 14 || minute < 0 || minute > 59) return null;
+        const total = sign * (hour * 60 + minute);
+        return lcstIsValidGmtOffsetMinutes(total) ? total : null;
+    }
+
+    function lcstFindExplicitGmtOffsetMinutes(rawText) {
+        let value = String(rawText == null ? '' : rawText)
             .toUpperCase()
+            .replace(/[，]/g, ',')
+            .replace(/[：]/g, ':')
+            .replace(/[＋]/g, '+')
             .replace(/[−–—]/g, '-')
-            .replace(/\s+/g, ' ');
-        // Mendukung GMT+8, GMT + 08, GMT+08:00, UTC+8, dan nilai negatif.
-        const match = text.match(/\b(?:GMT|UTC)\s*([+-])\s*(\d{1,2})(?:\s*:\s*(\d{2}))?/i);
-        if (!match) return null;
-        const hours = Number(match[2]);
-        const minutes = match[3] == null ? 0 : Number(match[3]);
-        if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours > 14 || minutes > 59) return null;
-        const sign = match[1] === '-' ? -1 : 1;
-        return sign * (hours * 60 + minutes);
-    }
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (!value) return null;
 
-    function lcstResolveSourceGmtOffsetMinutes(rawText, explicitOffsetMinutes) {
-        if (explicitOffsetMinutes != null && explicitOffsetMinutes !== '') {
-            const explicit = Number(explicitOffsetMinutes);
-            if (Number.isFinite(explicit) && explicit >= -14 * 60 && explicit <= 14 * 60) return explicit;
+        // Nama zona Indonesia didahulukan agar WIB/WITA/WIT tidak salah dianggap GMT+7.
+        if (/\bWITA\b/.test(value)) return 8 * 60;
+        if (/\bWIB\b/.test(value)) return 7 * 60;
+        if (/\bWIT\b/.test(value)) return 9 * 60;
+
+        // Koreksi OCR umum pada label GMT/UTC.
+        value = value
+            .replace(/\bG\s*M\s*[T7I1]\b/g, 'GMT')
+            .replace(/\bG[HNM]\s*T\b/g, 'GMT')
+            .replace(/\bG\s*M\s*7\b/g, 'GMT')
+            .replace(/\bU\s*T\s*C\b/g, 'UTC')
+            .replace(/\bU[7T]\s*C\b/g, 'UTC')
+            .replace(/(?:GMT|UTC)\s*\+\s*B\b/g, 'GMT+8')
+            .replace(/(?:GMT|UTC)\s*\+\s*Q\b/g, 'GMT+9')
+            .replace(/(?:GMT|UTC)\s*\+\s*O\s*(\d{1,2})\b/g, 'GMT+$1')
+            .replace(/(?:GMT|UTC)\s*\+\s*[IL]\s*(\d)\b/g, 'GMT+1$1')
+            .replace(/(?:GMT|UTC)\s*\+\s*S\b/g, 'GMT+5');
+
+        const signedPatterns = [
+            /\b(?:GMT|UTC)\s*([+-])\s*(\d{1,2})\s*[:.]\s*([0-5]\d)\b/i,
+            /\b(?:GMT|UTC)\s*([+-])\s*(\d{1,2})([0-5]\d)\b/i,
+            /\b(?:GMT|UTC)\s*([+-])\s*0?(\d{1,2})\b/i
+        ];
+        for (const pattern of signedPatterns) {
+            const match = value.match(pattern);
+            if (!match) continue;
+            const parsed = lcstParseGmtHourMinute(match[1], match[2], match[3] || '');
+            if (parsed != null) return parsed;
         }
-        const detected = lcstParseGmtOffsetMinutes(rawText);
-        return detected == null ? LCST_HISTORY_DEFAULT_GMT_OFFSET_MINUTES : detected;
+
+        // Beberapa tampilan menulis "GMT 8" tanpa tanda plus.
+        const unsigned = value.match(/\b(?:GMT|UTC)\s*(0?\d|1[0-4])(?:\s*[:.]\s*([0-5]\d))?\b/i);
+        if (unsigned) {
+            const parsed = lcstParseGmtHourMinute('+', unsigned[1], unsigned[2] || '');
+            if (parsed != null) return parsed;
+        }
+        return null;
     }
 
-    function lcstNormalizeTimestampToWib(timestamp, sourceGmtOffsetMinutes) {
+    // Alias kompatibel dengan alur script pertama.
+    function lcstParseGmtOffsetMinutes(rawText) {
+        return lcstFindExplicitGmtOffsetMinutes(rawText);
+    }
+
+    function lcstGmtOffsetLabel(offsetMinutes) {
+        const total = Number(offsetMinutes);
+        const sign = total < 0 ? '-' : '+';
+        const absolute = Math.abs(total);
+        const hour = Math.floor(absolute / 60);
+        const minute = absolute % 60;
+        return 'GMT' + sign + hour + (minute ? ':' + String(minute).padStart(2, '0') : '');
+    }
+
+    function lcstNormalizeTimestampToWib(timestamp, sourceGmtOffsetMinutes, evidenceText) {
         if (!timestamp || !timestamp.hasTime) return timestamp;
-        const sourceOffset = lcstResolveSourceGmtOffsetMinutes(timestamp.rawText || '', sourceGmtOffsetMinutes);
-        const sourceWallAsUtcMs = Date.UTC(
-            Number(timestamp.year),
-            Number(timestamp.month) - 1,
-            Number(timestamp.day),
-            Number(timestamp.hour),
-            Number(timestamp.minute),
-            Number(timestamp.second) || 0
-        );
-        // Wall-clock sumber -> instant UTC -> wall-clock GMT+7.
-        const utcInstantMs = sourceWallAsUtcMs - sourceOffset * 60000;
-        const targetWall = new Date(utcInstantMs + LCST_TARGET_GMT_OFFSET_MINUTES * 60000);
+        const detectedOffset = lcstFindExplicitGmtOffsetMinutes(timestamp.rawText || '');
+        const suppliedOffset = sourceGmtOffsetMinutes != null &&
+            lcstIsValidGmtOffsetMinutes(Number(sourceGmtOffsetMinutes))
+            ? Number(sourceGmtOffsetMinutes)
+            : null;
+        const sourceOffset = suppliedOffset != null
+            ? suppliedOffset
+            : (detectedOffset != null ? detectedOffset : LCST_HISTORY_DEFAULT_GMT_OFFSET_MINUTES);
+        const timezoneExplicit = suppliedOffset != null || detectedOffset != null;
+
+        // Gunakan waktu asli agar konversi zona tidak pernah diterapkan dua kali.
+        const base = timestamp.originalTimestamp || {
+            year: timestamp.year,
+            month: timestamp.month,
+            day: timestamp.day,
+            hour: timestamp.hour,
+            minute: timestamp.minute,
+            second: timestamp.second || 0
+        };
+        const shiftedMs = Date.UTC(
+            Number(base.year),
+            Number(base.month) - 1,
+            Number(base.day),
+            Number(base.hour),
+            Number(base.minute),
+            Number(base.second) || 0
+        ) + (LCST_TARGET_GMT_OFFSET_MINUTES - sourceOffset) * 60000;
+        const targetWall = new Date(shiftedMs);
         const year = targetWall.getUTCFullYear();
         const month = targetWall.getUTCMonth() + 1;
         const day = targetWall.getUTCDate();
@@ -4410,23 +4467,34 @@
         const second = targetWall.getUTCSeconds();
         const valid = lcstValidDateParts(year, month, day);
         if (!valid) return timestamp;
+
         return {
             ...timestamp,
             dateKey: valid.dateKey,
             year, month, day, hour, minute, second,
             minutesOfDay: hour * 60 + minute,
             hasTime: true,
-            sourceDateKey: timestamp.dateKey,
-            sourceYear: timestamp.year,
-            sourceMonth: timestamp.month,
-            sourceDay: timestamp.day,
-            sourceHour: timestamp.hour,
-            sourceMinute: timestamp.minute,
-            sourceSecond: timestamp.second,
+            originalTimestamp: {
+                year: Number(base.year),
+                month: Number(base.month),
+                day: Number(base.day),
+                hour: Number(base.hour),
+                minute: Number(base.minute),
+                second: Number(base.second) || 0
+            },
+            sourceDateKey: String(base.year).padStart(4, '0') + String(base.month).padStart(2, '0') + String(base.day).padStart(2, '0'),
             sourceGmtOffsetMinutes: sourceOffset,
+            sourceGmtLabel: lcstGmtOffsetLabel(sourceOffset),
             targetGmtOffsetMinutes: LCST_TARGET_GMT_OFFSET_MINUTES,
-            timezoneAdjusted: sourceOffset !== LCST_TARGET_GMT_OFFSET_MINUTES
+            normalizedGmtLabel: 'GMT+7',
+            timezoneAdjusted: sourceOffset !== LCST_TARGET_GMT_OFFSET_MINUTES,
+            timezoneExplicit,
+            timezoneEvidence: String(evidenceText || timestamp.rawText || '').trim().slice(0, 300)
         };
+    }
+
+    function lcstApplySourceGmtOffset(timestamp, sourceGmtOffsetMinutes, evidenceText) {
+        return lcstNormalizeTimestampToWib(timestamp, sourceGmtOffsetMinutes, evidenceText);
     }
 
     function lcstLooksLikeTimestampText(rawText) {
@@ -4698,12 +4766,39 @@
         if (!timestamp) return '-';
         const dateText = lcstFormatClaimDate(timestamp);
         if (!timestamp.hasTime) return dateText + ' • jam tidak terbaca';
-        return dateText + ' ' + String(timestamp.hour).padStart(2, '0') + ':' + String(timestamp.minute).padStart(2, '0') + ' WIB (GMT+7)';
+        const base = dateText + ' ' +
+            String(timestamp.hour).padStart(2, '0') + ':' +
+            String(timestamp.minute).padStart(2, '0');
+        if (timestamp.timezoneAdjusted) {
+            const original = timestamp.originalTimestamp || {};
+            const originalText = Number.isInteger(original.hour) && Number.isInteger(original.minute)
+                ? String(original.hour).padStart(2, '0') + ':' + String(original.minute).padStart(2, '0')
+                : '-';
+            return base + ' WIB/GMT+7 (asli ' + originalText + ' ' + (timestamp.sourceGmtLabel || '-') + ')';
+        }
+        return base + ' WIB/GMT+7' + (timestamp.timezoneExplicit ? '' : ' • zona tidak terbaca');
     }
 
     function lcstFormatClaimDeadline(status) {
         if (!status || !status.deadlineDate) return '-';
         return lcstFormatClaimDate(status.deadlineDate) + ' 02.00 WIB';
+    }
+
+    function lcstUtcDayToDateInfo(utcDay) {
+        const value = new Date(Number(utcDay) * 86400000);
+        return {
+            year: value.getUTCFullYear(),
+            month: value.getUTCMonth() + 1,
+            day: value.getUTCDate(),
+            dateKey: String(value.getUTCFullYear()).padStart(4, '0') +
+                String(value.getUTCMonth() + 1).padStart(2, '0') +
+                String(value.getUTCDate()).padStart(2, '0')
+        };
+    }
+
+    function lcstClaimStatusMessage(status) {
+        if (!status) return 'Tidak dapat claim.';
+        return status.reason || 'Tidak dapat claim karena tidak memenuhi aturan waktu.';
     }
 
     function lcstFormatCurrentWib(nowValue) {
@@ -4741,26 +4836,66 @@
                 nowWib,
                 onlineTimeSource: lcstGetOnlineTimeSourceLabel(),
                 dayDifference: null,
-                reason: ''
+                reasonCode: 'NO_DATE',
+                reason: '',
+                ruleText: 'Tanggal belum terbaca; lakukan pemeriksaan manual.'
             };
         }
 
         const claimDay = Math.floor(Date.UTC(claimDate.year, claimDate.month - 1, claimDate.day) / 86400000);
-        const deadlineUtcDay = claimDay + 1;
-        const deadlineUtcDate = new Date(deadlineUtcDay * 86400000);
-        const deadlineDate = {
-            year: deadlineUtcDate.getUTCFullYear(),
-            month: deadlineUtcDate.getUTCMonth() + 1,
-            day: deadlineUtcDate.getUTCDate(),
-            dateKey: String(deadlineUtcDate.getUTCFullYear()).padStart(4, '0') +
-                String(deadlineUtcDate.getUTCMonth() + 1).padStart(2, '0') +
-                String(deadlineUtcDate.getUTCDate()).padStart(2, '0')
-        };
         const todayDay = Math.floor(Date.UTC(nowWib.year, nowWib.month - 1, nowWib.day) / 86400000);
+        const yesterdayDay = todayDay - 1;
         const dayDifference = todayDay - claimDay;
-        const cutoffReached = todayDay > deadlineUtcDay ||
-            (todayDay === deadlineUtcDay && nowWib.minutesOfDay >= LCST_CLAIM_CUTOFF_MINUTES);
-        const expired = cutoffReached;
+        const deadlineDate = lcstUtcDayToDateInfo(claimDay + 1);
+        const transactionMinutes = timestamp && timestamp.hasTime &&
+            Number.isInteger(timestamp.minutesOfDay)
+            ? timestamp.minutesOfDay
+            : null;
+
+        let expired = false;
+        let reasonCode = '';
+        let reason = '';
+        let ruleText = '';
+
+        // Aturan utama:
+        // 1. Tanggal hari ini dapat claim.
+        // 2. Tanggal semalam hanya transaksi 23.00–23.59 WIB, dan claim wajib
+        //    dilakukan pada 00.00–01.59 WIB. Tepat 02.00 atau sesudahnya ditolak.
+        // 3. Tanggal lebih lama dari semalam dan tanggal masa depan ditolak.
+        if (claimDay === todayDay) {
+            reasonCode = 'TODAY_VALID';
+            ruleText = 'Tanggal hari ini dapat claim.';
+        } else if (claimDay === yesterdayDay) {
+            if (nowWib.minutesOfDay >= LCST_CLAIM_CUTOFF_MINUTES) {
+                expired = true;
+                reasonCode = 'YESTERDAY_AFTER_02';
+                reason = 'Tanggal semalam hanya dapat claim sebelum pukul 02.00 WIB.';
+                ruleText = 'Batas tanggal semalam adalah 01.59 WIB; mulai 02.00 WIB tidak dapat claim.';
+            } else if (transactionMinutes == null) {
+                expired = true;
+                reasonCode = 'YESTERDAY_TIME_NOT_READABLE';
+                reason = 'Jam transaksi tanggal semalam belum terbaca.';
+                ruleText = 'Tanggal semalam hanya bisa claim jika waktu hasil normalisasi WIB terbaca pada 23.00–23.59.';
+            } else if (transactionMinutes < LCST_NIGHT_CLAIM_START_MINUTES) {
+                expired = true;
+                reasonCode = 'YESTERDAY_BEFORE_23_BLOCKED';
+                reason = 'Tanggal semalam tidak dapat claim untuk transaksi sebelum pukul 23.00 WIB.';
+                ruleText = 'Yang dapat claim untuk tanggal semalam hanya transaksi 23.00–23.59 WIB.';
+            } else {
+                reasonCode = 'YESTERDAY_2300_2359_VALID';
+                ruleText = 'Tanggal semalam masih dapat claim: transaksi 23.00–23.59 WIB dan sekarang belum 02.00 WIB.';
+            }
+        } else if (claimDay < yesterdayDay) {
+            expired = true;
+            reasonCode = 'OLDER_THAN_YESTERDAY';
+            reason = 'Tanggal transaksi lebih lama dari tanggal semalam dan tidak dapat claim.';
+            ruleText = 'Hanya tanggal hari ini atau tanggal semalam pada 23.00–23.59 WIB yang dapat claim.';
+        } else {
+            expired = true;
+            reasonCode = 'FUTURE_DATE';
+            reason = 'Tanggal transaksi berada setelah tanggal WIB sekarang dan tidak dapat claim.';
+            ruleText = 'Tanggal transaksi tidak boleh melebihi tanggal WIB sekarang.';
+        }
 
         return {
             expired,
@@ -4773,10 +4908,13 @@
             onlineTimeSource: lcstGetOnlineTimeSourceLabel(),
             dayDifference,
             deadlineDate,
-            cutoffReached,
-            reason: expired
-                ? 'Tidak dapat claim, sudah melewati batas waktu claim pukul 02.00 WIB.'
-                : ''
+            cutoffReached: expired && reasonCode === 'YESTERDAY_AFTER_02',
+            nightWindowActive: nowWib.minutesOfDay < LCST_CLAIM_CUTOFF_MINUTES,
+            operationalDate: lcstUtcDayToDateInfo(todayDay),
+            operationalUtcDay: todayDay,
+            reasonCode,
+            reason,
+            ruleText
         };
     }
 
@@ -4795,6 +4933,7 @@
     let lcstLastWorkerPct = -1;
     let lcstDashboardYieldCounter = 0;
     const lcstPreparedBaseCache = new WeakMap();
+    const lcstTimezoneOffsetCache = new WeakMap();
 
     // Cache hanya mempercepat pemuatan/scan ulang. Pemilihan gambar, marker,
     // crop, paket, dan validasi periode tetap memakai cara kerja V5.5.1.
@@ -4802,10 +4941,10 @@
     const lcstArrangeCanvasCache = new Map();
     const lcstImageAnalysisCache = new Map();
     const lcstPeriodResultCache = new Map();
-    const LCST_BLOB_CACHE_LIMIT = 24;
-    const LCST_ARRANGE_CANVAS_CACHE_LIMIT = 24;
-    const LCST_ANALYSIS_CACHE_LIMIT = 24;
-    const LCST_RESULT_CACHE_LIMIT = 24;
+    const LCST_BLOB_CACHE_LIMIT = 32;
+    const LCST_ARRANGE_CANVAS_CACHE_LIMIT = 32;
+    const LCST_ANALYSIS_CACHE_LIMIT = 32;
+    const LCST_RESULT_CACHE_LIMIT = 32;
     let lcstWorkerWarmupStarted = false;
     let lcstWorkerGeneration = 0;
 
@@ -4934,13 +5073,15 @@
                 tessedit_char_whitelist: LCST_NUMERIC_OCR_WHITELIST,
                 preserve_interword_spaces: '1',
                 user_defined_dpi: '300',
-                classify_bln_numeric_mode: '1'
+                classify_bln_numeric_mode: '1',
+                tessedit_pageseg_mode: '6'
             });
             if (workerGeneration !== lcstWorkerGeneration) {
                 try { await worker.terminate(); } catch (e) {}
                 throw new Error('Persiapan OCR dibatalkan.');
             }
-            lcstWorkerPsm = null;
+            lcstWorkerPsmByWorker.set(worker, '6');
+            lcstWorkerPsm = '6';
             lcstSharedWorker = worker;
             return worker;
         })();
@@ -4974,13 +5115,14 @@
                 tessedit_char_whitelist: LCST_NUMERIC_OCR_WHITELIST,
                 preserve_interword_spaces: '1',
                 user_defined_dpi: '300',
-                classify_bln_numeric_mode: '1'
+                classify_bln_numeric_mode: '1',
+                tessedit_pageseg_mode: '6'
             });
             if (workerGeneration !== lcstWorkerGeneration) {
                 try { await worker.terminate(); } catch (e) {}
                 throw new Error('Persiapan OCR paket kedua dibatalkan.');
             }
-            lcstWorkerPsmByWorker.delete(worker);
+            lcstWorkerPsmByWorker.set(worker, '6');
             lcstSecondaryWorker = worker;
             return worker;
         })();
@@ -5015,13 +5157,14 @@
                 tessedit_char_whitelist: LCST_NUMERIC_OCR_WHITELIST,
                 preserve_interword_spaces: '1',
                 user_defined_dpi: '300',
-                classify_bln_numeric_mode: '1'
+                classify_bln_numeric_mode: '1',
+                tessedit_pageseg_mode: '6'
             });
             if (workerGeneration !== lcstWorkerGeneration) {
                 try { await worker.terminate(); } catch (e) {}
                 throw new Error('Persiapan OCR metadata dibatalkan.');
             }
-            lcstWorkerPsmByWorker.delete(worker);
+            lcstWorkerPsmByWorker.set(worker, '6');
             lcstMetadataWorker = worker;
             return worker;
         })();
@@ -5054,13 +5197,14 @@
                 tessedit_char_whitelist: LCST_NUMERIC_OCR_WHITELIST,
                 preserve_interword_spaces: '1',
                 user_defined_dpi: '300',
-                classify_bln_numeric_mode: '1'
+                classify_bln_numeric_mode: '1',
+                tessedit_pageseg_mode: '6'
             });
             if (workerGeneration !== lcstWorkerGeneration) {
                 try { await worker.terminate(); } catch (e) {}
                 throw new Error('Persiapan OCR waktu dibatalkan.');
             }
-            lcstWorkerPsmByWorker.delete(worker);
+            lcstWorkerPsmByWorker.set(worker, '6');
             lcstTimestampWorker = worker;
             return worker;
         })();
@@ -5080,25 +5224,32 @@
         if (lcstWorkerWarmupStarted || (primaryReady && secondaryReady && metadataReady && timestampReady)) return;
         lcstWorkerWarmupStarted = true;
         setTimeout(() => {
-            const jobs = [
-                getSharedOCRWorker(null).catch((err) => console.warn('[LCST OCR warmup]', err))
-            ];
-            if (LCST_DUAL_PACKAGE_OCR) {
-                jobs.push(
-                    getSecondaryOCRWorker().catch((err) => console.warn('[LCST OCR second warmup]', err))
-                );
-            }
-            if (LCST_TURBO_PARALLEL_OCR) {
-                jobs.push(
-                    getMetadataOCRWorker().catch((err) => console.warn('[LCST OCR metadata warmup]', err))
-                );
-            }
-            if (LCST_TURBO_TIMESTAMP_WORKER) {
-                jobs.push(
-                    getTimestampOCRWorker().catch((err) => console.warn('[LCST OCR time warmup]', err))
-                );
-            }
-            Promise.allSettled(jobs)
+            // V7.4 RESPONSIVE WARMUP: primary disiapkan lebih dahulu agar browser
+            // tidak mengompilasi beberapa worker berat pada detik yang sama. Setelah
+            // primary siap, seluruh helper perangkat kuat disiapkan paralel. Ketika
+            // tombol SCAN ditekan worker tanggal/GMT sudah siap tanpa memblokir UI.
+            (async () => {
+                await getSharedOCRWorker(null)
+                    .catch((err) => console.warn('[LCST OCR warmup]', err));
+
+                const helpers = [];
+                if (LCST_DUAL_PACKAGE_OCR) {
+                    helpers.push(
+                        getSecondaryOCRWorker().catch((err) => console.warn('[LCST OCR second warmup]', err))
+                    );
+                }
+                if (LCST_TURBO_PARALLEL_OCR) {
+                    helpers.push(
+                        getMetadataOCRWorker().catch((err) => console.warn('[LCST OCR metadata warmup]', err))
+                    );
+                }
+                if (LCST_TURBO_TIMESTAMP_WORKER) {
+                    helpers.push(
+                        getTimestampOCRWorker().catch((err) => console.warn('[LCST OCR time warmup]', err))
+                    );
+                }
+                await Promise.allSettled(helpers);
+            })()
                 .finally(() => { lcstWorkerWarmupStarted = false; });
         }, 0);
     }
@@ -5221,10 +5372,15 @@
         const task = (async () => {
             const base = await getArrangeImageCanvas(key);
             const marker = detectDoubleOrangeMarker(base.sourceCanvas);
+            const visualFingerprint = lcstMeasureScreenshotVisuals(base.sourceCanvas).visualFingerprint || '';
             return {
                 blobUrl: base.blobUrl,
                 sourceCanvas: base.sourceCanvas,
-                marker
+                marker,
+                markerCandidates: marker && Array.isArray(marker.candidates)
+                    ? marker.candidates.slice()
+                    : (marker ? [marker] : []),
+                visualFingerprint
             };
         })();
 
@@ -5563,6 +5719,12 @@
                 }
                 completed++;
                 if (typeof onProgress === 'function') onProgress(completed, list.length);
+                // Beri browser satu kesempatan menggambar setelah setiap dua analisis.
+                // Pemilihan tetap cepat, tetapi panel tidak terasa membeku saat 8–12
+                // screenshot sedang diukur/dideteksi marker-nya.
+                if (completed < list.length && completed % 2 === 0) {
+                    await waitForChatPaint(0);
+                }
             }
         };
 
@@ -5739,7 +5901,7 @@
         if (list.length !== target * 3) return null;
 
         // Dynamic programming: tepat target Permainan, Riwayat, dan Kemenangan.
-        // V6.4.1 menambahkan constraint identitas visual untuk WIN bila alternatif tersedia.
+        // Pada jalur >6, kandidat sudah dideduplikasi sebelum fungsi ini dipanggil.
         const enforceDistinctWins = lcstCanEnforceDistinctWins(list, target);
         let states = new Map();
         const initial = { score: 0, roles: [], winKeys: [], g: 0, h: 0, w: 0 };
@@ -5800,7 +5962,20 @@
     const LCST_MAX_SELECTED_IMAGES = 6;
     const LCST_MAX_SELECTED_PACKAGES = 2;
     // Kumpulkan kandidat ekstra, tetapi dashboard/output akhir tetap 6 gambar.
+    // Buffer 12 kandidat memberi ruang untuk membuang URL/fingerprint duplikat dari
+    // paket pertama dan kedua tanpa harus menjalankan deep scan kedua kali.
     const LCST_SCAN_CANDIDATE_LIMIT = 12;
+
+    function lcstStableImageSourceKey(src) {
+        const value = String(src || '').trim();
+        if (!value) return '';
+        try {
+            const u = new URL(value, location.href);
+            return 'url:' + u.origin + u.pathname;
+        } catch (e) {
+            return 'url:' + value.split('#')[0].split('?')[0];
+        }
+    }
 
     function lcstDistinctImageKey(item) {
         if (!item) return '';
@@ -5810,12 +5985,42 @@
         if (!src) return 'index:' + String(item.index == null ? '' : item.index);
         // Bila fingerprint gagal dibuat, hilangkan query/hash CDN agar URL gambar yang sama
         // dengan token berbeda tetap dianggap satu screenshot.
-        try {
-            const u = new URL(src, location.href);
-            return 'url:' + u.origin + u.pathname;
-        } catch (e) {
-            return 'url:' + src.split('#')[0].split('?')[0];
+        return lcstStableImageSourceKey(src);
+    }
+
+    function lcstCountDistinctImageKeys(items) {
+        const keys = new Set();
+        (items || []).forEach((item) => {
+            const key = lcstDistinctImageKey(item);
+            if (key) keys.add(key);
+        });
+        return keys.size;
+    }
+
+    function lcstDeduplicateAnalysisItems(items) {
+        const byContent = new Map();
+        (items || []).forEach((item) => {
+            if (!item) return;
+            const key = lcstDistinctImageKey(item) || ('index:' + item.index);
+            const previous = byContent.get(key);
+            // Kandidat paling baru dipertahankan. Analisis visual gambar duplikat sama,
+            // sedangkan indeks terbaru lebih cocok dengan alur chat terbaru-dulu.
+            if (!previous || Number(item.index) >= Number(previous.index)) {
+                byContent.set(key, item);
+            }
+        });
+        return Array.from(byContent.values()).sort((a, b) => a.index - b.index);
+    }
+
+    function lcstHasDuplicateStableSources(images) {
+        const seen = new Set();
+        for (const src of images || []) {
+            const key = lcstStableImageSourceKey(src);
+            if (!key) continue;
+            if (seen.has(key)) return true;
+            seen.add(key);
         }
+        return false;
     }
 
     function lcstLikelyWinCandidate(item) {
@@ -5855,8 +6060,13 @@
     }
 
     function lcstAssignScreenshotRolesWithLimit(items, targetRows) {
-        const list = Array.isArray(items) ? items : [];
+        const rawList = Array.isArray(items) ? items : [];
         const target = Math.max(1, Number(targetRows) || 1);
+        // Deduplikasi dilakukan sebelum DP. Ini menjamin semua role antarpaket unik
+        // sekaligus menghindari ledakan kombinasi saat kandidat berjumlah 12.
+        const list = lcstCountDistinctImageKeys(rawList) >= target * 3
+            ? lcstDeduplicateAnalysisItems(rawList)
+            : rawList;
         if (list.length < target * 3) return null;
 
         // Bila tersedia >=2 screenshot Kemenangan Total yang benar-benar berbeda,
@@ -6108,6 +6318,9 @@
         const list = Array.isArray(images) ? images.slice() : [];
         if (!(list.length === 3 || list.length === 6)) return null;
         if (getPackageSizeFromImages(list) !== 3) return null;
+        // Jangan memakai fast-path bila URL stabil sudah menunjukkan gambar yang
+        // sama. Jalur analisis lengkap harus mendapat kesempatan membuang duplikat.
+        if (lcstHasDuplicateStableSources(list)) return null;
 
         const historyIndexes = [];
         for (let base = 0; base < list.length; base += 3) historyIndexes.push(base + 1);
@@ -6559,26 +6772,63 @@
 
         if (!allMarkers.length) return null;
 
-        // Deduplikasi kandidat dari tiga profil warna.
+        // Pair selalu diprioritaskan. Single anchor hanya menjadi fallback.
+        // Urutan kualitas diterapkan SEBELUM deduplikasi supaya kandidat pair tidak
+        // kalah dari single-anchor yang kebetulan mempunyai skor mentah lebih besar.
+        const markerQuality = (m) => {
+            let bonus = 0;
+            if (/component-pair/.test(m && m.source || '')) bonus = 42;
+            else if (m && m.source === 'merged-orange-band') bonus = 16;
+            return (Number(m && m.score) || 0) + bonus + (Number(m && m.confidence) || 0) * 0.08;
+        };
+
         const unique = [];
-        allMarkers.sort((a, b) => b.score - a.score);
+        allMarkers.sort((a, b) => markerQuality(b) - markerQuality(a));
         allMarkers.forEach(m => {
-            const duplicate = unique.some(u => Math.abs(u.centerX - m.centerX) < 8 * scaleUnit && Math.abs(u.centerY - m.centerY) < 7 * scaleUnit);
+            const duplicate = unique.some(u =>
+                Math.abs(u.centerX - m.centerX) < 8 * scaleUnit &&
+                Math.abs(u.centerY - m.centerY) < 7 * scaleUnit
+            );
             if (!duplicate) unique.push(m);
         });
+        unique.sort((a, b) => markerQuality(b) - markerQuality(a));
 
-        // Pair selalu diprioritaskan. Single anchor hanya menjadi fallback.
-        unique.sort((a, b) => {
-            const bonus = (m) => {
-                if (/component-pair/.test(m.source || '')) return 34;
-                if (m.source === 'merged-orange-band') return 12;
-                return 0;
-            };
-            return (b.score + bonus(b)) - (a.score + bonus(a));
+        // Satukan kandidat yang sebenarnya masih berada pada baris transaksi yang
+        // sama. Hasil akhirnya adalah daftar target berbeda (atas -> bawah), bukan
+        // daftar variasi deteksi dari bulatan yang sama.
+        const rowCandidates = [];
+        unique.forEach((candidate) => {
+            const rowTolerance = Math.max(
+                12 * scaleUnit,
+                (Number(candidate.height) || 1) * 1.65
+            );
+            const sameRow = rowCandidates.findIndex((existing) =>
+                Math.abs(existing.centerY - candidate.centerY) <= rowTolerance
+            );
+            if (sameRow < 0) {
+                rowCandidates.push(candidate);
+            } else if (markerQuality(candidate) > markerQuality(rowCandidates[sameRow])) {
+                rowCandidates[sameRow] = candidate;
+            }
         });
 
-        const mapped = mapMarkerToSource(unique[0], detectionScale);
-        mapped.layout = unique[0].layout || layout.name;
+        const mappedCandidates = rowCandidates
+            .slice()
+            .sort((a, b) => a.centerY - b.centerY || markerQuality(b) - markerQuality(a))
+            .map((candidate, index) => {
+                const mappedCandidate = mapMarkerToSource(candidate, detectionScale);
+                mappedCandidate.layout = candidate.layout || layout.name;
+                mappedCandidate.candidateIndex = index;
+                mappedCandidate.qualityScore = markerQuality(candidate);
+                return mappedCandidate;
+            });
+
+        const bestRaw = unique[0];
+        const mapped = mapMarkerToSource(bestRaw, detectionScale);
+        mapped.layout = bestRaw.layout || layout.name;
+        mapped.candidates = mappedCandidates;
+        mapped.candidateCount = mappedCandidates.length;
+        mapped.qualityScore = markerQuality(bestRaw);
         return mapped;
     }
 
@@ -6785,7 +7035,8 @@
         if (!crop) return { value: null, belowMin: false };
 
         const runPass = async (mode) => {
-            const prepared = renderPreparedVariant(crop, mode, false);
+            // Metadata taruhan tidak membutuhkan canvas besar fallback kode.
+            const prepared = renderPreparedVariant(crop, mode, false, 144);
             const result = await recognizePrepared(worker, prepared, 6);
             return parseBetOddsRecognition(result);
         };
@@ -6859,21 +7110,6 @@
                 top: Math.max(0, rowTop - height * 0.020),
                 width: Math.min(width, width * (layout.compact ? 0.54 : 0.58)),
                 height: Math.min(height, rowBottom + height * 0.020) - Math.max(0, rowTop - height * 0.020)
-            },
-            {
-                name: 'image-2-history-upper-dual',
-                left: 0,
-                top: Math.max(0, marker.top - height * (layout.compact ? 0.205 : 0.19)),
-                width: Math.min(width, width * 0.62),
-                height: Math.min(height * 0.235, marker.top + height * 0.015) -
-                    Math.max(0, marker.top - height * (layout.compact ? 0.205 : 0.19))
-            },
-            {
-                name: 'image-2-row-full-dual',
-                left: 0,
-                top: Math.max(0, rowTop - height * 0.026),
-                width,
-                height: Math.min(height, rowBottom + height * 0.026) - Math.max(0, rowTop - height * 0.026)
             }
         ];
         return variants
@@ -6881,20 +7117,33 @@
             .map((rect) => ({ name: rect.name, canvas: cropCanvas(sourceCanvas, rect) }));
     }
 
-    function buildClaimTimezoneHeaderCropCanvas(sourceCanvas) {
-        if (!sourceCanvas) return null;
+    function buildClaimTimezoneCropCanvases(sourceCanvas, marker) {
+        if (!sourceCanvas) return [];
         const width = sourceCanvas.width;
         const height = sourceCanvas.height;
-        // Header "Waktu (GMT+8)" berada di kiri atas. Crop dibuat cukup lebar
-        // untuk UI compact maupun classic, namun tetap kecil agar OCR cepat.
-        const rect = {
-            left: 0,
-            top: 0,
-            width: Math.min(width, Math.max(100, width * 0.38)),
-            height: Math.min(height, Math.max(55, height * 0.14))
-        };
-        if (rect.width < 70 || rect.height < 30) return null;
-        return cropCanvas(sourceCanvas, rect);
+        // V7.4 RAPID GMT: hanya dua area yang secara nyata memuat label GMT/WIB.
+        // Versi lama menyalin enam area (termasuk gambar penuh) walaupun sebagian
+        // besar tidak pernah membantu, sehingga klik SCAN terasa macet.
+        const rects = [
+            { name: 'timezone-top-left', left: 0, top: 0, width: width * 0.60, height: Math.max(40, height * 0.40) }
+        ];
+
+        if (marker) {
+            const markerHeight = Math.max(8, Number(marker.height) || 0, height * 0.008);
+            const top = Math.max(0, marker.top - Math.max(markerHeight * 4.2, height * 0.075));
+            const bottom = Math.min(height, marker.top + Math.max(markerHeight * 1.2, height * 0.025));
+            rects.unshift({
+                name: 'timezone-transaction-row',
+                left: 0,
+                top,
+                width,
+                height: Math.max(30, bottom - top)
+            });
+        }
+
+        return rects
+            .filter((rect) => rect.width >= 80 && rect.height >= 25)
+            .map((rect) => ({ name: rect.name, canvas: cropCanvas(sourceCanvas, rect) }));
     }
 
     async function lcstSetTimestampOcrMode(worker) {
@@ -6915,76 +7164,159 @@
         } catch (e) {}
     }
 
+    async function lcstReadExplicitTimezoneOffsetFromImage(sourceCanvas, marker, worker, knownRawParts) {
+        const combinedKnownText = (knownRawParts || []).join('\n');
+        const knownOffset = lcstFindExplicitGmtOffsetMinutes(combinedKnownText);
+        if (knownOffset != null) {
+            return { offsetMinutes: knownOffset, rawText: combinedKnownText, source: 'timestamp-raw' };
+        }
+
+        if (sourceCanvas && lcstTimezoneOffsetCache.has(sourceCanvas)) {
+            return lcstTimezoneOffsetCache.get(sourceCanvas);
+        }
+
+        const crops = buildClaimTimezoneCropCanvases(sourceCanvas, marker);
+        let resultInfo = null;
+        // V7.4 RAPID GMT: maksimal dua pass kecil. Jangan pernah OCR gambar penuh.
+        // Jalur umum tidak masuk ke sini karena GMT sudah ikut crop timestamp.
+        const passPlan = [];
+        [
+            { name: 'timezone-top-left', mode: 'soft', psm: 6 },
+            { name: 'timezone-transaction-row', mode: 'soft', psm: 11 }
+        ].forEach((pass) => {
+            const index = crops.findIndex((item) => item.name === pass.name);
+            if (index >= 0) passPlan.push({ index, mode: pass.mode, psm: pass.psm });
+        });
+
+        const usedPassKeys = new Set();
+        for (const pass of passPlan) {
+            const item = crops[pass.index];
+            if (!item) continue;
+            const key = item.name + '|' + pass.mode + '|' + pass.psm;
+            if (usedPassKeys.has(key)) continue;
+            usedPassKeys.add(key);
+            try {
+                const prepared = renderPreparedVariant(item.canvas, pass.mode, false, 132);
+                const result = await recognizePrepared(worker, prepared, pass.psm);
+                const raw = String(result && result.data && result.data.text || '');
+                const offset = lcstFindExplicitGmtOffsetMinutes(raw);
+                if (offset != null) {
+                    resultInfo = {
+                        offsetMinutes: offset,
+                        rawText: raw,
+                        source: item.name + '-' + pass.mode + '-psm' + pass.psm
+                    };
+                    break;
+                }
+            } catch (e) {}
+        }
+
+        if (!resultInfo) {
+            resultInfo = { offsetMinutes: null, rawText: combinedKnownText, source: 'not-detected' };
+        }
+        if (sourceCanvas) lcstTimezoneOffsetCache.set(sourceCanvas, resultInfo);
+        return resultInfo;
+    }
+
     async function readClaimTimestampFromSecondImage(sourceCanvas, marker, worker, fallbackPeriod, existingText) {
-        // V6.4.0: jangan pernah menganggap angka transaksi/periode sebagai tanggal.
-        // Timestamp gambar ke-2/5 harus dibaca dari kolom Waktu terlebih dahulu.
-        let parsed = null;
-        const crops = buildClaimTimestampCropCanvases(sourceCanvas, marker);
         const rawParts = [];
-        let sourceGmtOffsetMinutes = LCST_HISTORY_DEFAULT_GMT_OFFSET_MINUTES;
+        let bestTimestamp = null;
+        let explicitTimezone = null;
         let timestampModeActive = false;
+
+        const considerRawText = (raw, sourceName, confidence) => {
+            const textValue = String(raw || '');
+            if (textValue) rawParts.push((sourceName || 'ocr') + '\n' + textValue);
+            const zone = lcstFindExplicitGmtOffsetMinutes(textValue);
+            if (zone != null) {
+                explicitTimezone = {
+                    offsetMinutes: zone,
+                    rawText: textValue,
+                    source: sourceName || 'ocr'
+                };
+            }
+            const parsed = lcstParseImageTimestampText(textValue, fallbackPeriod);
+            if (parsed && parsed.hasTime && parsed.source !== 'period-date-fallback') {
+                parsed.source = sourceName || parsed.source;
+                parsed.confidence = Number(confidence) || parsed.confidence || 0;
+                if (!bestTimestamp || parsed.confidence > (bestTimestamp.confidence || 0)) {
+                    bestTimestamp = parsed;
+                }
+            }
+        };
+
+        // Teks lama hanya dipakai bila benar-benar terlihat seperti tanggal + jam.
+        if (lcstLooksLikeTimestampText(existingText || '')) {
+            considerRawText(existingText, 'existing-ocr', 0);
+        }
+
+        const crops = buildClaimTimestampCropCanvases(sourceCanvas, marker);
+        const runTimestampPass = async (item, psm, mode) => {
+            try {
+                // 132px cukup untuk karakter tanggal/GMT dan jauh lebih ringan
+                // daripada canvas gabungan 188px yang dipakai fallback kode.
+                const prepared = renderPreparedVariant(item.canvas, mode, false, 132);
+                const result = await recognizePrepared(worker, prepared, psm);
+                const raw = String(result && result.data && result.data.text || '');
+                considerRawText(raw, item.name + '-psm' + psm, Number(result && result.data && result.data.confidence) || 0);
+            } catch (e) {}
+        };
+
         try {
             await lcstSetTimestampOcrMode(worker);
             timestampModeActive = true;
 
-            // Baca header timezone satu kali. Bila OCR gagal, WAJIB fallback ke GMT+7.
-            // Jangan lagi menganggap GMT+8 karena dapat mengurangi 1 jam dan membuat
-            // transaksi tanggal hari ini salah terbaca sebagai tanggal semalam.
-            const timezoneCrop = buildClaimTimezoneHeaderCropCanvas(sourceCanvas);
-            if (timezoneCrop) {
-                for (const headerPass of [{ mode: 'soft', psm: 6 }, { mode: 'otsu', psm: 11 }]) {
-                    try {
-                        const preparedHeader = renderPreparedVariant(timezoneCrop, headerPass.mode, false);
-                        const headerResult = await recognizePrepared(worker, preparedHeader, headerPass.psm);
-                        const headerRaw = String(headerResult && headerResult.data && headerResult.data.text || '');
-                        rawParts.push('image-2-timezone-header-psm' + headerPass.psm + '\n' + headerRaw);
-                        const detectedOffset = lcstParseGmtOffsetMinutes(headerRaw);
-                        if (detectedOffset != null) {
-                            sourceGmtOffsetMinutes = detectedOffset;
-                            break;
-                        }
-                    } catch (e) {}
-                }
+            // V7.4 RAPID TIMESTAMP: satu crop kecil lebih dahulu. Crop kedua hanya
+            // dipakai bila tanggal/jam atau GMT belum lengkap; Otsu hanya memulihkan
+            // tanggal/jam yang gagal. Maksimal tiga pass, bukan 5+ seperti versi lama.
+            if (crops[0]) {
+                await runTimestampPass(crops[0], 6, 'soft');
+            }
+            if ((!bestTimestamp || !explicitTimezone) && crops[1]) {
+                await runTimestampPass(crops[1], 6, 'soft');
+            }
+            if (!bestTimestamp && crops[0]) {
+                await runTimestampPass(crops[0], 11, 'otsu');
             }
 
-            // Baru baca baris target Waktu yang sejajar dengan transaksi marker.
-            for (let i = 0; i < crops.length; i++) {
-                const item = crops[i];
-                const psmList = i === 0 ? [6, 11] : [6];
-                for (let p = 0; p < psmList.length; p++) {
-                    try {
-                        const prepared = renderPreparedVariant(item.canvas, p === 0 ? 'soft' : 'otsu', false);
-                        const result = await recognizePrepared(worker, prepared, psmList[p]);
-                        const raw = String(result && result.data && result.data.text || '');
-                        rawParts.push(item.name + '-psm' + psmList[p] + '\n' + raw);
-                        parsed = lcstParseImageTimestampText(raw, fallbackPeriod, null, sourceGmtOffsetMinutes);
-                        if (parsed && parsed.hasTime && parsed.source !== 'period-date-fallback') {
-                            parsed.source = item.name + '-psm' + psmList[p];
-                            parsed.confidence = Number(result && result.data && result.data.confidence) || 0;
-                            parsed.sourceGmtOffsetMinutes = sourceGmtOffsetMinutes;
-                            parsed.targetGmtOffsetMinutes = LCST_TARGET_GMT_OFFSET_MINUTES;
-                            return parsed;
-                        }
-                    } catch (e) {}
-                }
+            // Cari WIB/WITA/WIT atau GMT/UTC di berbagai area gambar. Ini mencegah
+            // waktu WITA/WIT dipakai mentah sebagai WIB.
+            if (!explicitTimezone) {
+                explicitTimezone = await lcstReadExplicitTimezoneOffsetFromImage(
+                    sourceCanvas,
+                    marker,
+                    worker,
+                    rawParts
+                );
             }
         } finally {
             if (timestampModeActive) await lcstRestoreNumericOcrMode(worker);
         }
 
-        // Gabungkan hasil crop khusus Waktu. Header hanya membantu timezone.
-        parsed = lcstParseImageTimestampText(rawParts.join('\n---\n'), fallbackPeriod, null, sourceGmtOffsetMinutes);
-        if (parsed && parsed.hasTime && parsed.source !== 'period-date-fallback') return parsed;
+        if (!bestTimestamp) {
+            bestTimestamp = lcstParseImageTimestampText(rawParts.join('\n---\n'), fallbackPeriod);
+        }
+        if (!bestTimestamp) bestTimestamp = lcstParseImageTimestampText('', fallbackPeriod);
 
-        // Hanya bila teks lama memang jelas mengandung JAM + TANGGAL, boleh dijadikan fallback.
-        // Ini mencegah kode 9/10 digit transaksi berubah menjadi tanggal palsu.
-        if (lcstLooksLikeTimestampText(existingText || '')) {
-            parsed = lcstParseImageTimestampText(existingText || '', fallbackPeriod, null, sourceGmtOffsetMinutes);
-            if (parsed && parsed.hasTime && parsed.source !== 'period-date-fallback') return parsed;
+        if (bestTimestamp && bestTimestamp.hasTime && explicitTimezone && explicitTimezone.offsetMinutes != null) {
+            bestTimestamp = lcstApplySourceGmtOffset(
+                bestTimestamp,
+                explicitTimezone.offsetMinutes,
+                explicitTimezone.rawText
+            );
+            bestTimestamp.timezoneExplicit = true;
+            bestTimestamp.timezoneDetectionSource = explicitTimezone.source;
         }
 
-        // Bila jam tidak terbaca, tanggal periode tetap menjadi fallback terakhir (tanpa manipulasi jam).
-        return lcstParseImageTimestampText('', fallbackPeriod, null, sourceGmtOffsetMinutes);
+        if (bestTimestamp && !bestTimestamp.timezoneExplicit) {
+            bestTimestamp.sourceGmtOffsetMinutes = LCST_HISTORY_DEFAULT_GMT_OFFSET_MINUTES;
+            bestTimestamp.sourceGmtLabel = 'GMT+7';
+            bestTimestamp.normalizedGmtLabel = 'GMT+7';
+            bestTimestamp.timezoneAdjusted = false;
+            bestTimestamp.timezoneDetectionSource = 'fallback-gmt7';
+        }
+
+        return bestTimestamp;
     }
 
     function exactTenDigitLinesFromRecognition(result) {
@@ -7111,13 +7443,18 @@
         }
         return out;
     }
-    function chooseUpscale(source, lineMode) {
+    function chooseUpscale(source, lineMode, targetHeightOverride) {
         // 95-110px tinggi baris sudah cukup untuk angka; versi lama 145-255px membebani CPU/RAM.
-        const targetHeight = lineMode ? 108 : 188;
+        const requestedHeight = Number(targetHeightOverride);
+        const targetHeight = Number.isFinite(requestedHeight) && requestedHeight >= 96
+            ? Math.min(220, requestedHeight)
+            : (lineMode ? 108 : 188);
         return Math.max(3.2, Math.min(7.5, targetHeight / Math.max(1, source.height)));
     }
-    function renderPreparedVariant(source, mode, lineMode) {
-        const cacheKey = lineMode ? 'line' : 'combined';
+    function renderPreparedVariant(source, mode, lineMode, targetHeightOverride) {
+        const requestedHeight = Number(targetHeightOverride);
+        const cacheKey = (lineMode ? 'line' : 'combined') +
+            (Number.isFinite(requestedHeight) ? '-' + Math.round(requestedHeight) : '');
         let cache = lcstPreparedBaseCache.get(source);
         if (!cache) {
             cache = {};
@@ -7126,7 +7463,7 @@
 
         let preparedBase = cache[cacheKey];
         if (!preparedBase) {
-            const scale = chooseUpscale(source, !!lineMode);
+            const scale = chooseUpscale(source, !!lineMode, targetHeightOverride);
             const base = upscaleCanvas(source, scale);
             const grayData = grayscaleInvertedData(base);
             preparedBase = {
@@ -8478,7 +8815,9 @@
     function lcstRenderHyperFastPrepared(source, mode) {
         // Khusus jalur pertama: gambar OCR dibuat jauh lebih kecil dari fallback PATEN.
         // Jika gagal, mesin lama tetap mengambil alih dengan preprocessing penuh.
-        const targetHeight = 104;
+        // Sedikit lebih tinggi meningkatkan keberhasilan 1-pass dan menghindari
+        // dua hingga belasan fallback yang jauh lebih mahal.
+        const targetHeight = 112;
         const scale = Math.max(1.15, Math.min(2.45, targetHeight / Math.max(1, source.height)));
         const base = upscaleCanvas(source, scale);
         const grayData = grayscaleInvertedData(base);
@@ -8568,8 +8907,9 @@
             }
 
             const picked = chooseFinalPeriod(topVotes, bottomVotes, 2);
-            if (!lcstFastPeriodReliable(picked, 62)) return null;
-            if ((marker.confidence || 0) < 54) return null;
+            const rowMinConfidence = (marker.confidence || 0) >= 82 ? 48 : 53;
+            if (!lcstFastPeriodReliable(picked, rowMinConfidence)) return null;
+            if ((marker.confidence || 0) < 50) return null;
 
             return {
                 period: picked.period,
@@ -8606,7 +8946,10 @@
             collectCombinedVotes(result, topVotes, bottomVotes, 'hyper-fast-soft', 5.2);
             const picked = chooseFinalPeriod(topVotes, bottomVotes, 1);
 
-            if (lcstFastPeriodReliable(picked, 52) && (marker.confidence || 0) >= 50) {
+            const instantMinConfidence = (marker.confidence || 0) >= 82
+                ? 40
+                : ((marker.confidence || 0) >= 65 ? 44 : 48);
+            if (lcstFastPeriodReliable(picked, instantMinConfidence) && (marker.confidence || 0) >= 48) {
                 return {
                     period: picked.period,
                     confidence: Math.max(80, Number(picked.confidence) || 0),
@@ -9239,8 +9582,57 @@
         return makeReturn(chooseFinalPeriod(topVotes, bottomVotes, usedPasses));
     }
 
+    function lcstSelectOcrMarker(analysis, markerSelection) {
+        const fallback = analysis && analysis.marker ? analysis.marker : null;
+        const candidates = analysis && Array.isArray(analysis.markerCandidates)
+            ? analysis.markerCandidates.filter(Boolean)
+            : (fallback ? [fallback] : []);
+        const selection = markerSelection && typeof markerSelection === 'object'
+            ? markerSelection
+            : null;
+        const total = Math.max(1, Number(selection && selection.totalOccurrences) || 1);
+        const ordinal = Math.max(0, Number(selection && selection.ordinal) || 0);
+
+        // Satu gambar target: tetap gunakan kandidat dengan kualitas tertinggi seperti
+        // versi sebelumnya. Pemilihan atas/bawah hanya aktif bila screenshot yang sama
+        // dipakai oleh lebih dari satu paket.
+        if (total <= 1) return fallback;
+
+        const quality = (marker) => Number(marker && marker.qualityScore) ||
+            (Number(marker && marker.score) || 0) + (Number(marker && marker.confidence) || 0) * 0.08;
+        const robust = candidates.filter((marker) =>
+            /component-pair/.test(marker && marker.source || '') ||
+            (marker && marker.source === 'merged-orange-band')
+        );
+        const pool = robust.length >= total ? robust : candidates;
+
+        // Ambil N baris terkuat, kemudian urutkan dari atas ke bawah. Paket pertama
+        // mengambil target atas; paket berikutnya wajib mengambil target berbeda.
+        const selectedRows = pool
+            .slice()
+            .sort((a, b) => quality(b) - quality(a))
+            .slice(0, total)
+            .sort((a, b) => Number(a.centerY) - Number(b.centerY));
+        const marker = selectedRows[ordinal] || null;
+        if (!marker) return null;
+        return {
+            ...marker,
+            selectedOccurrence: ordinal,
+            selectedOccurrenceCount: total
+        };
+    }
+
     async function ocrImagePeriod(src, onProgress, workerOverrides) {
-        const cacheKey = String(src || '');
+        const overrides = workerOverrides && typeof workerOverrides === 'object'
+            ? workerOverrides
+            : null;
+        const markerSelection = overrides && overrides.markerSelection
+            ? overrides.markerSelection
+            : null;
+        const cacheKey = String(src || '') + (markerSelection
+            ? '::marker-' + Math.max(0, Number(markerSelection.ordinal) || 0) + '-of-' +
+                Math.max(1, Number(markerSelection.totalOccurrences) || 1)
+            : '::marker-best');
         const cachedResult = lcstPeriodResultCache.get(cacheKey);
         if (cachedResult && cachedResult.period) {
             lcstPeriodResultCache.delete(cacheKey);
@@ -9249,9 +9641,6 @@
             return { ...cachedResult, cached: true };
         }
 
-        const overrides = workerOverrides && typeof workerOverrides === 'object'
-            ? workerOverrides
-            : null;
         const hasOverride = (key) => !!overrides && Object.prototype.hasOwnProperty.call(overrides, key);
 
         // Mulai semua pekerjaan bersamaan, tetapi PERIODE hanya menunggu image + worker utama.
@@ -9265,22 +9654,37 @@
         const timestampWorkerPromise = hasOverride('timestampWorker')
             ? Promise.resolve(overrides.timestampWorker)
             : getTimestampOCRWorker().catch(() => null);
+        const helperPeriodWorkerPromise = hasOverride('helperPeriodWorker')
+            ? Promise.resolve(overrides.helperPeriodWorker).catch(() => null)
+            : Promise.resolve(null);
 
         const [analysis, worker] = await Promise.all([analysisPromise, workerPromise]);
         if (!worker) throw new Error('Worker OCR periode tidak tersedia.');
         const sourceCanvas = analysis.sourceCanvas;
-        const marker = analysis.marker;
+        const marker = lcstSelectOcrMarker(analysis, markerSelection);
 
         if (!marker) {
+            const requestedTarget = markerSelection && Number(markerSelection.totalOccurrences) > 1
+                ? 'Target bulatan ke-' + (Math.max(0, Number(markerSelection.ordinal) || 0) + 1) +
+                    ' tidak tersedia. Paket ini dilarang memakai bulatan paket sebelumnya.'
+                : 'Dua tanda bulat belum terdeteksi.';
             return {
                 period: '', text: '', confidence: 0, markerFound: false,
                 source: 'strict-double-marker-v55',
-                error: 'Dua tanda bulat belum terdeteksi. Versi ini sudah menormalkan gambar besar, tetapi marker tetap tidak ditemukan.'
+                markerCandidateCount: analysis && analysis.markerCandidates
+                    ? analysis.markerCandidates.length
+                    : 0,
+                error: requestedTarget + ' Periksa Gambar 2/5 atau gunakan screenshot target lain.'
             };
         }
 
         if (onProgress) {
-            onProgress('Marker terkunci ' + marker.confidence + '% • ULTRA FAST membaca periode...');
+            onProgress(
+                'Marker ' + (marker.selectedOccurrenceCount > 1
+                    ? ((marker.selectedOccurrence || 0) + 1) + '/' + marker.selectedOccurrenceCount + ' '
+                    : '') +
+                'terkunci ' + marker.confidence + '% • ULTRA FAST membaca periode...'
+            );
         }
 
         // V6.4.3: metadata dimulai SEKARANG, bersamaan dengan OCR periode.
@@ -9289,64 +9693,105 @@
         const earlyMetadataPromise = (async () => {
             let betInfo = { value: null, belowMin: false };
             let claimTimestamp = null;
+            let betAttempted = false;
+            let timestampAttempted = false;
             const metadataWorker = await metadataWorkerPromise;
             const timestampWorker = await timestampWorkerPromise;
-            if (!metadataWorker) return { betInfo, claimTimestamp };
-            try {
-                if (timestampWorker && timestampWorker !== metadataWorker) {
-                    const meta = await Promise.all([
-                        readBetOddsForNotification(sourceCanvas, marker, metadataWorker),
-                        readClaimTimestampFromSecondImage(sourceCanvas, marker, timestampWorker, '', '')
-                    ]);
-                    betInfo = meta[0] || betInfo;
-                    claimTimestamp = meta[1] || null;
-                } else {
-                    // Tetap overlap dengan OCR periode, hanya dua metadata ini yang serial
-                    // pada satu helper worker. Primary worker tidak ikut terbebani.
-                    betInfo = await readBetOddsForNotification(sourceCanvas, marker, metadataWorker);
-                    claimTimestamp = await readClaimTimestampFromSecondImage(
-                        sourceCanvas, marker, metadataWorker, '', ''
-                    );
-                }
-            } catch (e) {}
-            return { betInfo, claimTimestamp };
+            if (!metadataWorker) {
+                return { betInfo, claimTimestamp, betAttempted, timestampAttempted };
+            }
+            if (timestampWorker && timestampWorker !== metadataWorker) {
+                betAttempted = true;
+                timestampAttempted = true;
+                const meta = await Promise.all([
+                    readBetOddsForNotification(sourceCanvas, marker, metadataWorker).catch(() => null),
+                    readClaimTimestampFromSecondImage(sourceCanvas, marker, timestampWorker, '', '').catch(() => null)
+                ]);
+                betInfo = meta[0] || betInfo;
+                claimTimestamp = meta[1] || null;
+            } else {
+                // Tetap overlap dengan OCR periode, hanya dua metadata ini yang serial
+                // pada satu helper worker. Kegagalan satu bagian tidak membatalkan lainnya.
+                betAttempted = true;
+                betInfo = await readBetOddsForNotification(sourceCanvas, marker, metadataWorker)
+                    .catch(() => betInfo);
+                timestampAttempted = true;
+                claimTimestamp = await readClaimTimestampFromSecondImage(
+                    sourceCanvas, marker, metadataWorker, '', ''
+                ).catch(() => null);
+            }
+            return { betInfo, claimTimestamp, betAttempted, timestampAttempted };
         })();
 
-        // Satu pass paling kecil dahulu. Jika gagal, langsung ke fallback PATEN.
-        // Stage FAST STRICT 2-pass v6.4.2 sengaja dilewati karena pada gambar sulit
-        // justru menambah dua OCR sebelum fallback utama.
+        // Satu pass paling kecil dahulu. Jika belum terbaca dan marker cukup kuat,
+        // coba dua baris crop kecil. Jalur ini jauh lebih ringan daripada fallback penuh;
+        // fallback lama tetap dipakai bila hasil cepat tidak benar-benar meyakinkan.
         let focused = await lcstQuickPeriodFromLockedMarker(sourceCanvas, marker, worker, onProgress);
+        if ((!focused || !focused.period) && Number(marker.confidence || 0) >= 52) {
+            const helperPeriodWorker = await helperPeriodWorkerPromise;
+            focused = await lcstQuickRowsFromLockedMarker(
+                sourceCanvas,
+                marker,
+                worker,
+                helperPeriodWorker,
+                onProgress
+            );
+        }
         if (!focused || !focused.period) {
             focused = await ocrMarkerLockedCode(sourceCanvas, marker, worker, onProgress);
         }
 
-        // Karena metadata sudah berjalan selama OCR kode, biasanya bagian ini hanya
-        // mengambil hasil yang sudah hampir/sepenuhnya selesai, bukan memulai dari nol.
-        const earlyMetadata = await earlyMetadataPromise;
-        let betInfo = earlyMetadata && earlyMetadata.betInfo
-            ? earlyMetadata.betInfo
-            : { value: null, belowMin: false };
-        let claimTimestamp = earlyMetadata ? (earlyMetadata.claimTimestamp || null) : null;
+        // Kode, tanggal, jam, dan GMT diselesaikan sebagai satu hasil. Pembacaan
+        // metadata tetap sudah dimulai paralel sejak OCR kode berjalan, jadi bagian
+        // ini biasanya tinggal mengambil hasil worker yang hampir selesai.
+        const completedMetadata = await (async () => {
+            const earlyMetadata = await earlyMetadataPromise;
+            let betInfo = earlyMetadata && earlyMetadata.betInfo
+                ? earlyMetadata.betInfo
+                : { value: null, belowMin: false };
+            let claimTimestamp = earlyMetadata ? (earlyMetadata.claimTimestamp || null) : null;
 
-        // Fallback kompatibilitas: hanya bagian metadata yang belum berhasil.
-        if (focused.period && (!betInfo || betInfo.value == null)) {
-            betInfo = await readBetOddsForNotification(sourceCanvas, marker, worker);
-        }
-        if ((!claimTimestamp || !claimTimestamp.hasTime) && lcstLooksLikeTimestampText(focused.text || '')) {
-            const parsedFallback = lcstParseImageTimestampText(
-                focused.text || '',
-                focused.period || '',
-                null,
-                LCST_HISTORY_DEFAULT_GMT_OFFSET_MINUTES
-            );
-            if (parsedFallback && parsedFallback.hasTime) claimTimestamp = parsedFallback;
-        }
-        if (!claimTimestamp || !claimTimestamp.hasTime) {
-            const safeTimestamp = await readClaimTimestampFromSecondImage(
-                sourceCanvas, marker, worker, focused.period || '', focused.text || ''
-            );
-            if (safeTimestamp) claimTimestamp = safeTimestamp;
-        }
+            // Bila kode sendiri gagal, jangan jalankan fallback waktu tambahan pada
+            // worker utama. Pengguna dapat scan ulang tanpa menunggu pass yang tidak
+            // akan menghasilkan output valid.
+            if (!focused.period) {
+                return {
+                    betOdds: betInfo ? betInfo.value : null,
+                    betBelowMin: !!(betInfo && betInfo.belowMin),
+                    claimTimestamp: claimTimestamp || null,
+                    claimTimestampText: claimTimestamp ? lcstFormatClaimTimestamp(claimTimestamp) : ''
+                };
+            }
+
+            // Fallback kompatibilitas: hanya bagian metadata yang belum berhasil.
+            if (focused.period && (!betInfo || betInfo.value == null) &&
+                !(earlyMetadata && earlyMetadata.betAttempted)) {
+                betInfo = await readBetOddsForNotification(sourceCanvas, marker, worker);
+            }
+            if ((!claimTimestamp || !claimTimestamp.hasTime) && lcstLooksLikeTimestampText(focused.text || '')) {
+                const parsedFallback = lcstParseImageTimestampText(
+                    focused.text || '',
+                    focused.period || '',
+                    null,
+                    LCST_HISTORY_DEFAULT_GMT_OFFSET_MINUTES
+                );
+                if (parsedFallback && parsedFallback.hasTime) claimTimestamp = parsedFallback;
+            }
+            if ((!claimTimestamp || !claimTimestamp.hasTime) &&
+                !(earlyMetadata && earlyMetadata.timestampAttempted)) {
+                const safeTimestamp = await readClaimTimestampFromSecondImage(
+                    sourceCanvas, marker, worker, focused.period || '', focused.text || ''
+                );
+                if (safeTimestamp) claimTimestamp = safeTimestamp;
+            }
+
+            return {
+                betOdds: betInfo ? betInfo.value : null,
+                betBelowMin: !!(betInfo && betInfo.belowMin),
+                claimTimestamp: claimTimestamp || null,
+                claimTimestampText: claimTimestamp ? lcstFormatClaimTimestamp(claimTimestamp) : ''
+            };
+        })();
 
         let finalResult;
         if (!focused.period && LCST_STRICT_DOUBLE_MARKER) {
@@ -9365,18 +9810,25 @@
                 confidence: focused.confidence || 0,
                 markerFound: true, markerConfidence: marker.confidence, marker,
                 preview: focused.preview || '', passes: focused.passes || 0,
-                source: focused.ultraFast
-                    ? 'ultra-scan-direct-v643'
-                    : 'double-marker-row-lock-v45',
+                source: focused.fastStrictRows
+                    ? 'fast-strict-row-v700'
+                    : (focused.ultraFast
+                        ? 'ultra-scan-direct-v643'
+                        : 'double-marker-row-lock-v45'),
                 error: focused.period ? '' : 'Kode belum terbaca.'
             };
         }
 
-        finalResult.betOdds = betInfo ? betInfo.value : null;
-        finalResult.betBelowMin = !!(betInfo && betInfo.belowMin);
-        finalResult.claimTimestamp = claimTimestamp || null;
-        finalResult.claimTimestampText = claimTimestamp ? lcstFormatClaimTimestamp(claimTimestamp) : '';
-
+        finalResult.betOdds = completedMetadata ? completedMetadata.betOdds : null;
+        finalResult.betBelowMin = !!(completedMetadata && completedMetadata.betBelowMin);
+        finalResult.claimTimestamp = completedMetadata ? (completedMetadata.claimTimestamp || null) : null;
+        finalResult.claimTimestampText = completedMetadata ? (completedMetadata.claimTimestampText || '') : '';
+        finalResult.markerCandidateCount = analysis && analysis.markerCandidates
+            ? analysis.markerCandidates.length
+            : 0;
+        finalResult.markerOccurrence = Number(marker.selectedOccurrence) || 0;
+        finalResult.markerOccurrenceCount = Number(marker.selectedOccurrenceCount) || 1;
+        finalResult.markerCenterY = Number(marker.centerY) || 0;
         if (finalResult.period) {
             lcstPeriodResultCache.set(cacheKey, finalResult);
             trimFastCache(lcstPeriodResultCache, LCST_RESULT_CACHE_LIMIT);
@@ -9413,7 +9865,7 @@
             for (let i = 0; i < count; i++) {
                 const val = values[i] || (scan.ocrPeriods && scan.ocrPeriods[i]) || placeholderForRow(i);
                 const hasError = scan.ocrMeta && scan.ocrMeta[i] && scan.ocrMeta[i].error && !(scan.ocrPeriods && scan.ocrPeriods[i]);
-                const inputPlaceholder = hasError ? 'OCR BELUM BERHASIL - KLIK SCAN DISINI ULANG' : ('Periode Paket ' + (i + 1));
+                const inputPlaceholder = hasError ? 'OCR BELUM BERHASIL - KLIK SCAN CEPAT ULANG' : ('Periode Paket ' + (i + 1));
                 html += '<input class="lcst-input lcst-period-input" id="lcst-prd-' + i + '" data-lcst-period-row="' + i + '" placeholder="' + cssEscapeText(inputPlaceholder) + '" value="' + cssEscapeText(val) + '"' + (hasError ? ' style="border-color:rgba(251,79,104,.45);color:#ffb7c5"' : '') + '>';
             }
             return html || '<input class="lcst-input lcst-period-input" id="lcst-prd-0" data-lcst-period-row="0" placeholder="Periode Paket 1" value="MENUNGGU OCR 1">';
@@ -9430,13 +9882,13 @@
                             <img id="lcst-header-logo-img" alt="" aria-hidden="true" decoding="async">
                         </div>
                         <div class="lcst-nova-brand-copy">
-                            <div class="lcst-nova-eyebrow">LINETOGEL BRIGHT RUBY EDITION</div>
-                            <h3 class="lcst-title">Scan Studio Bright <span class="lcst-version">5.7.7</span></h3>
-                            <div class="lcst-subtitle">Tampilan terang • User ID LiveChat → nama pemilik & nomor rekening otomatis</div>
+                            <div class="lcst-nova-eyebrow">LINETOGEL • AURORA PERFORMANCE</div>
+                            <h3 class="lcst-title">Scan Studio Turbo <span class="lcst-version">7.4</span></h3>
+                            <div class="lcst-subtitle">Rapid Unified OCR • kode + tanggal + jam + GMT tampil bersamaan</div>
                         </div>
                     </div>
                     <div class="lcst-nova-top-actions">
-                        <div class="lcst-nova-live-chip"><span></span> SYSTEM READY</div>
+                        <div class="lcst-nova-live-chip"><span></span> TURBO READY</div>
                         <button class="lcst-btn red lcst-nova-close" id="lcst-close" type="button">TUTUP <b>×</b></button>
                     </div>
                 </header>
@@ -9472,13 +9924,13 @@
                         </div>
                         <div class="lcst-nova-stat mode">
                             <span class="lcst-nova-stat-label">OCR MODE</span>
-                            <strong>ROW LOCK 9+10</strong>
-                            <small>Turbo OCR • periode + waktu dari gambar ke-2</small>
+                            <strong>FAST ROW LOCK 9+10</strong>
+                            <small>Direct pass cepat + fallback akurat</small>
                         </div>
                         <div class="lcst-nova-stat live">
                             <span class="lcst-nova-stat-label">WAKTU ONLINE WIB</span>
                             <strong id="lcst-live-time">${cssEscapeText(lcstFormatCurrentWib(lcstNowDate()))}</strong>
-                            <small>Patokan WIB sekarang • sinkron online otomatis • deadline 02.00 WIB</small>
+                            <small>Patokan WIB • tanggal semalam 23.00–23.59 hanya sampai sebelum 02.00</small>
                         </div>
                     </div>
                 </section>
@@ -9523,7 +9975,7 @@
                         <section class="lcst-card lcst-nova-guide">
                             <div class="lcst-nova-guide-title">PANDUAN CEPAT</div>
                             <div class="lcst-nova-guide-row"><span>↕</span><div><b>Susun otomatis</b><small>Permainan → Riwayat → Kemenangan Total</small></div></div>
-                            <div class="lcst-nova-guide-row"><span>◎</span><div><b>Target OCR</b><small>Gambar ke-2/5: periode, tanggal, jam • dinormalisasi ke GMT+7</small></div></div>
+                            <div class="lcst-nova-guide-row"><span>◎</span><div><b>Target OCR</b><small>Gambar target: periode, tanggal, jam, WIB/WITA/WIT • dinormalisasi ke WIB</small></div></div>
                             <div class="lcst-nova-guide-row"><span>⌫</span><div><b>Hapus gambar</b><small>Shift + klik atau tombol hapus</small></div></div>
                         </section>
                     </aside>
@@ -9538,7 +9990,7 @@
                                 </div>
                                 <button class="lcst-btn primary lcst-nova-scan-btn" id="lcst-ocr-period" type="button">
                                     <span class="lcst-nova-btn-icon">⌁</span>
-                                    <span><b>SCAN PERIODE</b><small>Turbo OCR siap</small></span>
+                                    <span><b>SCAN CEPAT</b><small>Fast OCR siap</small></span>
                                 </button>
                             </div>
                             <div id="lcst-empty-box" class="lcst-empty" style="display:${scan.images.length ? 'none' : 'block'}">
@@ -9577,7 +10029,7 @@
 
         const dashboardFallback = document.createElement('div');
         dashboardFallback.id = 'lcst-dashboard-logo-fallback';
-        dashboardFallback.innerHTML = 'LINETOGEL<small>BRIGHT RUBY EDITION</small>';
+        dashboardFallback.innerHTML = 'LINETOGEL<small>AURORA PERFORMANCE</small>';
 
         dashboardLogo.addEventListener('load', function () {
             panel.classList.add('lcst-dashboard-logo-loaded');
@@ -9615,6 +10067,7 @@
         scan.claimExpiredRows = scan.claimExpiredRows || [];
         scan.claimDeadlineByRow = scan.claimDeadlineByRow || [];
         scan.claimTimestampByRow = scan.claimTimestampByRow || [];
+        scan.metadataPendingRows = scan.metadataPendingRows || [];
         const state = {
             scan,
             dragIdx: -1,
@@ -9640,9 +10093,7 @@
             autoArrangeSeq: 0,
             claimDeadlineTimer: null,
             claimExpiredNotified: new Set(),
-            dragGhost: null,
-            sheetSending: false,
-            lastSheetResult: null
+            dragGhost: null
         };
 
         // Drag image transparan 1px yang benar-benar terpasang di DOM.
@@ -9726,10 +10177,10 @@
             copyBtn.disabled = allRowsBlocked && claimBlockedRows.length === 0;
             copyBtn.title = allRowsBlocked
                 ? (claimBlockedRows.length
-                    ? 'Klik untuk melihat notifikasi: waktu gambar ke-2 sudah melewati deadline 02.00 WIB'
+                    ? 'Klik untuk melihat alasan paket tidak memenuhi aturan tanggal/jam claim'
                     : 'Tidak dapat dicopy: semua paket memiliki Taruhan di bawah 1,60')
                 : (claimBlockedRows.length
-                    ? 'Paket dengan waktu gambar ke-2 yang melewati deadline 02.00 WIB otomatis tidak ikut dicopy'
+                    ? 'Paket yang tidak memenuhi aturan tanggal semalam 23.00–02.00 WIB otomatis tidak ikut dicopy'
                     : (betBlockedRows.length
                         ? 'Paket di bawah 1,60 otomatis tidak ikut dicopy'
                         : 'Salin output saat ini'));
@@ -9871,6 +10322,8 @@
             const status = claimStatus || (state.scan.claimDeadlineByRow && state.scan.claimDeadlineByRow[row]) || {};
             const imageTimeText = lcstFormatClaimTimestamp(status.imageTimestamp || status.claimDate);
             const deadlineText = lcstFormatClaimDeadline(status);
+            const reasonText = lcstClaimStatusMessage(status);
+            const ruleText = status.ruleText || 'Tanggal semalam hanya transaksi 23.00–23.59 WIB dan wajib diajukan sebelum 02.00 WIB.';
 
             // Notifikasi claim dibuat kecil/compact agar tidak menutupi layar.
             const toast = document.createElement('div');
@@ -9895,8 +10348,9 @@
 
             toast.innerHTML =
                 '<div style="font-size:16px;line-height:1.15;font-weight:1000;color:#b91c1c">TIDAK DAPAT CLAIM</div>' +
-                '<div style="margin-top:5px;font-size:13px;line-height:1.35;font-weight:900;color:#7f1d1d">PAKET ' + (row + 1) + ' • transaksi ' + cssEscapeText(imageTimeText) + ' WIB</div>' +
-                '<div style="margin-top:4px;font-size:12px;line-height:1.35;font-weight:800;color:#991b1b">Sudah melewati batas claim: ' + cssEscapeText(deadlineText) + '.</div>';
+                '<div style="margin-top:5px;font-size:13px;line-height:1.35;font-weight:900;color:#7f1d1d">PAKET ' + (row + 1) + ' • transaksi ' + cssEscapeText(imageTimeText) + '</div>' +
+                '<div style="margin-top:4px;font-size:12px;line-height:1.35;font-weight:800;color:#991b1b">' + cssEscapeText(reasonText) + '</div>' +
+                '<div style="margin-top:3px;font-size:11px;line-height:1.35;font-weight:700;color:#7f1d1d">' + cssEscapeText(ruleText) + ' • Deadline acuan: ' + cssEscapeText(deadlineText) + '.</div>';
 
             panel.appendChild(toast);
             setTimeout(() => {
@@ -10068,8 +10522,8 @@
             state.scan.claimExpiredRows[row] = !!status.expired;
             state.scan.claimDeadlineByRow[row] = status;
             input.title = status.expired
-                ? 'Tidak dapat claim: waktu gambar ke-2 ' + lcstFormatClaimTimestamp(status.imageTimestamp || status.claimDate) +
-                    ' sudah melewati deadline ' + lcstFormatClaimDeadline(status)
+                ? lcstClaimStatusMessage(status) + ' • Waktu gambar target: ' +
+                    lcstFormatClaimTimestamp(status.imageTimestamp || status.claimDate)
                 : (status.imageTimestamp
                     ? 'Waktu gambar ke-2: ' + lcstFormatClaimTimestamp(status.imageTimestamp) + ' • deadline ' + lcstFormatClaimDeadline(status)
                     : '');
@@ -10110,7 +10564,7 @@
                 input.style.color = '#91f5b7';
             } else if (state.scan.ocrMeta[i] && state.scan.ocrMeta[i].error) {
                 input.value = '';
-                input.placeholder = 'OCR BELUM BERHASIL - KLIK SCAN DISINI ULANG';
+                input.placeholder = 'OCR BELUM BERHASIL - KLIK SCAN CEPAT ULANG';
                 input.style.borderColor = 'rgba(251,79,104,.45)';
                 input.style.color = '#ffb7c5';
             }
@@ -10126,9 +10580,12 @@
             state.scan.claimExpiredRows = [];
             state.scan.claimDeadlineByRow = [];
             state.scan.claimTimestampByRow = [];
+            state.scan.metadataPendingRows = [];
             if (state.claimExpiredNotified) state.claimExpiredNotified.clear();
+            const outputAtScanStart = panel.querySelector('#lcst-output');
+            if (outputAtScanStart) outputAtScanStart.value = '';
             renderPeriodInputs(false);
-            setScanState('waiting', 'MENUNGGU SCAN', 'Gambar otomatis disusun • klik SCAN DISINI');
+            setScanState('waiting', 'MENUNGGU SCAN', 'Gambar otomatis disusun • klik SCAN CEPAT');
             if (reason) setOcrStatus(cssEscapeText(reason), 0);
         }
 
@@ -10232,6 +10689,7 @@
                     state.scan.claimExpiredRows = [];
                     state.scan.claimDeadlineByRow = [];
                     state.scan.claimTimestampByRow = [];
+                    state.scan.metadataPendingRows = [];
                     if (state.claimExpiredNotified) state.claimExpiredNotified.clear();
 
                     // Jika jumlah berubah (>6 menjadi 6), render ulang agar kartu ekstra benar-benar hilang.
@@ -10242,7 +10700,7 @@
                         'waiting',
                         'SIAP DI SCAN',
                         original.length > LCST_MAX_SELECTED_IMAGES
-                            ? 'MAX 6: Scatter • Riwayat/Target OCR • Kemenangan Total × 2 paket'
+                            ? 'MAX 6 UNIK: Scatter • Riwayat/Target OCR • Kemenangan Total × 2 paket'
                             : 'Otomatis: Scatter • Riwayat/Target OCR • Kemenangan Total'
                     );
                 }
@@ -10274,10 +10732,11 @@
             state.scan.claimExpiredRows = [];
             state.scan.claimDeadlineByRow = [];
             state.scan.claimTimestampByRow = [];
+            state.scan.metadataPendingRows = [];
             if (state.claimExpiredNotified) state.claimExpiredNotified.clear();
             panel.querySelector('#lcst-marker-text').textContent = newScan.markerText;
             panel.querySelector('#lcst-user-text').value = String(newScan.userId || '').trim().toLowerCase();
-            setScanState('waiting', 'MENUNGGU SCAN', 'Gambar otomatis disusun • klik SCAN DISINI');
+            setScanState('waiting', 'MENUNGGU SCAN', 'Gambar otomatis disusun • klik SCAN CEPAT');
             renderPeriodInputs(false);
             renderImages();
             updateOutput();
@@ -10312,7 +10771,7 @@
                         setOcrStatus(
                             '<b>' + state.scan.images.length + '</b> screenshot ditemukan dan otomatis disusun menjadi <b>' + rows + '</b> paket.<br>' +
                             '<span style="color:#15803d"><b>Urutan siap:</b> Permainan → Riwayat Permainan/Target OCR → Kemenangan Total.</span><br>' +
-                            'Sekarang langsung klik <b>SCAN DISINI</b>; tidak perlu menyusun gambar lagi.',
+                            'Sekarang langsung klik <b>SCAN CEPAT</b>; tidak perlu menyusun gambar lagi.',
                             34,
                             true
                         );
@@ -10444,13 +10903,15 @@
 
                     if (claimStatus.expired) {
                         badge.className = 'lcst-ocr-badge error';
-                        badge.textContent = '✕ TIDAK DAPAT CLAIM • TRANSAKSI ' +
+                        badge.textContent = '✕ TIDAK DAPAT CLAIM • ' + lcstClaimStatusMessage(claimStatus) + ' • TRANSAKSI ' +
                             (claimTime ? lcstFormatClaimTimestamp(claimTime) : lcstFormatClaimDate(claimStatus.claimDate)) +
                             ' • DEADLINE ' + lcstFormatClaimDeadline(claimStatus) +
                             ' • SEKARANG ' + lcstFormatCurrentWib(lcstNowDate());
                     } else {
                         badge.className = 'lcst-ocr-badge success';
-                        badge.textContent = '✓ CLAIM MASIH BERLAKU • ' + (meta && meta.confidence ? meta.confidence + '% • ' : '') + period +
+                        badge.textContent = '✓ CLAIM MASIH BERLAKU • ' + (meta && meta.markerOccurrenceCount > 1
+                            ? 'TARGET ' + (Number(meta.markerOccurrence || 0) + 1) + '/' + meta.markerOccurrenceCount + ' • '
+                            : '') + (meta && meta.confidence ? meta.confidence + '% • ' : '') + period +
                             (claimTime ? ' • TRANSAKSI ' + lcstFormatClaimTimestamp(claimTime) : ' • WAKTU BELUM TERBACA') +
                             (claimStatus.hasDate ? ' • DEADLINE ' + lcstFormatClaimDeadline(claimStatus) : '');
                     }
@@ -10528,7 +10989,10 @@
                 ocrBadge.dataset.lcstOcrBadgeRow = String(rowIdx);
                 if (period) {
                     ocrBadge.className = 'lcst-ocr-badge success';
-                    ocrBadge.textContent = '✓ BULAT 2 LOCK • ' + (meta && meta.confidence ? meta.confidence + '% • ' : '') + period;
+                    ocrBadge.textContent = '✓ ' + (meta && meta.markerOccurrenceCount > 1
+                        ? 'TARGET ' + (Number(meta.markerOccurrence || 0) + 1) + '/' + meta.markerOccurrenceCount
+                        : 'BULAT 2') + ' LOCK • ' +
+                        (meta && meta.confidence ? meta.confidence + '% • ' : '') + period;
                 } else if (meta && meta.error && isTarget) {
                     ocrBadge.className = 'lcst-ocr-badge error';
                     ocrBadge.textContent = '! ' + meta.error;
@@ -10620,7 +11084,10 @@
                 if (period) {
                     badge.className = 'lcst-ocr-badge success';
                     const claimTime = state.scan.claimTimestampByRow && state.scan.claimTimestampByRow[rowIdx];
-                    badge.textContent = '✓ BULAT 2 LOCK • ' + (meta && meta.confidence ? meta.confidence + '% • ' : '') + period +
+                    badge.textContent = '✓ ' + (meta && meta.markerOccurrenceCount > 1
+                        ? 'TARGET ' + (Number(meta.markerOccurrence || 0) + 1) + '/' + meta.markerOccurrenceCount
+                        : 'BULAT 2') + ' LOCK • ' +
+                        (meta && meta.confidence ? meta.confidence + '% • ' : '') + period +
                         (claimTime ? ' • WAKTU ' + lcstFormatClaimTimestamp(claimTime) : ' • WAKTU BELUM TERBACA');
                 } else if (meta && meta.error && isTarget) {
                     badge.className = 'lcst-ocr-badge error';
@@ -10681,111 +11148,6 @@
             });
         }
 
-        function lcstAccountLooksReadyForSheet() {
-            const input = panel.querySelector('#lcst-rek-all');
-            const parsed = parseRekNama(input ? input.value : '');
-            const nama = String(parsed.nama || '').trim();
-            const rek = String(parsed.rek || '').trim();
-            if (!nama || !rek) return false;
-            if (/^NAMA USER$/i.test(nama) || /^NO REKENING$/i.test(rek)) return false;
-            return true;
-        }
-
-        async function lcstEnsureAccountBeforeSheet() {
-            if (lcstAccountLooksReadyForSheet()) return true;
-
-            // Bila lookup rekening sedang berjalan, beri kesempatan menyelesaikan dulu.
-            const until = Date.now() + 6000;
-            while (!state.closed && state.bankLookupRunning && Date.now() < until) {
-                await new Promise(resolve => setTimeout(resolve, 250));
-                if (lcstAccountLooksReadyForSheet()) return true;
-            }
-
-            if (!state.closed && !state.bankLookupRunning && lcstValidLookupUserId(state.scan.userId)) {
-                await fillAccountFromAdmin(state.scan.userId, false);
-            }
-            return lcstAccountLooksReadyForSheet();
-        }
-
-        async function lcstAutoSendFinishedScanToSheet(okCount, totalRows) {
-            if (state.closed || state.sheetSending || !okCount) return;
-            state.sheetSending = true;
-            try {
-                if (!lcstSheetIsConfigured()) {
-                    setOcrStatus(
-                        'OCR selesai: <b style="color:#91f5b7">' + okCount + '</b> dari <b>' + totalRows + '</b> paket berhasil.<br>' +
-                        '<span style="color:#ffd27a;font-weight:900">AUTO SHEET BELUM AKTIF:</span> pasang URL Web App Apps Script yang berakhir <b>/exec</b> pada LCST_SHEET_WEBAPP_URL.',
-                        100,
-                        true
-                    );
-                    return;
-                }
-
-                setOcrStatus(
-                    'OCR selesai. Menyiapkan hasil valid untuk otomatis masuk ke Google Sheet kolom <b>D:J</b>...',
-                    100,
-                    true
-                );
-
-                const accountReady = await lcstEnsureAccountBeforeSheet();
-                if (!accountReady) {
-                    setOcrStatus(
-                        'OCR selesai, tetapi data belum dikirim ke Sheet karena <b>Nama/Rekening belum siap</b>.<br>' +
-                        'Periksa data rekening lalu tekan <b>SCAN DISINI</b> kembali untuk mencoba pengiriman otomatis.',
-                        100,
-                        true
-                    );
-                    return;
-                }
-
-                const sheetRows = lcstBuildSheetRows(state.scan);
-                if (!sheetRows.length) {
-                    setOcrStatus(
-                        'OCR selesai, tetapi tidak ada paket valid yang boleh dikirim ke Sheet. Paket gagal/di bawah 1,60/melewati deadline tetap tidak ditulis.',
-                        100,
-                        true
-                    );
-                    return;
-                }
-
-                const result = await lcstPostRowsToSheet(sheetRows);
-                state.lastSheetResult = result;
-
-                if (result.duplicate) {
-                    setScanState('success', 'BERHASIL DI SCAN', okCount + ' dari ' + totalRows + ' paket • Sheet sudah pernah tersimpan');
-                    setOcrStatus(
-                        'OCR selesai. Batch yang sama <b>sudah pernah berhasil masuk ke Google Sheet</b>, jadi tidak dikirim ulang agar tidak dobel.',
-                        100,
-                        true
-                    );
-                    return;
-                }
-
-                const inserted = Number(result.inserted || sheetRows.length) || sheetRows.length;
-                const startRow = Number(result.startRow || 0);
-                const endRow = Number(result.endRow || 0);
-                const rowText = startRow && endRow
-                    ? ('baris <b>' + startRow + (endRow !== startRow ? ('–' + endRow) : '') + '</b>')
-                    : '<b>baris kosong berikutnya</b>';
-                setScanState('success', 'BERHASIL DI SCAN', okCount + ' dari ' + totalRows + ' paket • ' + inserted + ' baris masuk Sheet');
-                setOcrStatus(
-                    'OCR selesai dan <b style="color:#91f5b7">' + inserted + ' baris berhasil otomatis masuk ke Google Sheet</b> pada ' + rowText + '.<br>' +
-                    'Tujuan: <b>D:J</b> • data lama tidak ditimpa.',
-                    100,
-                    true
-                );
-            } catch (err) {
-                setOcrStatus(
-                    'OCR selesai, tetapi <b style="color:#ffb7c5">pengiriman otomatis ke Google Sheet gagal</b>.<br>' +
-                    cssEscapeText(err && err.message ? err.message : String(err)),
-                    100,
-                    true
-                );
-            } finally {
-                state.sheetSending = false;
-            }
-        }
-
         async function runOcrPeriods() {
             if (state.ocrRunning || state.scanRunning || state.closed) return;
             if (!state.scan.images.length) {
@@ -10795,13 +11157,13 @@
                 return;
             }
 
-            setOcrStatus('HYPER FAST aktif. Menyiapkan pembacaan periode dari history setiap paket...', 36);
+            setOcrStatus('AURORA TURBO aktif. Menyiapkan pembacaan periode dari history setiap paket...', 36);
             state.ocrRunning = true;
-            setScanState('scanning', 'SEDANG DI SCAN', 'Menyiapkan OCR periode + waktu gambar ke-2/5 • hasil GMT+7');
+            setScanState('scanning', 'SEDANG DI SCAN', 'Membaca kode + tanggal + jam + GMT bersamaan • WIB/WITA/WIT dinormalisasi ke WIB');
             panel.classList.add('lcst-performance-mode');
             const btn = panel.querySelector('#lcst-ocr-period');
             if (btn) btn.disabled = true;
-            if (btn) btn.textContent = '◌ OCR HYPER FAST...';
+            if (btn) btn.textContent = '◌ SCAN TURBO...';
             const alwaysCopyBtn = panel.querySelector('#lcst-copy');
             if (alwaysCopyBtn) {
                 alwaysCopyBtn.disabled = false;
@@ -10818,10 +11180,29 @@
             state.scan.claimExpiredRows = [];
             state.scan.claimDeadlineByRow = [];
             state.scan.claimTimestampByRow = [];
+            state.scan.metadataPendingRows = new Array(rows).fill(true);
             if (state.claimExpiredNotified) state.claimExpiredNotified.clear();
+            const liveOutput = panel.querySelector('#lcst-output');
+            if (liveOutput) liveOutput.value = '';
 
             let ok = 0;
             let completedRows = 0;
+            const targetSourcesByRow = [];
+            for (let row = 0; row < rows; row++) {
+                const base = row * packageSize;
+                const preferredIdx = packageSize >= 2 ? base + 1 : base;
+                targetSourcesByRow[row] = state.scan.images[preferredIdx] || '';
+            }
+            // Analisis kedua target dimulai bersamaan dengan startup worker. Canvas,
+            // fingerprint, dan seluruh kandidat bulatan kemudian dipakai ulang oleh OCR.
+            const targetAnalysesPromise = Promise.all(targetSourcesByRow.map((src) =>
+                src ? getImageAnalysis(src).catch(() => null) : Promise.resolve(null)
+            ));
+            let markerSelectionByRow = targetSourcesByRow.map(() => ({
+                ordinal: 0,
+                totalOccurrences: 1,
+                identityKey: ''
+            }));
 
             const processRow = async (row, workerOverrides) => {
                 if (state.closed) return;
@@ -10836,6 +11217,7 @@
                         error: 'Gambar ke-2 paket tidak tersedia.',
                         confidence: 0
                     };
+                    state.scan.metadataPendingRows[row] = false;
                     completedRows++;
                     return;
                 }
@@ -10868,7 +11250,10 @@
                                 Math.min(94, overallBase + 7)
                             );
                         },
-                        workerOverrides
+                        {
+                            ...(workerOverrides || {}),
+                            markerSelection: markerSelectionByRow[row]
+                        }
                     );
                 } catch (err) {
                     result = {
@@ -10886,10 +11271,16 @@
                     confidence: result.confidence || 0,
                     markerConfidence: result.markerConfidence || 0,
                     markerFound: !!result.markerFound,
+                    markerCandidateCount: result.markerCandidateCount || 0,
+                    markerOccurrence: result.markerOccurrence || 0,
+                    markerOccurrenceCount: result.markerOccurrenceCount || 1,
                     source: result.source || '',
                     passes: result.passes || 0,
                     error: result.error || ''
                 };
+
+                state.scan.metadataPendingRows[row] = false;
+
                 state.scan.betOddsByRow[row] =
                     result.betOdds == null ? null : result.betOdds;
                 state.scan.betBelowMinRows[row] = !!result.betBelowMin;
@@ -10926,7 +11317,7 @@
                         '<br>Periode: <b style="color:#91f5b7">' +
                         cssEscapeText(result.period) + '</b> • keyakinan <b>' +
                         (result.confidence || 0) + '%</b>.' +
-                        '<br>Waktu gambar ke-2: <b>' +
+                        '<br>Tanggal/Jam/GMT gambar ke-2: <b>' +
                         cssEscapeText(result.claimTimestampText || 'belum terbaca') +
                         '</b>.' +
                         (claimStatus.hasDate
@@ -10935,7 +11326,8 @@
                               '</b>.'
                             : '') +
                         (claimStatus.expired
-                            ? '<br><span style="color:#ffb7c5;font-weight:1000">TIDAK DAPAT CLAIM • melewati batas 02.00 WIB</span>'
+                            ? '<br><span style="color:#ffb7c5;font-weight:1000">TIDAK DAPAT CLAIM • ' +
+                              cssEscapeText(lcstClaimStatusMessage(claimStatus)) + '</span>'
                             : ''),
                         donePct
                     );
@@ -10955,13 +11347,37 @@
                 // Primary segera dipakai; secondary/metadata loading ditutup oleh proses paket pertama.
                 const primaryPromise = getSharedOCRWorker(null);
                 let secondaryWorkerUsed = false;
-                const secondaryPromise = (rows === 2 && LCST_DUAL_PACKAGE_OCR)
+                // Worker utama dan analisis dua target disiapkan paralel. Setelah itu
+                // setiap screenshot/fingerprint yang sama mendapat ordinal bulatan unik.
+                const startup = await Promise.all([primaryPromise, targetAnalysesPromise]);
+                const targetAnalyses = startup[1] || [];
+                const identityCounts = new Map();
+                const identityByRow = targetSourcesByRow.map((src, row) => {
+                    const analysis = targetAnalyses[row];
+                    const fingerprint = String(analysis && analysis.visualFingerprint || '').trim();
+                    const key = fingerprint
+                        ? 'visual:' + fingerprint
+                        : lcstStableImageSourceKey(src);
+                    if (key) identityCounts.set(key, (identityCounts.get(key) || 0) + 1);
+                    return key;
+                });
+                const identitySeen = new Map();
+                markerSelectionByRow = identityByRow.map((key) => {
+                    const ordinal = key ? (identitySeen.get(key) || 0) : 0;
+                    if (key) identitySeen.set(key, ordinal + 1);
+                    return {
+                        ordinal,
+                        totalOccurrences: key ? (identityCounts.get(key) || 1) : 1,
+                        identityKey: key || ''
+                    };
+                });
+
+                const secondaryPromise = (rows <= 2 && LCST_DUAL_PACKAGE_OCR)
                     ? getSecondaryOCRWorker().catch(() => null)
                     : Promise.resolve(null);
 
                 if (LCST_TURBO_PARALLEL_OCR) getMetadataOCRWorker().catch(() => null);
                 if (LCST_TURBO_TIMESTAMP_WORKER) getTimestampOCRWorker().catch(() => null);
-                await primaryPromise;
 
                 if (rows === 2 && LCST_DUAL_PACKAGE_OCR) {
                     const first = processRow(0, null);
@@ -10980,11 +11396,38 @@
                         return processRow(1, null);
                     })();
                     await Promise.all([first, second]);
+                } else if (rows === 1 && LCST_DUAL_PACKAGE_OCR) {
+                    // Worker kedua baru ditunggu bila direct-pass gagal. Jadi scan pertama
+                    // tetap mulai segera, lalu dua baris kecil dapat dibaca bersamaan.
+                    await processRow(0, { helperPeriodWorker: secondaryPromise });
                 } else {
                     for (let row = 0; row < rows; row++) {
                         await processRow(row, null);
                     }
                 }
+
+                // HARD LOCK KODE UNIK: walaupun dua hasil OCR selesai bersamaan,
+                // periode yang sudah dipakai paket sebelumnya tidak boleh ditempelkan
+                // ke paket berikutnya. Target kedua dikosongkan untuk pemeriksaan ulang.
+                const seenPeriods = new Map();
+                for (let row = 0; row < rows; row++) {
+                    const period = String(state.scan.ocrPeriods[row] || '').trim();
+                    if (!period) continue;
+                    if (!seenPeriods.has(period)) {
+                        seenPeriods.set(period, row);
+                        continue;
+                    }
+                    const firstRow = seenPeriods.get(period);
+                    state.scan.ocrPeriods[row] = '';
+                    state.scan.ocrMeta[row] = {
+                        ...(state.scan.ocrMeta[row] || {}),
+                        confidence: 0,
+                        error: 'Kode sama dengan Paket ' + (firstRow + 1) +
+                            ' diblokir. Pilih bulatan/target lain lalu scan ulang.'
+                    };
+                    updateOcrBadgeRow(row);
+                }
+                ok = state.scan.ocrPeriods.filter((period) => String(period || '').trim()).length;
 
                 syncPeriodInputsFromOcr();
                 updateOutput();
@@ -11032,9 +11475,6 @@
                     showManualScanNotification(failedRows);
                 }
 
-                // PENTING: mekanisme Google Sheet tetap fungsi asli dan baru dijalankan
-                // setelah seluruh OCR selesai.
-                await lcstAutoSendFinishedScanToSheet(ok, rows);
             } catch (err) {
                 setScanState(
                     'failed',
@@ -11054,7 +11494,9 @@
                     panel.classList.remove('lcst-performance-mode');
                 }
                 if (btn) btn.disabled = false;
-                if (btn) btn.textContent = 'SCAN DISINI';
+                if (btn) {
+                    btn.innerHTML = '<span class="lcst-nova-btn-icon">⌁</span><span><b>SCAN CEPAT</b><small>Fast OCR siap</small></span>';
+                }
                 updateCopyAvailability();
             }
         }
@@ -11208,8 +11650,9 @@
                 showClaimExpiredNotification(freshExpiredRow, status);
                 setOcrStatus(
                     'Paket <b>' + (freshExpiredRow + 1) + '</b> tidak dapat claim.<br>' +
-                    'Waktu gambar ke-2: <b>' + cssEscapeText(lcstFormatClaimTimestamp(status && (status.imageTimestamp || status.claimDate))) + ' WIB</b> • ' +
+                    'Waktu gambar target: <b>' + cssEscapeText(lcstFormatClaimTimestamp(status && (status.imageTimestamp || status.claimDate))) + '</b> • ' +
                     'deadline <b>' + cssEscapeText(lcstFormatClaimDeadline(status)) + '</b>.<br>' +
+                    '<span style="color:#ffb7c5;font-weight:1000">' + cssEscapeText(lcstClaimStatusMessage(status)) + '</span><br>' +
                     'Waktu online sekarang: <b>' + cssEscapeText(lcstFormatCurrentWib(lcstNowDate()) + ' • ' + lcstGetOnlineTimeSourceLabel()) + '</b>.',
                     null,
                     true
@@ -11236,7 +11679,7 @@
                     showTidakCapaiNotification(firstRow, state.scan.betOddsByRow[firstRow]);
                 }
                 const reasons = [];
-                if (claimBlockedRows.length) reasons.push('melewati batas claim 02.00 WIB');
+                if (claimBlockedRows.length) reasons.push('tidak memenuhi aturan tanggal semalam 23.00–02.00 WIB');
                 if (betBlockedRows.length) reasons.push('Taruhan di bawah 1,60');
                 setOcrStatus('DANGER: Semua paket tidak dapat dicopy karena ' + reasons.join(' dan ') + '.', null, true);
                 updateCopyAvailability();
@@ -11256,7 +11699,7 @@
                 if (claimBlockedRows.length) {
                     messages.push(
                         'Paket ' + claimBlockedRows.map((row) => row + 1).join(', ') +
-                        ' tidak ikut dicopy karena sudah melewati batas claim 02.00 WIB.'
+                        ' tidak ikut dicopy karena tidak memenuhi aturan tanggal/jam claim.'
                     );
                 }
                 if (betBlockedRows.length) {
@@ -11321,1435 +11764,15 @@
     ready(() => {
         lcstSyncOnlineTime(true);
         createBubble();
-        // HYPER FAST: Tesseract + worker paket kedua + metadata dipanaskan saat bubble muncul,
-        // bukan baru saat panel dibuka/SCAN ditekan. Ini memang memakai RAM lebih awal,
-        // tetapi memangkas waktu tunggu tombol SCAN secara nyata.
-        setTimeout(() => warmupOCRWorker(), 80);
+        // Pemanasan otomatis hanya dimulai ketika browser idle. Timeout menjamin
+        // worker tetap siap walaupun halaman LiveChat terus sibuk melakukan render.
+        if (typeof requestIdleCallback === 'function') {
+            requestIdleCallback(() => warmupOCRWorker(), { timeout: 1800 });
+        } else {
+            setTimeout(() => warmupOCRWorker(), 650);
+        }
         setInterval(createBubble, 8000);
     });
-})();
-
-
-  /**************** REGC MODULE ****************/
-(function () {
-  'use strict';
-
-  if (location.hostname !== 'regc.idnlive.live') return;
-
-  const CFG = {
-    WEBAPP_URL: LT_COMBINED_WEBAPP_URL,
-    SECRET: LT_COMBINED_SECRET,
-
-    // Kecepatan baca antrean saat tidak sedang memproses.
-    POLL_MS: 900,
-    REQUEST_TIMEOUT_MS: 30000,
-    RESULT_WAIT_MS: 12000,
-    PAGE_WAIT_MS: 1100,
-    MAX_PAGES: 25,
-
-    // Bila tidak ditemukan, jangan stuck: tunda lalu lanjut user berikutnya.
-    NOT_FOUND_DEFER_MS: 60000,
-    NO_TABLE_DEFER_MS: 30000,
-
-    // Jika 5 menit tidak ada pencarian User ID, Enter sekali pada Search by Nickname.
-    KEEP_ALIVE_MS: 5 * 60 * 1000,
-
-    // Saat antrean terlihat kosong, sinkron manual D/J dari Sheet tiap 10 detik.
-    // Ini membuat baris yang ditempel manual juga cepat terbaca.
-    IDLE_RESYNC_MS: 3000,
-
-    // Tab REGC didedikasikan sebagai worker. Bila SPA keluar dari menu report saat
-    // tab sedang di-background, script mengembalikannya ke halaman Transaction Region.
-    WORKER_URL: 'https://regc.idnlive.live/report/transactionregion?%2Freport%2Ftransactionregion=',
-    ROUTE_RECOVER_MS: 15000
-  };
-
-  const STATE_KEY = 'regc_auto_debit_enabled_v1';
-  const PANEL_POS_KEY = 'regc_auto_debit_panel_position_v1';
-  let enabled = localStorage.getItem(STATE_KEY) !== '0';
-  let busy = false;
-  let lastRealSearchAt = Date.now();
-  let lastKeepAliveAt = 0;
-  let loopTimer = null;
-  let currentTask = null;
-  let startupResynced = false;
-  let lastIdleResyncAt = 0;
-  let pendingWake = false;
-  let lastLoopStartedAt = 0;
-  let heartbeatWorker = null;
-  let heartbeatUrl = '';
-  let wakeListenerId = null;
-  let lastRouteRecoverAt = 0;
-
-  // v6.3.1 NO-FOCUS KEEP-ALIVE
-  // Chrome dapat melakukan intensive throttling pada timer background.
-  // Koneksi WebRTC lokal dengan RTCDataChannel yang tetap OPEN membuat tab
-  // masuk kategori WebRTC aktif, sehingga background timer tidak jatuh ke
-  // intensive-throttling 1-menit. Tidak memakai kamera/mikro/STUN/server luar.
-  let bgRtcA = null;
-  let bgRtcB = null;
-  let bgRtcChannel = null;
-  let bgRtcRemoteChannel = null;
-  let bgRtcStarting = false;
-  let bgRtcLastOpenAt = 0;
-  let bgRtcRetryTimer = null;
-  let bgRtcPulseTimer = null;
-
-  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-  const text = v => String(v == null ? '' : v).trim();
-  const normalizeUserId = v => text(v).toLowerCase();
-
-  function configured() {
-    return /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec(?:\?.*)?$/i.test(text(CFG.WEBAPP_URL));
-  }
-
-  function closeRegcBackgroundKeepAlive() {
-    try { clearTimeout(bgRtcRetryTimer); } catch (e) {}
-    try { clearInterval(bgRtcPulseTimer); } catch (e) {}
-    bgRtcRetryTimer = null;
-    bgRtcPulseTimer = null;
-    try { if (bgRtcChannel) bgRtcChannel.close(); } catch (e) {}
-    try { if (bgRtcRemoteChannel) bgRtcRemoteChannel.close(); } catch (e) {}
-    try { if (bgRtcA) bgRtcA.close(); } catch (e) {}
-    try { if (bgRtcB) bgRtcB.close(); } catch (e) {}
-    bgRtcChannel = null;
-    bgRtcRemoteChannel = null;
-    bgRtcA = null;
-    bgRtcB = null;
-    bgRtcStarting = false;
-  }
-
-  function scheduleRegcBackgroundKeepAliveRetry(delay) {
-    try { clearTimeout(bgRtcRetryTimer); } catch (e) {}
-    bgRtcRetryTimer = setTimeout(function () {
-      startRegcBackgroundKeepAlive().catch(function () {});
-    }, Math.max(1000, Number(delay || 5000)));
-  }
-
-  async function startRegcBackgroundKeepAlive() {
-    if (!enabled || bgRtcStarting) return;
-    if (bgRtcChannel && bgRtcChannel.readyState === 'open') return;
-    if (typeof RTCPeerConnection !== 'function') return;
-
-    bgRtcStarting = true;
-    closeRegcBackgroundKeepAlive();
-    bgRtcStarting = true;
-
-    try {
-      // Peer-to-peer lokal, tanpa STUN/TURN dan tanpa media device.
-      const pc1 = new RTCPeerConnection({ iceServers: [] });
-      const pc2 = new RTCPeerConnection({ iceServers: [] });
-      bgRtcA = pc1;
-      bgRtcB = pc2;
-
-      pc1.onicecandidate = function (e) {
-        if (e.candidate) pc2.addIceCandidate(e.candidate).catch(function () {});
-      };
-      pc2.onicecandidate = function (e) {
-        if (e.candidate) pc1.addIceCandidate(e.candidate).catch(function () {});
-      };
-
-      pc2.ondatachannel = function (e) {
-        bgRtcRemoteChannel = e.channel;
-        try { bgRtcRemoteChannel.onmessage = function () {}; } catch (ignore) {}
-      };
-
-      const channel = pc1.createDataChannel('regc-no-focus-keepalive', { ordered: false });
-      bgRtcChannel = channel;
-
-      channel.onopen = function () {
-        bgRtcLastOpenAt = Date.now();
-        bgRtcStarting = false;
-        try { clearInterval(bgRtcPulseTimer); } catch (e) {}
-        // Pulse sangat ringan; tujuannya menjaga data channel tetap aktif.
-        bgRtcPulseTimer = setInterval(function () {
-          try {
-            if (bgRtcChannel && bgRtcChannel.readyState === 'open') {
-              bgRtcChannel.send(String(Date.now()));
-            } else {
-              scheduleRegcBackgroundKeepAliveRetry(1500);
-            }
-          } catch (e) {
-            scheduleRegcBackgroundKeepAliveRetry(1500);
-          }
-        }, 20000);
-        wakeLoop('webrtc-open');
-      };
-
-      channel.onclose = function () {
-        bgRtcStarting = false;
-        scheduleRegcBackgroundKeepAliveRetry(1500);
-      };
-      channel.onerror = function () {
-        bgRtcStarting = false;
-        scheduleRegcBackgroundKeepAliveRetry(1500);
-      };
-
-      const offer = await pc1.createOffer();
-      await pc1.setLocalDescription(offer);
-      await pc2.setRemoteDescription(offer);
-      const answer = await pc2.createAnswer();
-      await pc2.setLocalDescription(answer);
-      await pc1.setRemoteDescription(answer);
-
-      // Kalau 8 detik belum OPEN, buat ulang.
-      setTimeout(function () {
-        if (!bgRtcChannel || bgRtcChannel.readyState !== 'open') {
-          bgRtcStarting = false;
-          closeRegcBackgroundKeepAlive();
-          scheduleRegcBackgroundKeepAliveRetry(2000);
-        }
-      }, 8000);
-    } catch (e) {
-      bgRtcStarting = false;
-      closeRegcBackgroundKeepAlive();
-      scheduleRegcBackgroundKeepAliveRetry(5000);
-    }
-  }
-
-  function normalizeLoose(v) {
-    return text(v)
-      .toLowerCase()
-      .normalize('NFKC')
-      .replace(/\u00a0/g, ' ')
-      .replace(/[^a-z0-9]+/g, '');
-  }
-
-  function isVisible(el) {
-    if (!el || !el.isConnected) return false;
-    const style = getComputedStyle(el);
-    if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
-    const r = el.getBoundingClientRect();
-    return r.width > 2 && r.height > 2;
-  }
-
-  function setNativeValue(input, value) {
-    const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-    const desc = Object.getOwnPropertyDescriptor(proto, 'value');
-    if (desc && desc.set) desc.set.call(input, value);
-    else input.value = value;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-
-  function pressEnter(input) {
-    input.focus();
-    const opts = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true };
-    input.dispatchEvent(new KeyboardEvent('keydown', opts));
-    input.dispatchEvent(new KeyboardEvent('keypress', opts));
-    input.dispatchEvent(new KeyboardEvent('keyup', opts));
-  }
-
-  function findSearchButtonNear(input) {
-    const roots = [];
-    try {
-      const form = input && input.closest ? input.closest('form') : null;
-      if (form) roots.push(form);
-      const group = input && input.closest ? input.closest('.form-group,.input-group,.row,.card,.panel,.ant-form-item,div') : null;
-      if (group) roots.push(group);
-    } catch (e) {}
-    roots.push(document);
-
-    let best = null;
-    let bestScore = -1;
-    const seen = new Set();
-    for (const root of roots) {
-      const buttons = Array.from(root.querySelectorAll('button,input[type="submit"],input[type="button"],a.btn,.btn'));
-      for (const el of buttons) {
-        if (seen.has(el) || !isVisible(el)) continue;
-        seen.add(el);
-        const label = [text(el.innerText), text(el.value), text(el.getAttribute('title')), text(el.getAttribute('aria-label')), text(el.className)].join(' ').toLowerCase();
-        let score = 0;
-        if (/search|cari|submit|filter/.test(label)) score += 100;
-        if (/fa-search|search-icon|icon-search/.test(label)) score += 70;
-        if (el.type === 'submit') score += 35;
-        if (input && el.closest('form') && input.closest('form') === el.closest('form')) score += 45;
-        if (score > bestScore) { best = el; bestScore = score; }
-      }
-    }
-    return bestScore >= 35 ? best : null;
-  }
-
-  function submitNicknameSearch(input) {
-    if (!input) throw new Error('SEARCH_BY_NICKNAME_TIDAK_DITEMUKAN');
-    input.focus();
-
-    // v6.0.6: ikuti alur manual REGC persis:
-    // 1) tempel User ID ke Search by Nickname
-    // 2) ENTER SATU KALI
-    // Tidak klik tombol Search terlebih dahulu.
-    pressEnter(input);
-    return 'ENTER sekali';
-  }
-
-  function candidateContext(input) {
-    const attrs = [
-      input.getAttribute('placeholder'), input.getAttribute('name'), input.id,
-      input.getAttribute('aria-label'), input.getAttribute('data-placeholder')
-    ].map(text).join(' ');
-
-    let nearby = '';
-    try {
-      const id = input.id;
-      if (id) {
-        const label = document.querySelector(`label[for="${CSS.escape(id)}"]`);
-        if (label) nearby += ' ' + text(label.textContent);
-      }
-      const parent = input.closest('label, .form-group, .form-item, .ant-form-item, .row, .col, div');
-      if (parent) nearby += ' ' + text(parent.innerText).slice(0, 250);
-    } catch (e) {}
-    return (attrs + ' ' + nearby).toLowerCase();
-  }
-
-  function findNicknameInput() {
-    const inputs = Array.from(document.querySelectorAll('input:not([type="hidden"]):not([disabled]), textarea:not([disabled])')).filter(isVisible);
-
-    // Cari yang benar-benar menyebut nickname pada atribut field terlebih dahulu.
-    const exact = inputs.find(input => {
-      const direct = [input.getAttribute('placeholder'), input.getAttribute('name'), input.id,
-        input.getAttribute('aria-label'), input.getAttribute('data-placeholder')].map(text).join(' ').toLowerCase();
-      return /search\s*by\s*nickname|nickname|nick\s*name/.test(direct) && !/password|captcha|email/.test(direct);
-    });
-    if (exact) return exact;
-
-    let best = null;
-    let bestScore = -1;
-    for (const input of inputs) {
-      const ctx = candidateContext(input);
-      let score = 0;
-      if (/search\s*by\s*nickname/.test(ctx)) score += 160;
-      if (/nickname/.test(ctx)) score += 100;
-      if (/nick\s*name/.test(ctx)) score += 90;
-      if (/search/.test(ctx)) score += 20;
-      if (/player|member|user/.test(ctx)) score += 10;
-      if (input.type === 'search') score += 10;
-      if (/password|captcha|email/.test(ctx)) score -= 200;
-      if (score > bestScore) { best = input; bestScore = score; }
-    }
-    return bestScore >= 70 ? best : null;
-  }
-
-  function api(body) {
-    return new Promise((resolve, reject) => {
-      if (!configured()) {
-        reject(new Error('WEBAPP_URL_BELUM_DIPASANG'));
-        return;
-      }
-      GM_xmlhttpRequest({
-        method: 'POST',
-        url: CFG.WEBAPP_URL,
-        headers: { 'Content-Type': 'application/json;charset=UTF-8' },
-        data: JSON.stringify(Object.assign({ secret: CFG.SECRET }, body || {})),
-        timeout: CFG.REQUEST_TIMEOUT_MS,
-        onload: res => {
-          let data = null;
-          try { data = JSON.parse(res.responseText || '{}'); } catch (e) {}
-          if (res.status >= 200 && res.status < 300 && data && data.ok) resolve(data);
-          else reject(new Error(data && data.error ? data.error : `HTTP_${res.status}`));
-        },
-        onerror: () => reject(new Error('NETWORK_ERROR')),
-        ontimeout: () => reject(new Error('REQUEST_TIMEOUT'))
-      });
-    });
-  }
-
-  function findReportTable() {
-    const tables = Array.from(document.querySelectorAll('table')).filter(isVisible);
-    let best = null;
-    let bestScore = -1;
-
-    for (const table of tables) {
-      const headerCells = Array.from(table.querySelectorAll('thead th'));
-      const fallback = headerCells.length ? headerCells : Array.from(table.querySelectorAll('tr:first-child th, tr:first-child td'));
-      const headers = fallback.map(c => text(c.innerText || c.textContent));
-      const normalized = headers.map(normalizeLoose);
-      const periodIdx = normalized.findIndex(h => /period|periode|round|game.*id|game.*no|issue|draw/.test(h));
-      const debitIdx = normalized.findIndex(h => /debit|bet.*amount|stake|wager|turnover/.test(h));
-      const rowCount = table.querySelectorAll('tbody tr, tr').length;
-      const tableText = text(table.innerText || table.textContent).slice(0, 2500);
-
-      let score = 0;
-      if (periodIdx >= 0) score += 90;
-      if (debitIdx >= 0) score += 120;
-      if (/transaction|report|nickname|debit|period|periode/i.test(tableText)) score += 25;
-      if (rowCount > 1) score += 20;
-      if (score > bestScore) { bestScore = score; best = { table, headers, periodIdx, debitIdx }; }
-    }
-
-    // Tidak wajib menemukan header Period dan Debit sekaligus.
-    return bestScore >= 100 ? best : null;
-  }
-
-  function rowCells(tr) {
-    return Array.from(tr.querySelectorAll(':scope > td, :scope > th'));
-  }
-
-  function debitNominalOnly(v) {
-    const source = text(v).replace(/\u00a0/g, ' ').trim();
-    if (!source) return '';
-
-    // REGC sering menampilkan dalam satu blok:
-    //   IDR 4,000
-    //   Balance : IDR 116,456.27
-    // Nominal transaksi adalah IDR PERTAMA sebelum kata Balance.
-    const beforeBalance = source.split(/\bbalance\b/i)[0];
-    const currency = beforeBalance.match(/\b(?:IDR|RP\.?)\s*([-+]?\d[\d.,]*)/i);
-    if (currency && currency[1]) return text(currency[1]).replace(/\s+/g, '');
-
-    let raw = beforeBalance
-      .replace(/\bIDR\b/ig, ' ')
-      .replace(/\bRP\.?\b/ig, ' ')
-      .replace(/\brupiah\b/ig, ' ')
-      .replace(/\bdebit\b/ig, ' ')
-      .trim();
-
-    // Ambil token nominal PERTAMA, bukan yang terakhir, agar Balance tidak terambil.
-    const nums = raw.match(/[-+]?\d[\d.,]*/g);
-    if (!nums || !nums.length) return '';
-    return text(nums[0]).replace(/\s+/g, '');
-  }
-
-  function looksLikeAmount(v) {
-    const raw = debitNominalOnly(v);
-    return !!raw && /^[-+]?\d[\d.,]*$/.test(raw);
-  }
-
-  function fallbackDebitFromRow(cells, targetPeriod) {
-    for (const cell of cells) {
-      const meta = [cell.getAttribute('data-label'), cell.getAttribute('aria-label'), cell.getAttribute('title')].map(text).join(' ').toLowerCase();
-      if (/debit|bet.*amount|stake|wager|turnover/.test(meta)) {
-        const v = text(cell.innerText || cell.textContent);
-        if (v) return v;
-      }
-    }
-    // Sesuai tampilan REGC: Debit berada di bagian akhir row.
-    for (let i = cells.length - 1; i >= 0; i--) {
-      const v = text(cells[i].innerText || cells[i].textContent);
-      if (!v || periodMatches(v, targetPeriod)) continue;
-      if (looksLikeAmount(v)) return v;
-    }
-    return '';
-  }
-
-  function periodMatches(cellValue, target) {
-    const a = normalizeLoose(cellValue);
-    const b = normalizeLoose(target);
-    if (!a || !b) return false;
-    if (a === b) return true;
-    // Fallback aman untuk tambahan prefix/suffix kecil dari tampilan REGC.
-    if (b.length >= 6 && (a.includes(b) || b.includes(a))) return true;
-    return false;
-  }
-
-  function elementOwnStatus(el) {
-    if (!el) return '';
-    const direct = text(el.innerText || el.textContent);
-    const n = normalizeLoose(direct);
-    if (n === 'debit') return 'debit';
-    if (n === 'credit') return 'credit';
-    return '';
-  }
-
-  function findExactStatusElement(root, wanted) {
-    if (!root) return null;
-    const selector = 'td,th,span,div,p,a,strong,b,small,label';
-    const nodes = Array.from(root.querySelectorAll(selector));
-    return nodes.find(el => isVisible(el) && elementOwnStatus(el) === wanted) || null;
-  }
-
-  function rowHasExactStatus(row, wanted) {
-    return !!findExactStatusElement(row, wanted);
-  }
-
-  function findRowAroundDebitStatus(statusEl, targetPeriod) {
-    if (!statusEl) return null;
-
-    const tr = statusEl.closest && statusEl.closest('tr');
-    if (tr && isVisible(tr) && periodMatches(text(tr.innerText || tr.textContent), targetPeriod)) return tr;
-
-    // Untuk layout REGC berbasis DIV/card: ambil ancestor TERKECIL yang sudah
-    // memuat status Debit dan periode target. Ini mencegah mengambil row Credit lain.
-    let node = statusEl.parentElement;
-    for (let i = 0; node && i < 12 && node !== document.body; i++, node = node.parentElement) {
-      if (!isVisible(node)) continue;
-      const rowText = text(node.innerText || node.textContent);
-      if (!rowText || rowText.length > 9000) continue;
-      if (periodMatches(rowText, targetPeriod)) return node;
-    }
-    return null;
-  }
-
-  function extractDebitAmountFromRow(row) {
-    if (!row) return '';
-    const rowText = text(row.innerText || row.textContent).replace(/\u00a0/g, ' ');
-    if (!rowText) return '';
-
-    // STATUS WAJIB DEBIT. Credit tidak pernah boleh menjadi sumber nominal.
-    const debitStatus = findExactStatusElement(row, 'debit');
-    if (!debitStatus) return '';
-
-    // 1) Cara paling akurat: cari nominal IDR/Rp pertama SETELAH kata Debit,
-    //    dan hentikan sebelum Balance.
-    const debitMatch = /(?:^|[\s•·])Debit(?:[\s:]|$)/i.exec(rowText);
-    if (debitMatch) {
-      let afterDebit = rowText.slice(debitMatch.index + debitMatch[0].length);
-      afterDebit = afterDebit.split(/\bBalance\b/i)[0];
-      const m = afterDebit.match(/\b(?:IDR|RP\.?)\s*([-+]?\d[\d.,]*)/i);
-      if (m && m[1]) return text(m[1]).replace(/\s+/g, '');
-    }
-
-    // 2) Untuk table: nominal biasanya berada di cell sesudah cell status Debit.
-    const tr = debitStatus.closest && debitStatus.closest('tr');
-    if (tr) {
-      const cells = rowCells(tr);
-      const statusCell = debitStatus.closest('td,th');
-      const idx = statusCell ? cells.indexOf(statusCell) : -1;
-      if (idx >= 0) {
-        for (let i = idx + 1; i < cells.length; i++) {
-          const cellText = text(cells[i].innerText || cells[i].textContent);
-          if (!cellText) continue;
-          const nominal = debitNominalOnly(cellText);
-          if (nominal && /^[-+]?\d[\d.,]*$/.test(nominal)) return nominal;
-        }
-      }
-    }
-
-    // 3) Fallback DOM: cari blok sesudah status Debit yang punya IDR/Rp,
-    //    tetap potong Balance dan ambil currency pertama.
-    let parent = debitStatus.parentElement;
-    for (let depth = 0; parent && depth < 5 && parent !== row; depth++, parent = parent.parentElement) {
-      let sib = parent.nextElementSibling;
-      for (let i = 0; sib && i < 5; i++, sib = sib.nextElementSibling) {
-        const blockText = text(sib.innerText || sib.textContent);
-        if (!blockText) continue;
-        const nominal = debitNominalOnly(blockText);
-        if (/\b(?:IDR|RP\.?)\b/i.test(blockText) && nominal) return nominal;
-      }
-    }
-
-    return '';
-  }
-
-  function collectStrictDebitRows(targetPeriod, tableInfo) {
-    const found = [];
-    const seen = new Set();
-
-    function add(row, matchedBy) {
-      if (!row || seen.has(row) || !isVisible(row)) return;
-      const rowText = text(row.innerText || row.textContent);
-      if (!periodMatches(rowText, targetPeriod)) return;
-      if (!rowHasExactStatus(row, 'debit')) return;
-      seen.add(row);
-      found.push({ row, matchedBy });
-    }
-
-    // Prioritas table row bila REGC memang memakai <table>.
-    if (tableInfo && tableInfo.table) {
-      const trs = Array.from(tableInfo.table.querySelectorAll('tbody tr, tr')).filter(isVisible);
-      for (const tr of trs) add(tr, 'table-row+exact-debit');
-    }
-
-    // Fallback/adaptif untuk layout seperti screenshot (row/card berbasis div).
-    const statusNodes = Array.from(document.querySelectorAll('td,th,span,div,p,a,strong,b,small,label'))
-      .filter(el => isVisible(el) && elementOwnStatus(el) === 'debit');
-    for (const statusEl of statusNodes) {
-      const row = findRowAroundDebitStatus(statusEl, targetPeriod);
-      add(row, 'status-debit+period-same-row');
-    }
-
-    // Urutkan sesuai posisi DOM agar kandidat TERAKHIR benar-benar row terbawah/terakhir.
-    found.sort((a, b) => {
-      if (a.row === b.row) return 0;
-      const rel = a.row.compareDocumentPosition(b.row);
-      if (rel & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
-      if (rel & Node.DOCUMENT_POSITION_PRECEDING) return 1;
-      return 0;
-    });
-    return found;
-  }
-
-  function findDebitInCurrentTable(targetPeriod) {
-    const info = findReportTable();
-    const strictRows = collectStrictDebitRows(targetPeriod, info);
-
-    let matches = 0;
-    let debitMatches = 0;
-    let lastMatch = null;
-
-    // v6.0.6 RULE UTAMA:
-    // 1. Periode harus cocok.
-    // 2. STATUS PADA BARIS YANG SAMA WAJIB "Debit".
-    // 3. "Credit" tidak pernah diambil meskipun periodenya sama.
-    // 4. Dari blok Debit ambil nominal transaksi pertama; Balance diabaikan.
-    // 5. Jika Debit periode yang sama muncul beberapa kali, row terakhir menang.
-    for (let rowIndex = 0; rowIndex < strictRows.length; rowIndex++) {
-      const entry = strictRows[rowIndex];
-      const row = entry.row;
-      matches++;
-
-      const nominal = extractDebitAmountFromRow(row);
-      const candidate = {
-        tableFound: !!info || strictRows.length > 0,
-        found: !!nominal,
-        debit: nominal,
-        rowText: text(row.innerText || row.textContent),
-        table: (info && info.table) || row.parentElement || document.body,
-        periodFound: true,
-        matchedBy: entry.matchedBy,
-        rowIndex,
-        periodCellText: targetPeriod,
-        status: 'Debit'
-      };
-
-      if (nominal) {
-        debitMatches++;
-        lastMatch = candidate;
-      }
-    }
-
-    if (lastMatch) {
-      return Object.assign({}, lastMatch, {
-        tableFound: true,
-        found: true,
-        matches,
-        debitMatches,
-        debitEmpty: false
-      });
-    }
-
-    // Kalau periode ada di halaman tetapi hanya muncul pada row Credit, tandai secara
-    // khusus agar TIDAK mengambil nominal Credit dan tidak menulis K secara salah.
-    let periodSeenAnywhere = false;
-    let creditOnlyCount = 0;
-    const candidateRows = info && info.table
-      ? Array.from(info.table.querySelectorAll('tbody tr, tr')).filter(isVisible)
-      : [];
-    for (const row of candidateRows) {
-      const rowText = text(row.innerText || row.textContent);
-      if (!periodMatches(rowText, targetPeriod)) continue;
-      periodSeenAnywhere = true;
-      if (rowHasExactStatus(row, 'credit') && !rowHasExactStatus(row, 'debit')) creditOnlyCount++;
-    }
-
-    return {
-      tableFound: !!info || strictRows.length > 0,
-      found: false,
-      table: (info && info.table) || null,
-      matches,
-      debitMatches,
-      periodFound: matches > 0 || periodSeenAnywhere,
-      debitEmpty: matches > 0,
-      creditOnly: periodSeenAnywhere && matches === 0 && creditOnlyCount > 0
-    };
-  }
-
-  function findNextButton(table) {
-    const roots = [];
-    if (table) {
-      let root = table.closest('.dataTables_wrapper, .ant-table-wrapper, .table-responsive, .card, .panel, section, main');
-      if (root) roots.push(root);
-    }
-    roots.push(document);
-
-    const seen = new Set();
-    let best = null;
-    let bestScore = -1;
-
-    for (const root of roots) {
-      const candidates = Array.from(root.querySelectorAll('button, a, li'));
-      for (const el of candidates) {
-        if (seen.has(el) || !isVisible(el)) continue;
-        seen.add(el);
-
-        const cls = text(el.className).toLowerCase();
-        const label = [text(el.innerText), text(el.getAttribute('aria-label')), text(el.getAttribute('title')), cls].join(' ').toLowerCase();
-        let score = 0;
-        if (/\bnext\b/.test(label)) score += 100;
-        if (/berikut|selanjut/.test(label)) score += 90;
-        if (/paginate_button\s+next|pagination.*next/.test(label)) score += 80;
-        if (/^(>|›|»)$/.test(text(el.innerText))) score += 65;
-        if (el.closest('.pagination, .paginate, .dataTables_paginate, .ant-pagination')) score += 30;
-
-        const disabled = el.matches('[disabled], [aria-disabled="true"], .disabled') || /disabled/.test(cls) ||
-          (el.parentElement && /disabled/.test(text(el.parentElement.className).toLowerCase()));
-        if (disabled) score -= 300;
-
-        if (score > bestScore) {
-          bestScore = score;
-          best = el;
-        }
-      }
-    }
-    return bestScore >= 70 ? best : null;
-  }
-
-  function tableSignature(table) {
-    if (!table) return '';
-    return text(table.innerText || table.textContent).slice(0, 8000);
-  }
-
-  // v6.2.5: helper REJECT SAJA. Tidak mengubah mesin pencarian periode/debit v6.0.6.
-  function tableNoDataMarker(table) {
-    if (!table) return false;
-    const t = text(table.innerText || table.textContent).toLowerCase();
-    return /no\s+data(?:\s+available)?|no\s+matching\s+records|no\s+records|data\s+tidak\s+ada|tidak\s+ada\s+data|tidak\s+ditemukan|not\s+found|empty/.test(t);
-  }
-
-  function countRealTransactionRows(table) {
-    if (!table) return 0;
-    let rows = Array.from(table.querySelectorAll('tbody tr')).filter(isVisible);
-    if (!rows.length) rows = Array.from(table.querySelectorAll('tr')).filter(isVisible);
-    let count = 0;
-    for (const tr of rows) {
-      const cells = rowCells(tr);
-      if (!cells.length) continue;
-      const rowText = text(tr.innerText || tr.textContent);
-      if (!rowText) continue;
-      const low = rowText.toLowerCase();
-      if (/no\s+data|no\s+matching\s+records|no\s+records|data\s+tidak\s+ada|tidak\s+ada\s+data|empty/.test(low)) continue;
-      // Header yang kebetulan berada di tbody tidak dihitung sebagai transaksi.
-      const norm = normalizeLoose(rowText);
-      if (/^(period|periode|debit|credit|balance|type|amount|transaction)+$/.test(norm)) continue;
-      count++;
-    }
-    return count;
-  }
-
-  async function rejectTaskFinal(task, reason) {
-    return api({
-      action: 'finalizeRegc',
-      row: task.row,
-      userId: task.userId,
-      period: task.period,
-      result: 'REJECT',
-      debit: '',
-      reason: reason
-    });
-  }
-
-  async function waitForTableReady(timeoutMs, previousSignature) {
-    const end = Date.now() + timeoutMs;
-    let latestInfo = null;
-    let stableCount = 0;
-    let lastSig = '';
-
-    while (Date.now() < end) {
-      latestInfo = findReportTable();
-      if (latestInfo && latestInfo.table) {
-        const sig = tableSignature(latestInfo.table);
-        const changedFromPrevious = !previousSignature || !sig || sig !== previousSignature;
-        if (sig && sig === lastSig) stableCount++;
-        else stableCount = 0;
-        lastSig = sig;
-
-        // Sesudah search, tunggu data baru terlihat dan stabil sebentar supaya
-        // kita tidak membaca tabel User ID sebelumnya.
-        if (changedFromPrevious && sig && stableCount >= 2) return latestInfo;
-      }
-      await sleep(220);
-    }
-    return latestInfo;
-  }
-
-  async function waitForTableResult(targetPeriod, timeoutMs, previousSignature) {
-    await waitForTableReady(timeoutMs, previousSignature);
-    const end = Date.now() + Math.min(timeoutMs, 2500);
-    let last = null;
-
-    // Beri kesempatan row hasil render lengkap, tetapi JANGAN return hanya karena
-    // ketemu satu debit. findDebitInCurrentTable sendiri memilih debit terakhir halaman.
-    while (Date.now() < end) {
-      last = findDebitInCurrentTable(targetPeriod);
-      if (last.tableFound) {
-        // dua kali baca singkat membantu table SPA yang merender row bertahap
-        await sleep(180);
-        const again = findDebitInCurrentTable(targetPeriod);
-        if ((again.matches || 0) >= (last.matches || 0)) last = again;
-        return last;
-      }
-      await sleep(220);
-    }
-    return last || { tableFound: false, found: false, matches: 0, debitMatches: 0 };
-  }
-
-  async function scanPagesForPeriod(targetPeriod, previousSignature) {
-    // MESIN ASLI v6.0.6: scan SEMUA halaman dan debit terakhir menang.
-    // v6.2.5 hanya MENAMBAHKAN statistik pasif untuk keputusan REJECT;
-    // cara mencari periode/debit sama sekali tidak diubah.
-    let current = await waitForTableResult(targetPeriod, CFG.RESULT_WAIT_MS, previousSignature);
-    let table = current.table || (findReportTable() || {}).table;
-    if (!table) return Object.assign({}, current, {
-      realTransactionRows: 0,
-      noDataMarker: false
-    });
-
-    let totalMatches = 0;
-    let totalDebitMatches = 0;
-    let lastFound = null;
-    let anyPeriodFound = false;
-    let anyDebitEmpty = false;
-    let anyCreditOnly = false;
-    let totalRealTransactionRows = 0;
-    let anyNoDataMarker = false;
-    const visited = new Set();
-
-    for (let page = 0; page < CFG.MAX_PAGES; page++) {
-      const pageResult = page === 0 ? current : findDebitInCurrentTable(targetPeriod);
-      const pageTable = pageResult.table || table || (findReportTable() || {}).table;
-      if (pageTable) {
-        table = pageTable;
-        totalRealTransactionRows += countRealTransactionRows(pageTable);
-        if (tableNoDataMarker(pageTable)) anyNoDataMarker = true;
-      }
-
-      totalMatches += Number(pageResult.matches || 0);
-      totalDebitMatches += Number(pageResult.debitMatches || 0);
-      if (pageResult.periodFound || Number(pageResult.matches || 0) > 0) anyPeriodFound = true;
-      if (pageResult.debitEmpty) anyDebitEmpty = true;
-      if (pageResult.creditOnly) anyCreditOnly = true;
-      if (pageResult.found && pageResult.debit) {
-        lastFound = Object.assign({}, pageResult, { page: page + 1 });
-        updatePanel('searching', `Periode ketemu • halaman ${page + 1}`, `STATUS=Debit • nominal sementara: ${pageResult.debit} • Credit/Balance diabaikan`);
-      }
-
-      const sig = tableSignature(table);
-      if (sig) {
-        if (visited.has(sig)) break;
-        visited.add(sig);
-      }
-
-      const next = findNextButton(table);
-      if (!next) break;
-
-      const before = sig;
-      next.click();
-
-      const end = Date.now() + Math.max(CFG.PAGE_WAIT_MS + 2000, 3200);
-      let changed = false;
-      while (Date.now() < end) {
-        await sleep(180);
-        const freshInfo = findReportTable();
-        if (freshInfo && freshInfo.table) table = freshInfo.table;
-        const after = tableSignature(table);
-        if (after && after !== before) {
-          changed = true;
-          break;
-        }
-      }
-
-      if (!changed) break;
-      await sleep(Math.max(180, CFG.PAGE_WAIT_MS));
-    }
-
-    if (lastFound) {
-      return Object.assign({}, lastFound, {
-        tableFound: true,
-        found: true,
-        matches: totalMatches,
-        debitMatches: totalDebitMatches,
-        periodFound: true,
-        debitEmpty: false,
-        realTransactionRows: totalRealTransactionRows,
-        noDataMarker: anyNoDataMarker
-      });
-    }
-
-    return {
-      tableFound: true,
-      found: false,
-      table,
-      matches: totalMatches,
-      debitMatches: totalDebitMatches,
-      periodFound: anyPeriodFound,
-      debitEmpty: anyPeriodFound && anyDebitEmpty,
-      creditOnly: anyCreditOnly && totalDebitMatches === 0,
-      realTransactionRows: totalRealTransactionRows,
-      noDataMarker: anyNoDataMarker
-    };
-  }
-
-  async function searchNickname(userId, previousSignature) {
-    userId = normalizeUserId(userId);
-    let input = findNicknameInput();
-    if (!input) {
-      for (let i = 0; i < 28 && !input; i++) {
-        await sleep(250);
-        input = findNicknameInput();
-      }
-    }
-    if (!input) throw new Error('SEARCH_BY_NICKNAME_TIDAK_DITEMUKAN');
-
-    // Kosongkan lalu isi agar framework REGC mendeteksi perubahan nilai.
-    setNativeValue(input, '');
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    await sleep(80);
-    setNativeValue(input, userId);
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-    await sleep(180);
-
-    const mode = submitNicknameSearch(input);
-    lastRealSearchAt = Date.now();
-    const hint = text(input.getAttribute('placeholder') || input.getAttribute('name') || input.id || 'nickname');
-    updatePanel('searching', `Cari ${userId}`, `${hint} • tempel ID → ${mode}`);
-
-    // ENTER tetap hanya satu kali. Jika REGC tidak menangkap event keyboard buatan
-    // Tampermonkey, fallback hanya men-submit FORM yang sama (tanpa klik tombol
-    // dan tanpa mengirim ENTER kedua).
-    await sleep(900);
-    const hasLoading = Array.from(document.querySelectorAll('.loading,.spinner,.fa-spinner,[aria-busy="true"],.ant-spin,.dataTables_processing')).some(isVisible);
-    const infoNow = findReportTable();
-    const sigNow = infoNow && infoNow.table ? tableSignature(infoNow.table) : '';
-    const changed = !!sigNow && (!previousSignature || sigNow !== previousSignature);
-    if (!hasLoading && !changed) {
-      const form = input.closest && input.closest('form');
-      if (form && typeof form.requestSubmit === 'function') {
-        form.requestSubmit();
-        updatePanel('searching', `Cari ${userId}`, `${hint} • ENTER → submit form fallback`);
-      } else {
-        // Banyak halaman REGC tidak membungkus nickname di <form>.
-        // Jika ENTER tidak mengubah hasil (terutama saat tab background), klik tombol
-        // Search TERDEKAT sebagai fallback satu kali. Mesin baca periode/debit tetap sama.
-        const btn = findSearchButtonNear(input);
-        if (btn) {
-          try { btn.click(); } catch (ignore) {}
-          updatePanel('searching', `Cari ${userId}`, `${hint} • ENTER → klik Search fallback`);
-        }
-      }
-    }
-    return input;
-  }
-
-  async function processTask(task) {
-    task = Object.assign({}, task, { userId: normalizeUserId(task && task.userId) });
-    currentTask = task;
-    updatePanel('searching', `Cari ${task.userId}`, `Periode ${task.period} • Sheet row ${task.row}`);
-
-    try {
-      // PUTARAN PERTAMA = 100% mesin v6.0.6.
-      const oldTableInfo = findReportTable();
-      const oldTableSignature = oldTableInfo && oldTableInfo.table ? tableSignature(oldTableInfo.table) : '';
-      await searchNickname(task.userId, oldTableSignature);
-      let result = await scanPagesForPeriod(task.period, oldTableSignature);
-
-      if (result.found && result.debit) {
-        const nominal = debitNominalOnly(result.debit);
-        if (!nominal) throw new Error('NOMINAL_DEBIT_TIDAK_TERBACA');
-        updatePanel('writing', `Debit cocok: ${nominal}`, `Periode + STATUS Debit cocok • hanya nominal transaksi → K${task.row}`);
-        const saved = await api({
-          action: 'updateDebit',
-          row: task.row,
-          userId: task.userId,
-          period: task.period,
-          debit: nominal
-        });
-        updatePanel('success', `${task.userId} selesai`, `K${task.row}=${nominal} • N${task.row}=done`);
-        await sleep(350);
-        return saved;
-      }
-
-      // ATURAN PALING PENTING:
-      // PERIODE ADA = TIDAK PERNAH REJECT.
-      // Walau Debit belum terbaca, perilaku kembali seperti versi pertama: defer lalu cari ulang.
-      if (result.periodFound) {
-        const reason = result.creditOnly
-          ? 'PERIODE_ADA_HANYA_CREDIT_TUNGGU_DEBIT'
-          : (result.debitEmpty ? 'PERIODE_ADA_DEBIT_BELUM_TERBACA' : 'PERIODE_ADA_TUNGGU_DEBIT');
-        await api({
-          action: 'deferPending',
-          row: task.row,
-          userId: task.userId,
-          reason,
-          delayMs: CFG.NOT_FOUND_DEFER_MS
-        });
-        updatePanel('warning', `Periode ${task.period} ADA`, 'JANGAN REJECT • akan dicari ulang sampai Debit terbaca');
-        await sleep(250);
-        return null;
-      }
-
-      // Kalau tabel bahkan belum jelas muncul, JANGAN membuat keputusan reject.
-      if (!result.tableFound) {
-        await api({
-          action: 'deferPending',
-          row: task.row,
-          userId: task.userId,
-          reason: 'TABLE_REGC_BELUM_MUNCUL',
-          delayMs: CFG.NO_TABLE_DEFER_MS
-        });
-        updatePanel('warning', `${task.userId} ditunda`, 'Hasil REGC belum pasti • tidak direject');
-        return null;
-      }
-
-      // REJECT adalah TAMBAHAN TERAKHIR SAJA.
-      // Karena periode tidak terlihat pada putaran pertama, lakukan pencarian USER ID
-      // YANG SAMA sekali lagi memakai mesin v6.0.6 sebelum boleh REJECT.
-      updatePanel('searching', `Konfirmasi ${task.userId}`, `Periode ${task.period} belum terlihat • cek sekali lagi sebelum REJECT`);
-      const confirmInfo = findReportTable();
-      const confirmOldSig = confirmInfo && confirmInfo.table ? tableSignature(confirmInfo.table) : '';
-      await searchNickname(task.userId, confirmOldSig);
-      const confirm = await scanPagesForPeriod(task.period, confirmOldSig);
-
-      // Kalau pada konfirmasi periode/debit ternyata ada, keputusan REJECT dibatalkan.
-      if (confirm.found && confirm.debit) {
-        const nominal = debitNominalOnly(confirm.debit);
-        if (!nominal) throw new Error('NOMINAL_DEBIT_TIDAK_TERBACA');
-        const saved = await api({
-          action: 'updateDebit', row: task.row, userId: task.userId,
-          period: task.period, debit: nominal
-        });
-        updatePanel('success', `${task.userId} selesai`, `Konfirmasi menemukan Debit ${nominal} • K${task.row} • N=done`);
-        return saved;
-      }
-
-      if (confirm.periodFound) {
-        await api({
-          action: 'deferPending', row: task.row, userId: task.userId,
-          reason: 'PERIODE_ADA_TUNGGU_DEBIT', delayMs: CFG.NOT_FOUND_DEFER_MS
-        });
-        updatePanel('warning', `Periode ${task.period} ADA`, 'Konfirmasi menemukan periode • REJECT DIBATALKAN');
-        return null;
-      }
-
-      // Kalau hasil konfirmasi masih belum jelas, tetap jangan reject.
-      if (!confirm.tableFound) {
-        await api({
-          action: 'deferPending', row: task.row, userId: task.userId,
-          reason: 'HASIL_KONFIRMASI_BELUM_PASTI', delayMs: CFG.NO_TABLE_DEFER_MS
-        });
-        updatePanel('warning', `${task.userId} ditunda`, 'Konfirmasi belum pasti • tidak direject');
-        return null;
-      }
-
-      const firstRows = Number(result.realTransactionRows || 0);
-      const secondRows = Number(confirm.realTransactionRows || 0);
-      const confirmedNoData = !!result.noDataMarker && !!confirm.noDataMarker;
-      const confirmedHasTransactions = firstRows > 0 && secondRows > 0;
-
-      // REJECT #1: User ID benar-benar tidak ada bermain.
-      // Harus ada marker no-data pada DUA pencarian. Tidak cukup hanya parser gagal.
-      if (confirmedNoData) {
-        updatePanel('writing', `REJECT ${task.userId}`, `Dua kali hasil REGC kosong • N${task.row}=REJECT`);
-        await rejectTaskFinal(task, 'User ID tidak ada bermain');
-        updatePanel('warning', `${task.userId} REJECT`, 'User ID tidak ada bermain');
-        return null;
-      }
-
-      // REJECT #2: User ID punya transaksi, tetapi periode target benar-benar tidak ada.
-      // Harus ada transaksi nyata pada DUA pencarian dan periode tidak ditemukan pada keduanya.
-      if (confirmedHasTransactions) {
-        updatePanel('writing', `REJECT ${task.userId}`, `User ID ada transaksi tetapi periode ${task.period} tidak ada`);
-        await rejectTaskFinal(task, 'Periksa User ID');
-        updatePanel('warning', `${task.userId} REJECT`, 'Periksa User ID');
-        return null;
-      }
-
-      // Kondisi ambigu = jangan reject. Ini sengaja konservatif untuk mencegah
-      // periode yang sebenarnya ada ikut ter-REJECT.
-      await api({
-        action: 'deferPending', row: task.row, userId: task.userId,
-        reason: 'HASIL_REGC_AMBIGU_JANGAN_REJECT', delayMs: CFG.NO_TABLE_DEFER_MS
-      });
-      updatePanel('warning', `${task.userId} ditunda`, 'Hasil belum cukup pasti untuk REJECT • akan dicari ulang');
-      return null;
-
-    } catch (err) {
-      const message = text(err && err.message ? err.message : err);
-      try {
-        await api({
-          action: 'deferPending',
-          row: task.row,
-          userId: task.userId,
-          reason: message || 'ERROR',
-          delayMs: CFG.NO_TABLE_DEFER_MS
-        });
-      } catch (ignore) {}
-      updatePanel('error', 'Pencarian gagal', `${message || 'ERROR'} • TIDAK direject karena hasil belum pasti`);
-      await sleep(500);
-      return null;
-    } finally {
-      currentTask = null;
-    }
-  }
-
-  async function keepAliveIfNeeded() {
-    if (!enabled || busy) return;
-    const now = Date.now();
-    if ((now - lastRealSearchAt) < CFG.KEEP_ALIVE_MS) return;
-    if ((now - lastKeepAliveAt) < CFG.KEEP_ALIVE_MS) return;
-
-    const input = findNicknameInput();
-    if (!input) return;
-    // Sesuai permintaan: tidak mengubah ID, cukup Enter sekali.
-    pressEnter(input);
-    lastKeepAliveAt = now;
-    lastRealSearchAt = now;
-    updatePanel('idle', 'Keep-alive REGC', '5 menit idle → Enter sekali pada Search by Nickname');
-  }
-
-  function scheduleLoop(delayMs) {
-    try { clearTimeout(loopTimer); } catch (e) {}
-    loopTimer = setTimeout(loop, Math.max(0, Number(delayMs || 0)));
-  }
-
-  function wakeLoop(reason) {
-    if (!enabled) return;
-    pendingWake = true;
-    // Kalau sedang memproses User ID, jangan potong prosesnya. Begitu selesai,
-    // finally akan mengambil antrean baru nyaris tanpa jeda.
-    if (busy) return;
-    scheduleLoop(20);
-  }
-
-  function startBackgroundHeartbeat() {
-    if (heartbeatWorker) return;
-    try {
-      const code = `
-        let timer = null;
-        function start(){ if(timer) clearInterval(timer); timer=setInterval(()=>postMessage(Date.now()), 750); }
-        onmessage = (e)=>{ if(e && e.data==='start') start(); };
-        start();
-      `;
-      const blob = new Blob([code], { type: 'application/javascript' });
-      heartbeatUrl = URL.createObjectURL(blob);
-      heartbeatWorker = new Worker(heartbeatUrl);
-      heartbeatWorker.onmessage = function () {
-        // Main setTimeout pada background tab bisa di-throttle browser.
-        // Dedicated worker memberi heartbeat tambahan. Hanya wake bila loop tidak
-        // berjalan sesuai cadence, sehingga tidak membuat request ganda.
-        if (!enabled || busy) return;
-        if ((Date.now() - lastLoopStartedAt) >= 900) wakeLoop('heartbeat');
-      };
-    } catch (e) {
-      // Fallback biasa; tetap lebih baik daripada tidak ada watchdog sama sekali.
-      setInterval(function(){
-        if (!enabled || busy) return;
-        if ((Date.now() - lastLoopStartedAt) >= 1200) wakeLoop('fallback-heartbeat');
-      }, 1000);
-    }
-  }
-
-  function installCrossTabWake() {
-    if (typeof GM_addValueChangeListener !== 'function' || wakeListenerId != null) return;
-    try {
-      wakeListenerId = GM_addValueChangeListener(LT_REGC_WAKE_KEY, function (name, oldValue, newValue, remote) {
-        // Saat LiveChat menulis D:J, worker REGC langsung jalan meskipun tab REGC
-        // sedang tidak aktif. Tidak menunggu polling 10 detik / reload halaman.
-        wakeLoop(remote ? 'livechat-remote' : 'wake');
-      });
-    } catch (e) {}
-  }
-
-  async function loop() {
-    clearTimeout(loopTimer);
-    lastLoopStartedAt = Date.now();
-    pendingWake = false;
-
-    if (!enabled) {
-      updatePanel('off', 'AUTO OFF', 'Klik ON untuk menjalankan pencarian otomatis.');
-      scheduleLoop(1500);
-      return;
-    }
-
-    if (!configured()) {
-      updatePanel('error', 'URL Apps Script belum dipasang', 'Menu Tampermonkey → LINETOGEL: Set Google Apps Script /exec.');
-      scheduleLoop(5000);
-      return;
-    }
-
-    if (!/\/report\/transactionregion/i.test(location.pathname + location.search)) {
-      const here = (location.pathname + location.search).toLowerCase();
-      if (/login|sign[-_]?in|auth/.test(here)) {
-        updatePanel('error', 'Sesi REGC perlu login', 'Login REGC satu kali. Setelah itu tab boleh ditinggal di background.');
-        scheduleLoop(5000);
-        return;
-      }
-      // Bila tab dedicated worker sedang tidak dilihat, pulihkan route otomatis.
-      // Saat user sedang melihat tab REGC, jangan paksa pindah halaman.
-      if (document.hidden && (Date.now() - lastRouteRecoverAt) >= CFG.ROUTE_RECOVER_MS) {
-        lastRouteRecoverAt = Date.now();
-        updatePanel('idle', 'Pulihkan halaman worker', 'Kembali otomatis ke Transaction Region...');
-        try { location.assign(CFG.WORKER_URL); } catch (ignore) {}
-        return;
-      }
-      updatePanel('idle', 'Menunggu halaman REGC', 'Tab worker harus berada di Transaction Region. Jika ditinggal di background, route dipulihkan otomatis.');
-      scheduleLoop(2000);
-      return;
-    }
-
-    if (busy) {
-      scheduleLoop(500);
-      return;
-    }
-
-    busy = true;
-    let nextDelay = CFG.POLL_MS;
-    try {
-      // Saat REGC baru dibuka, paksa satu kali sinkron D/J.
-      // Ini menangkap data yang sudah keburu ditempel sebelum tab REGC aktif.
-      if (!startupResynced) {
-        const rs = await api({ action: 'resyncQueue' });
-        startupResynced = true;
-        lastIdleResyncAt = Date.now();
-        setQueueCount(rs.queueCount || 0);
-      }
-
-      let next = await api({ action: 'nextPending' });
-      if (next && next.pending) next.userId = normalizeUserId(next.userId);
-
-      // Bila antrean kosong, cek ulang Sheet secara berkala agar data yang
-      // ditempel manual ke D/J tidak menunggu cache server terlalu lama.
-      if (!next.pending && (Date.now() - lastIdleResyncAt) >= CFG.IDLE_RESYNC_MS) {
-        const rs = await api({ action: 'resyncQueue' });
-        lastIdleResyncAt = Date.now();
-        setQueueCount(rs.queueCount || 0);
-        if (Number(rs.queueCount || 0) > 0) {
-          next = await api({ action: 'nextPending' });
-          if (next && next.pending) next.userId = normalizeUserId(next.userId);
-        }
-      }
-
-      setQueueCount(next.queueCount || 0);
-      if (next.pending) {
-        await processTask(next);
-        nextDelay = 120; // selesai satu → langsung ambil antrean berikutnya
-      } else {
-        await keepAliveIfNeeded();
-        nextDelay = Math.max(1200, Math.min(Number(next.retryAfterMs || CFG.POLL_MS), CFG.POLL_MS));
-        const rtcState = bgRtcChannel && bgRtcChannel.readyState === 'open' ? 'NO-FOCUS ON' : 'keep-alive menyiapkan';
-        updatePanel('idle', 'Menunggu data baru', `Antrean ${Number(next.queueCount || 0)} • ${rtcState} • tidak perlu fokus tab`);
-      }
-    } catch (err) {
-      const msg = text(err && err.message ? err.message : err);
-      if (/ACTION_TIDAK_DIKENAL/i.test(msg)) {
-        updatePanel('error', 'Apps Script masih versi lama', 'Deploy Google Apps Script REGC v2/v2.1 lalu Update deployment. D:J lama bisa masuk, tetapi nextPending belum tersedia.');
-      } else if (/SECRET_TIDAK_VALID/i.test(msg)) {
-        updatePanel('error', 'Secret Apps Script berbeda', 'Gunakan file Apps Script yang satu paket dengan Tampermonkey ini.');
-      } else {
-        updatePanel('error', 'Koneksi Sheet bermasalah', msg);
-      }
-      nextDelay = 5000;
-    } finally {
-      busy = false;
-      // Kalau D:J baru masuk ketika proses sebelumnya masih berjalan, ambil pekerjaan
-      // berikutnya langsung tanpa menunggu cadence polling normal.
-      if (pendingWake) nextDelay = Math.min(nextDelay, 40);
-      scheduleLoop(nextDelay);
-    }
-  }
-
-  function injectPanel() {
-    if (document.getElementById('regc-auto-debit-panel')) return;
-    const style = document.createElement('style');
-    style.textContent = `
-      #regc-auto-debit-panel{position:fixed;right:18px;bottom:18px;z-index:2147483647;width:330px;background:rgba(14,18,28,.94);color:#eef4ff;border:1px solid rgba(255,255,255,.14);border-radius:16px;box-shadow:0 18px 55px rgba(0,0,0,.35);font:12px/1.4 Inter,Segoe UI,Arial,sans-serif;backdrop-filter:blur(12px);overflow:hidden}
-      #regc-auto-debit-panel .rg-head{display:flex;align-items:center;gap:9px;padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.09);cursor:move;user-select:none;touch-action:none}
-      #regc-auto-debit-panel.rg-dragging{opacity:.96;box-shadow:0 24px 70px rgba(0,0,0,.48)}
-      #regc-auto-debit-panel .rg-dot{width:9px;height:9px;border-radius:50%;background:#22c55e;box-shadow:0 0 14px currentColor}
-      #regc-auto-debit-panel .rg-title{font-weight:900;letter-spacing:.3px;flex:1}
-      #regc-auto-debit-panel .rg-queue{padding:2px 7px;border-radius:999px;background:rgba(255,255,255,.08);font-weight:800}
-      #regc-auto-debit-panel .rg-toggle{border:0;border-radius:9px;padding:6px 10px;font-weight:900;cursor:pointer;background:#22c55e;color:#07110b}
-      #regc-auto-debit-panel .rg-toggle.off{background:#ef4444;color:white}
-      #regc-auto-debit-panel .rg-body{padding:12px}
-      #regc-auto-debit-panel .rg-main{font-size:13px;font-weight:850;margin-bottom:4px}
-      #regc-auto-debit-panel .rg-sub{color:#9fb0ca;word-break:break-word}
-      #regc-auto-debit-panel[data-state="error"] .rg-dot{background:#ef4444}
-      #regc-auto-debit-panel[data-state="warning"] .rg-dot{background:#f59e0b}
-      #regc-auto-debit-panel[data-state="searching"] .rg-dot,#regc-auto-debit-panel[data-state="writing"] .rg-dot{background:#38bdf8}
-      #regc-auto-debit-panel[data-state="off"] .rg-dot{background:#64748b}
-    `;
-    document.documentElement.appendChild(style);
-
-    const panel = document.createElement('div');
-    panel.id = 'regc-auto-debit-panel';
-    panel.innerHTML = `
-      <div class="rg-head">
-        <span class="rg-dot"></span>
-        <span class="rg-title">REGC AUTO DEBIT</span>
-        <span class="rg-queue" title="Jumlah antrean">0</span>
-        <button class="rg-toggle">ON</button>
-      </div>
-      <div class="rg-body">
-        <div class="rg-main">Memulai...</div>
-        <div class="rg-sub">Menyiapkan pencarian otomatis.</div>
-      </div>`;
-    document.body.appendChild(panel);
-
-    restorePanelPosition(panel);
-    enablePanelDrag(panel);
-
-    const btn = panel.querySelector('.rg-toggle');
-    btn.addEventListener('click', () => {
-      enabled = !enabled;
-      localStorage.setItem(STATE_KEY, enabled ? '1' : '0');
-      syncToggle();
-      if (enabled) {
-        startRegcBackgroundKeepAlive().catch(function () {});
-        clearTimeout(loopTimer);
-        wakeLoop('toggle-on');
-      } else {
-        closeRegcBackgroundKeepAlive();
-      }
-    });
-    syncToggle();
-  }
-
-  function clampPanelPosition(panel, left, top) {
-    const rect = panel.getBoundingClientRect();
-    const margin = 6;
-    const maxLeft = Math.max(margin, window.innerWidth - rect.width - margin);
-    const maxTop = Math.max(margin, window.innerHeight - rect.height - margin);
-    return {
-      left: Math.min(Math.max(margin, left), maxLeft),
-      top: Math.min(Math.max(margin, top), maxTop)
-    };
-  }
-
-  function savePanelPosition(panel) {
-    try {
-      const rect = panel.getBoundingClientRect();
-      localStorage.setItem(PANEL_POS_KEY, JSON.stringify({ left: Math.round(rect.left), top: Math.round(rect.top) }));
-    } catch (e) {}
-  }
-
-  function restorePanelPosition(panel) {
-    try {
-      const raw = localStorage.getItem(PANEL_POS_KEY);
-      if (!raw) return;
-      const pos = JSON.parse(raw);
-      if (!Number.isFinite(Number(pos.left)) || !Number.isFinite(Number(pos.top))) return;
-      const safe = clampPanelPosition(panel, Number(pos.left), Number(pos.top));
-      panel.style.left = safe.left + 'px';
-      panel.style.top = safe.top + 'px';
-      panel.style.right = 'auto';
-      panel.style.bottom = 'auto';
-    } catch (e) {}
-  }
-
-  function enablePanelDrag(panel) {
-    const handle = panel.querySelector('.rg-head');
-    if (!handle) return;
-
-    let dragging = false;
-    let pointerId = null;
-    let offsetX = 0;
-    let offsetY = 0;
-
-    handle.addEventListener('pointerdown', (ev) => {
-      // Tombol ON/OFF tetap bisa diklik normal.
-      if (ev.target.closest('.rg-toggle')) return;
-      if (ev.button !== undefined && ev.button !== 0) return;
-
-      const rect = panel.getBoundingClientRect();
-      dragging = true;
-      pointerId = ev.pointerId;
-      offsetX = ev.clientX - rect.left;
-      offsetY = ev.clientY - rect.top;
-
-      panel.style.left = rect.left + 'px';
-      panel.style.top = rect.top + 'px';
-      panel.style.right = 'auto';
-      panel.style.bottom = 'auto';
-      panel.classList.add('rg-dragging');
-
-      try { handle.setPointerCapture(pointerId); } catch (e) {}
-      ev.preventDefault();
-    });
-
-    handle.addEventListener('pointermove', (ev) => {
-      if (!dragging || (pointerId !== null && ev.pointerId !== pointerId)) return;
-      const safe = clampPanelPosition(panel, ev.clientX - offsetX, ev.clientY - offsetY);
-      panel.style.left = safe.left + 'px';
-      panel.style.top = safe.top + 'px';
-      ev.preventDefault();
-    });
-
-    const stopDrag = (ev) => {
-      if (!dragging) return;
-      if (ev && pointerId !== null && ev.pointerId !== undefined && ev.pointerId !== pointerId) return;
-      dragging = false;
-      panel.classList.remove('rg-dragging');
-      try { handle.releasePointerCapture(pointerId); } catch (e) {}
-      pointerId = null;
-      savePanelPosition(panel);
-    };
-
-    handle.addEventListener('pointerup', stopDrag);
-    handle.addEventListener('pointercancel', stopDrag);
-
-    window.addEventListener('resize', () => {
-      const rect = panel.getBoundingClientRect();
-      const safe = clampPanelPosition(panel, rect.left, rect.top);
-      panel.style.left = safe.left + 'px';
-      panel.style.top = safe.top + 'px';
-      panel.style.right = 'auto';
-      panel.style.bottom = 'auto';
-      savePanelPosition(panel);
-    });
-  }
-
-  function syncToggle() {
-    const btn = document.querySelector('#regc-auto-debit-panel .rg-toggle');
-    if (!btn) return;
-    btn.textContent = enabled ? 'ON' : 'OFF';
-    btn.classList.toggle('off', !enabled);
-  }
-
-  function setQueueCount(count) {
-    const el = document.querySelector('#regc-auto-debit-panel .rg-queue');
-    if (el) el.textContent = String(count || 0);
-  }
-
-  function updatePanel(state, main, sub) {
-    const panel = document.getElementById('regc-auto-debit-panel');
-    if (!panel) return;
-    panel.dataset.state = state || 'idle';
-    const m = panel.querySelector('.rg-main');
-    const s = panel.querySelector('.rg-sub');
-    if (m) m.textContent = text(main);
-    if (s) s.textContent = text(sub);
-  }
-
-  function start() {
-    if (!document.body) return setTimeout(start, 100);
-    injectPanel();
-    installCrossTabWake();
-    startBackgroundHeartbeat();
-    startRegcBackgroundKeepAlive().catch(function () {});
-
-    // Resume segera ketika browser mengaktifkan ulang page lifecycle / koneksi.
-    window.addEventListener('pageshow', () => {
-      startRegcBackgroundKeepAlive().catch(function () {});
-      wakeLoop('pageshow');
-    });
-    window.addEventListener('online', () => {
-      startRegcBackgroundKeepAlive().catch(function () {});
-      wakeLoop('online');
-    });
-    document.addEventListener('visibilitychange', () => {
-      // Saat menjadi hidden, JANGAN stop worker. Pastikan WebRTC keep-alive hidup.
-      startRegcBackgroundKeepAlive().catch(function () {});
-      wakeLoop(document.hidden ? 'hidden-no-focus' : 'visible-again');
-    });
-    document.addEventListener('resume', () => {
-      startRegcBackgroundKeepAlive().catch(function () {});
-      wakeLoop('resume');
-    });
-    document.addEventListener('freeze', () => {
-      // Jika Chrome benar-benar mem-freeze page, tidak ada userscript yang bisa
-      // mengeksekusi task sampai resume. Catat state; saat resume worker langsung lanjut.
-      try { GM_setValue('lt_regc_last_freeze_v631', Date.now()); } catch (e) {}
-    });
-
-    // Bila tab pernah dibuang Chrome lalu direload saat kembali, langsung resync.
-    if (document.wasDiscarded) {
-      startupResynced = false;
-      pendingWake = true;
-    }
-
-    scheduleLoop(80);
-  }
-
-  start();
 })();
 
 })();
