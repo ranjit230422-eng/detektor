@@ -66,7 +66,13 @@
     '"Q n A" Live Chat',
     'INFORMASI PERUBAHAN',
     'KENDALA MEMBER',
-    'PESAN MAKAN'
+    'PESAN MAKAN',
+    'GESER GRUB BANK',
+    'INFORMASI QRIS',
+    'ISRAEL',
+    'KENDALA LIVECHAT',
+    'LINK NAWALA'
+    
   ];
 
   const quotedBackgroundUrl = JSON.stringify(EMBEDDED_BACKGROUND);
