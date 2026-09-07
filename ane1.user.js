@@ -65,7 +65,8 @@
     'PESAN MAKAN POIPET',
     '"Q n A" Live Chat',
     'INFORMASI PERUBAHAN',
-    'KENDALA MEMBER'
+    'KENDALA MEMBER',
+    'PESAN MAKAN'
   ];
 
   const quotedBackgroundUrl = JSON.stringify(EMBEDDED_BACKGROUND);
