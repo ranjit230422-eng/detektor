@@ -1,1161 +1,5076 @@
 // ==UserScript==
-// @name         LiveChat Minimal UI + Toggles (per-ID) + Left-Bar Pulse + Accent Toast + Fixed Sidebars
-// @namespace    http://tampermonkey.net/
-// @version      2.0.4
-// @description  Garis kiri seragam (termasuk Archived). Toast ber-outline sesuai toggle & width 300px. Semua fitur tetap, sidebar width tetap. Left host & pulse scale mengikuti kustom kamu.
-// @author       @anonymous
-// @match        https://my.livechatinc.com/chats/*
-// @grant        GM_setValue
-// @grant        GM_getValue
-// @grant        GM_deleteValue
+// @name         KHUSUS VALIDASI - Sleekshot One Message FAST
+// @namespace    linetogel-sleekshot-one-message-fast
+// @version      16.0
+// @description  Deteksi gambar terdekat, hanya 1 pesan, preload cepat, multi gambar jadi 1 link Sleekshot
+// @match        https://chat-linetogel.hokibgs.com/*
+// @grant        GM_addStyle
+// @grant        GM_xmlhttpRequest
+// @grant        GM_setClipboard
+// @connect      sleekshot.app
+// @connect      socket-linetogel.hokibgs.com
+// @connect      *
+// @run-at       document-idle
 // ==/UserScript==
 
 (function () {
     'use strict';
 
-    // ====== Konfigurasi ======
-    const BLINK_DELAY_MS = 180000; // 3 menit (Merah Berkedip + ⚠️)
-    const YELLOW_THRESHOLD_MS = 120000; // 2 menit (Kuning Diam)
-    const TOAST_LIFETIME_MS = 180000;
-    const TOAST_ACCENT_COLOR = '#ffcc00'; // Amber/Gold (Lebih Jelas di Putih)
-    const TOAST_ACCENT_COLOR_RED = '#ff0000'; // aksen merah terang
-    const TOAST_ACCENT_COLOR_BLUE = '#011d47ff'; // Biru Jeans Tua (Pengganti Putih)
-    const LEFTBAR_WIDTH_PX = 3; // ketebalan garis kiri
-    const TAG_RAINBOW = 'rainbow'; // 🌈 mode pelangi
+    // ============================================================
+    // CONFIG
+    // ============================================================
 
-    // ====== SLA Notification Toggle Settings ======
-    const SLA_NOTIF_2MIN_KEY = 'slaNotif2minEnabled';
-    const SLA_NOTIF_3MIN_KEY = 'slaNotif3minEnabled';
+    const ROOM_NAME = 'KHUSUS VALIDASI';
 
-    // =======================================
-    // Utils: Universal Robust Helpers
-    // =======================================
-    const archTags = [
-        'archived', 'customer left', 'inactivity', 'meninggalkan',
-        'followup', 'sent to', 'joined', 'assigned', 'invited', 'closed',
-        'transferred', 'ditransfer'
-    ];
+    const SLEEKSHOT_UPLOAD =
+        'https://sleekshot.app/api/upload';
 
-    const detectIsTyping = (item) => {
-        if (!item) return false;
-        // Hanya deteksi elemen indikator khusus, jangan scan seluruh teks item
-        // karena teks "..." di akhir pesan (truncation) akan terbaca sebagai typing.
-        const typingEl = item.querySelector(
-            '[class*="typing"], [class*="dots"], [data-test*="typing"], [data-testid*="typing"], ' +
-            '.typing-indicator, [aria-label*="typing"], [class*="lc-dots"], [class*="lc-typing"], ' +
-            'img[src*="typing"], .css-14v0z1c, [class*="DotIndicator"], [class*="ThreeDots"], ' +
-            '[class*="LoadingDots"], [class*="typing_dots"], [class*="DotAnimation"]'
-        ) || item.querySelector('svg[class*="typing"], svg[class*="dots"], svg[aria-label*="typing"]');
+    const POSITION_KEY =
+        'ss_one_message_fast_position_v16';
 
-        if (typingEl) return true;
+    const LINK_CACHE_KEY =
+        'ss_sleekshot_link_cache_v16';
 
-        // Fallback: Cek apakah ada elemen yang secara spesifik mengandung teks 'mengetik' atau 'typing'
-        // tapi bukan bagian dari preview pesan.
-        const dotsEl = item.querySelector('.chat-item__message--typing, .lc-typing-indicator');
-        if (dotsEl) return true;
+    const MAX_BLOB_CACHE = 25;
 
-        return false;
-    };
+    const MAX_PREPARED_CACHE = 12;
 
-    // Helper functions to check notification settings
-    // Use localStorage as a runtime bridge from Script 1
-    const isNotif2minEnabled = () => localStorage.getItem(SLA_NOTIF_2MIN_KEY) !== 'false';
-    const isNotif3minEnabled = () => localStorage.getItem(SLA_NOTIF_3MIN_KEY) !== 'false';
+    const MAX_LINK_CACHE = 80;
 
-    // Function to clear specific type of SLA toasts
-    const clearSlaToasts = (type) => {
-        const host = document.querySelector('.my-toast-host');
-        if (!host) return;
 
-        const toasts = host.querySelectorAll('.my-toast[data-chat-id]');
-        toasts.forEach(toast => {
-            const msgEl = toast.querySelector('.my-toast-msg');
-            if (!msgEl) return;
-            const text = msgEl.textContent || '';
+    // ============================================================
+    // STATE
+    // ============================================================
 
-            if (type === '2min' && text.includes('2 MENIT')) {
-                toast.classList.add('hide');
-                setTimeout(() => toast.remove(), 200);
-            } else if (type === '3min' && text.includes('3 MENIT')) {
-                toast.classList.add('hide');
-                setTimeout(() => toast.remove(), 200);
-            }
-        });
-    };
+    let selectedMessage = null;
 
-    // Listen for setting changes from dashboard
-    window.addEventListener('slaNotifSettingChanged', (e) => {
-        const { type, enabled } = e.detail;
-        console.log(`🔔 SLA Notif ${type} changed to: ${enabled ? 'ON' : 'OFF'}`);
+    let selectedImages = [];
 
-        // If turned OFF, clear existing toasts of that type
-        if (!enabled) {
-            clearSlaToasts(type);
-        }
-    });
+    let selectedURLs = [];
 
-    // =========================
-    // Utilities (URL & Chat ID)
-    // =========================
-    const getActiveChatId = () => {
-        // 1. Cek via attribute aria-selected atau class active (Sangat Akurat)
-        const selectedLi = document.querySelector('li[data-testid^="chat-item-"][aria-selected="true"], li[class*="selected"], li[class*="active"]');
-        if (selectedLi) {
-            const tid = selectedLi.getAttribute('data-testid') || '';
-            const m = tid.match(/chat-item-([^/]+)/i);
-            if (m) return m[1];
-        }
+    let selectedGroupKey = '';
 
-        // 2. Fallback via URL
-        const m = location.pathname.match(/\/chats\/(?:[^/]+\/)?([^/]+)/i);
-        return m ? m[1] : null;
-    };
+    let selectedContentKey = '';
 
-    const manuallyRepliedIds = new Map(); // chatId -> timestamp (untuk cleanup otomatis)
+    let uploading = false;
 
-    // --- FITUR BARU: Deteksi Kirim Pesan untuk Reset Instan ---
-    const handleManualReply = () => {
-        const activeId = getActiveChatId();
-        if (activeId) {
-            console.log(`🚀 [${activeId}] Reply terdeteksi via Input! Mereset Timer...`);
+    let prepareTimer = null;
 
-            // Mark as manually replied to prevent restart while sidebar lags
-            manuallyRepliedIds.set(activeId, Date.now());
 
-            unrepliedStartTimes.delete(activeId);
-            saveUnrepliedTimers();
+    /*
+     * Cache link Sleekshot
+     */
+    const uploadCache = new Map();
 
-            // Cari item dan bersihkan visualnya segera
-            const item = findItemByChatId(activeId);
-            if (item) {
-                item.classList.remove('blink-red', 'is-red');
-                item.classList.add('replied-instant'); // Force green state visually
-                delete item.dataset.redToastShown;
-                delete item.dataset.yellowToastShown;
-                removeWarningBadge(item);
-            }
-            updateLiveToastIndices(); // Tutup toast segera
-        }
-    };
 
-    // Listen untuk klik tombol Send dan tekan Enter
-    document.addEventListener('click', (e) => {
-        if (e.target.closest('[data-testid="send-button"], [class*="send-button"], button.send')) {
-            handleManualReply();
-        }
-    }, true);
+    /*
+     * Cache Blob masing-masing gambar.
+     *
+     * Value bisa berupa:
+     * Blob
+     * Promise<Blob>
+     */
+    const blobCache = new Map();
 
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            // Cek apakah sedang fokus di area pesan
-            if (document.activeElement.matches('[data-testid="message-input"], [contenteditable="true"], textarea')) {
-                handleManualReply();
-            }
-        }
-    }, true);
 
-    const onRouteChange = (cb) => {
-        const _ps = history.pushState, _rs = history.replaceState;
-        history.pushState = function () { const r = _ps.apply(this, arguments); setTimeout(cb, 0); return r; };
-        history.replaceState = function () { const r = _rs.apply(this, arguments); setTimeout(cb, 0); return r; };
-        window.addEventListener('popstate', () => setTimeout(cb, 0));
-    };
+    /*
+     * Cache file final yang sudah siap upload.
+     *
+     * Untuk 1 gambar:
+     * blob asli.
+     *
+     * Untuk 2+:
+     * blob hasil gabungan.
+     */
+    const preparedCache = new Map();
 
-    const findItemByChatId = (chatId) => {
-        if (!chatId) return null;
-        const li = document.querySelector(`li[data-testid="chat-item-${chatId}"]`);
-        return li ? (li.querySelector('.chat-item') || li) : null;
-    };
 
-    const getChatIdFromItem = (item) => {
-        if (!item) return null;
-        if (item.dataset.chatId) return item.dataset.chatId;
-        const holder = item.closest('li[data-testid^="chat-item-"]') || item;
-        const tid = holder.getAttribute('data-testid') || '';
-        const m = tid.match(/chat-item-([^/]+)/i);
-        if (m) { item.dataset.chatId = m[1]; return m[1]; }
-        const a = item.querySelector('a[href*="/chats/"]');
-        if (a) {
-            const m2 = (a.getAttribute('href') || '').match(/\/chats\/(?:[^/]+\/)?([^/]+)/i);
-            if (m2) { item.dataset.chatId = m2[1]; return m2[1]; }
-        }
-        return null;
-    };
+    /*
+     * ID lokal message apabila website
+     * tidak mempunyai data-message-id.
+     */
+    const localMessageIds = new WeakMap();
 
-    const getCurrentChatItem = () => findItemByChatId(getActiveChatId());
-    const storageKeyForItem = (item) => {
-        const id = getChatIdFromItem(item);
-        return id ? `chat-toggle-${id}` : null;
-    };
+    let localMessageCounter = 1;
 
-    // ============== DOM Helpers ==============
-    const waitForElement = (selector, callback) => {
-        const el = document.querySelector(selector);
-        if (el) callback(el); else setTimeout(() => waitForElement(selector, callback), 500);
-    };
 
-    // ======== Persist (per-ID) ========
-    const saveColor = (item, token) => {
-        const key = storageKeyForItem(item);
-        if (key) {
-            GM_setValue(key, token);
-            localStorage.setItem(key, token); // bridge
-        }
-    };
-    const getSavedColor = (item) => {
-        const key = storageKeyForItem(item);
-        if (!key) return null;
-        let val = GM_getValue(key);
-        if (val === undefined) {
-            val = localStorage.getItem(key);
-            if (val) GM_setValue(key, val);
-        }
-        return val;
-    };
-    const clearSavedColor = (item) => {
-        const key = storageKeyForItem(item);
-        if (key) {
-            GM_deleteValue(key);
-            localStorage.removeItem(key);
-        }
-    };
+    // ============================================================
+    // LOAD PERSISTENT LINK CACHE
+    // ============================================================
 
-    // ====== Toast ======
-    const ensureToastHost = () => {
-        let host = document.querySelector('.my-toast-host');
-        if (!host) {
-            host = document.createElement('div');
-            host.className = 'my-toast-host';
-            document.body.appendChild(host);
-        }
-        return host;
-    };
+    function loadLinkCache() {
 
-    const showToast = (message, accent = TOAST_ACCENT_COLOR, chatId = null, duration = TOAST_LIFETIME_MS, onUserClose = null) => {
-        const host = ensureToastHost();
+        try {
 
-        // --- ANTI-SPAM NOTIFIKASI ---
-        const existingToast = host.querySelector(`.my-toast[data-chat-id="${chatId}"]`);
-        if (chatId && existingToast) {
-            // Jika notifikasi untuk chat ini sudah ada, update pesannya saja, jangan buat baru
-            const msgSpan = existingToast.querySelector('.my-toast-msg');
-            if (msgSpan) {
-                if (message.includes('#')) {
-                    const parts = message.split(/#\d+/);
-                    msgSpan.innerHTML = `${parts[0]}#<span class="live-idx">?</span>${parts[1] || ''}`;
-                } else {
-                    msgSpan.textContent = message;
-                }
-            }
-            // Update warna aksen jika berubah (misal dari kuning ke merah)
-            existingToast.style.setProperty('--toast-accent', accent);
-            updateLiveToastIndices();
-            return;
-        }
+            const raw =
+                localStorage.getItem(
+                    LINK_CACHE_KEY
+                );
 
-        const toast = document.createElement('div');
-        toast.className = 'my-toast';
-        if (chatId) {
-            toast.dataset.chatId = chatId;
-            toast.style.cursor = 'pointer';
-        }
-        toast.setAttribute('role', 'status');
-        toast.setAttribute('aria-live', 'polite');
-        toast.style.setProperty('--toast-accent', accent);
 
-        const msg = document.createElement('span');
-        msg.className = 'my-toast-msg';
-
-        if (message.includes('#')) {
-            const parts = message.split(/#\d+/);
-            msg.innerHTML = `${parts[0]}#<span class="live-idx">?</span>${parts[1] || ''}`;
-        } else {
-            msg.textContent = message;
-        }
-
-        const btn = document.createElement('button');
-        btn.className = 'my-toast-close';
-        btn.type = 'button';
-        btn.setAttribute('aria-label', 'Close');
-        btn.textContent = '×';
-
-        toast.appendChild(msg);
-        toast.appendChild(btn);
-        host.appendChild(toast);
-
-        if (chatId) updateLiveToastIndices();
-
-        const close = (isUserAction = false) => {
-            if (isUserAction && onUserClose) onUserClose();
-
-            // Bersihkan flag Shown di item agar bisa dipicu lagi nanti jika diperlukan
-            if (chatId) {
-                const itm = findItemByChatId(chatId);
-                if (itm) {
-                    delete itm.dataset.redToastShown;
-                    delete itm.dataset.yellowToastShown;
-                }
-            }
-
-            toast.classList.add('hide');
-            setTimeout(() => toast.remove(), 200);
-        };
-
-        // --- FITUR QUICK-JUMP ---
-        toast.addEventListener('click', () => {
-            if (chatId) {
-                const item = findItemByChatId(chatId);
-                if (item) {
-                    item.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    item.click();
-                }
-            }
-            close(false);
-        });
-
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            close(true);
-        });
-
-        setTimeout(() => {
-            if (toast.parentElement) close(false);
-        }, duration);
-    };
-
-    // =========================
-    // Toggle logic + Timer kuning & Merah (Locked Timestamp)
-    // =========================
-    const bootTime = Date.now(); // Catat waktu booting script
-    const UNREPLIED_STORAGE_KEY = 'chatUnrepliedStartTimes';
-    const initUnrepliedMap = () => {
-        let saved = GM_getValue(UNREPLIED_STORAGE_KEY);
-        if (saved === undefined) {
-            // Migration
-            saved = localStorage.getItem(UNREPLIED_STORAGE_KEY);
-            if (saved) {
-                try {
-                    const obj = JSON.parse(saved);
-                    GM_setValue(UNREPLIED_STORAGE_KEY, obj);
-                    return new Map(Object.entries(obj).map(([id, time]) => [id, Number(time)]));
-                } catch (e) { return new Map(); }
-            }
-            return new Map();
-        }
-        return new Map(Object.entries(saved).map(([id, time]) => [id, Number(time)]));
-    };
-
-    const yellowTimers = new Map(); // chatId -> timeoutId
-    const unrepliedStartTimes = initUnrepliedMap();
-
-    const saveUnrepliedTimers = () => {
-        const obj = {};
-        unrepliedStartTimes.forEach((v, k) => obj[k] = v);
-        GM_setValue(UNREPLIED_STORAGE_KEY, obj);
-        localStorage.setItem(UNREPLIED_STORAGE_KEY, JSON.stringify(obj)); // bridge
-    };
-
-    const setYellowTimer = (item, enable) => {
-        const chatId = getChatIdFromItem(item);
-        if (!chatId) return;
-
-        if (yellowTimers.has(chatId)) {
-            clearTimeout(yellowTimers.get(chatId));
-            yellowTimers.delete(chatId);
-        }
-
-        const currentNode = findItemByChatId(chatId);
-        if (currentNode) currentNode.classList.remove('blink-yellow');
-
-        if (enable) {
-            const tid = setTimeout(() => {
-                const node = findItemByChatId(chatId);
-                const stillYellow = node && getSavedColor(node) === 'yellow';
-                if (stillYellow) {
-                    node.classList.add('blink-yellow');
-                    showToast(`⏳ Cek chat yang ditandai (kuning) • #1`, TOAST_ACCENT_COLOR, chatId);
-                }
-                yellowTimers.delete(chatId);
-            }, BLINK_DELAY_MS);
-            yellowTimers.set(chatId, tid);
-        }
-    };
-
-    // ========== Warning Badge Functions ==========
-    const addWarningBadge = (item) => {
-        if (item.querySelector('.warning-badge-3min')) return;
-        const badge = document.createElement('div');
-        badge.className = 'warning-badge-3min';
-        badge.innerHTML = '⚠️';
-        item.style.position = 'relative';
-        item.appendChild(badge);
-    };
-
-    const removeWarningBadge = (item) => {
-        const badge = item.querySelector('.warning-badge-3min');
-        if (badge) badge.remove();
-    };
-
-    // ========== Blink merah (LOCK pada pesan pertama) ==========
-    const setRedBlinkState = (item, isRed) => {
-        const chatId = getChatIdFromItem(item);
-        if (!chatId) return;
-
-        // --- DETEKSI REPLY AGENT YANG LEBIH AKURAT ---
-        const hasReplyIcon = !!(
-            item.querySelector('[data-testid="replied"]') ||
-            item.querySelector('svg[data-testid="Icon--reply"]') ||
-            item.querySelector('.chat-item__replied')
-        );
-
-        const hasUnread = !!item.querySelector('[data-testid="unread-messages-count"]');
-        const isActive = (chatId === getActiveChatId());
-
-        const itemText_lower = (item.textContent || "").toLowerCase();
-        const hasReply = !!hasReplyIcon;
-
-        // --- CLEANUP MANUAL REPLY STATUS ---
-        if (hasReply || hasUnread) {
-            manuallyRepliedIds.delete(chatId);
-            item.classList.remove('replied-instant');
-            delete item.dataset.redToastSuppressed;
-            delete item.dataset.yellowToastSuppressed;
-        }
-
-        // --- FIX: Deteksi Pesan Klien di Chat Aktif ---
-        // Jika chat aktif, hasUnread biasanya false. Kita cek DOM chat window.
-        if (isActive && manuallyRepliedIds.has(chatId)) {
-            const allMsgs = document.querySelectorAll('[data-testid="agent-message"], [data-testid="customer-message"]');
-            if (allMsgs.length > 0) {
-                const last = allMsgs[allMsgs.length - 1];
-                if (last.getAttribute('data-testid') === 'customer-message') {
-                    console.log(`🧹 Klien membalas di chat aktif [${chatId}], menghapus flag manual reply.`);
-                    manuallyRepliedIds.delete(chatId);
-                }
-            }
-        }
-
-        // --- SAFETY TIMEOUT: Jika flag manual reply macet > 30 detik, hapus paksa ---
-        if (manuallyRepliedIds.has(chatId)) {
-            const replyTime = manuallyRepliedIds.get(chatId);
-            if (Date.now() - replyTime > 30000) {
-                console.log(`🕒 Manual reply flag expired for [${chatId}], removing...`);
-                manuallyRepliedIds.delete(chatId);
-            }
-        }
-
-        if (manuallyRepliedIds.has(chatId) && !hasReply) {
-            item.classList.remove('blink-red', 'is-red', 'blink-yellow');
-            removeWarningBadge(item);
-            return;
-        }
-
-        const itemText = (item.textContent || "").toLowerCase();
-        const isArchived = archTags.some(function (tag) { return itemText.indexOf(tag) !== -1; });
-        const isTyping = detectIsTyping(item);
-
-        if (isTyping) {
-            if (!unrepliedStartTimes.has(chatId)) {
-                item.classList.remove('blink-red', 'is-red', 'blink-yellow');
-                delete item.dataset.redToastShown;
-                delete item.dataset.yellowToastShown;
-                removeWarningBadge(item);
+            if (!raw) {
                 return;
             }
-        }
 
-        if (hasReply || isArchived) {
-            if (unrepliedStartTimes.has(chatId)) {
-                unrepliedStartTimes.delete(chatId);
-                saveUnrepliedTimers();
+
+            const data =
+                JSON.parse(raw);
+
+
+            if (
+                !data ||
+                typeof data !== 'object'
+            ) {
+                return;
             }
-            item.classList.remove('blink-red', 'is-red', 'blink-yellow');
-            delete item.dataset.redToastShown;
-            delete item.dataset.yellowToastShown;
-            delete item.dataset.redToastSuppressed;
-            delete item.dataset.yellowToastSuppressed;
-            removeWarningBadge(item);
-            return;
-        }
 
-        const isTransferred = itemText.includes('transferred') || itemText.includes('ditransfer');
-        const isRichMessage = itemText.includes('sent a rich message') || itemText.includes('mengirim pesan');
 
-        // Deteksi jika preview teks diawali dengan nama CS (biasanya indikasi agen sudah membalas)
-        const isAgentAction = isRichMessage || (/^[a-z0-9]+\s+[a-z0-9]+\s+sent/i.test(itemText)) || itemText.includes('you:');
+            Object.entries(data)
+                .slice(-MAX_LINK_CACHE)
+                .forEach(
+                    ([key, url]) => {
 
-        if (!unrepliedStartTimes.has(chatId) && (hasUnread || (!hasReplyIcon && !isTransferred && !isAgentAction))) {
-            unrepliedStartTimes.set(chatId, Date.now());
-            saveUnrepliedTimers();
-        }
+                        if (
+                            key &&
+                            typeof url === 'string' &&
+                            url.startsWith('http')
+                        ) {
 
-        // --- EVALUASI TAHAPAN WAKTU (2 Menit & 3 Menit) ---
-        const startTime = unrepliedStartTimes.get(chatId);
-        if (!startTime) {
-            item.classList.remove('blink-red', 'is-red', 'blink-yellow');
-            return;
-        }
+                            uploadCache.set(
+                                key,
+                                url
+                            );
 
-        const elapsed = Date.now() - startTime;
+                        }
 
-        // 1. TAHAP FINAL: 3 MENIT (Merah Berkedip)
-        if (elapsed >= BLINK_DELAY_MS) {
-            item.classList.add('is-red');
-            item.classList.add('blink-red');
-            item.classList.remove('blink-yellow'); // Hilangkan kuning bila sudah merah
-            addWarningBadge(item);
-
-            if (!isActive && !item.dataset.redToastShown && !item.dataset.redToastSuppressed && isNotif3minEnabled()) {
-                showToast(`🚨 3 MENIT: Belum Dibalas (#1)`, TOAST_ACCENT_COLOR_RED, chatId, TOAST_LIFETIME_MS, () => {
-                    item.dataset.redToastSuppressed = '1';
-                });
-                item.dataset.redToastShown = '1';
-            }
-        }
-        // 2. TAHAP SIAGA: 2 MENIT (Kuning Berdetak Pelan)
-        else if (elapsed >= YELLOW_THRESHOLD_MS) {
-            item.classList.add('is-red');
-            item.classList.remove('blink-red');
-            item.classList.add('blink-yellow'); // Detak pelan kuning
-            removeWarningBadge(item); // Belum saatnya badge ⚠️
-
-            if (!isActive && !item.dataset.yellowToastShown && !item.dataset.yellowToastSuppressed && isNotif2minEnabled()) {
-                showToast(`⚡ 2 MENIT: Segera Balas (#1)`, TOAST_ACCENT_COLOR, chatId, TOAST_LIFETIME_MS, () => {
-                    item.dataset.yellowToastSuppressed = '1';
-                });
-                item.dataset.yellowToastShown = '1';
-            }
-        } else {
-            // Dibawah 2 menit (Merah Solid saja atau sesuai applySingleChatStyling)
-            item.classList.add('is-red');
-            item.classList.remove('blink-red', 'blink-yellow');
-            removeWarningBadge(item);
-            delete item.dataset.redToastShown;
-            delete item.dataset.yellowToastShown;
-            delete item.dataset.redToastSuppressed;
-            delete item.dataset.yellowToastSuppressed;
-        }
-    };
-
-    // Fungsi untuk update semua angka di notifikasi agar AKTUAL (Live)
-    // DAN otomatis menutup hanya jika beneran sudah dibalas (timer dihapus)
-    const updateLiveToastIndices = () => {
-        const toasts = document.querySelectorAll('.my-toast[data-chat-id]');
-        const allItems = Array.from(document.querySelectorAll('.chat-item'));
-
-        toasts.forEach(toast => {
-            const chatId = toast.dataset.chatId;
-            const item = findItemByChatId(chatId);
-
-            // LOGIKA AUDIT: Toast hanya boleh hilang jika timer unreplied sudah dihapus (sudah dibalas/archive)
-            // atau jika chat item sudah tidak ada di sidebar
-            const itemText = item ? (item.textContent || "").toLowerCase() : "";
-            const isArchived = archTags.some(function (tag) { return itemText.indexOf(tag) !== -1; });
-            const hasTimer = unrepliedStartTimes.has(chatId);
-            const isActive = (chatId === getActiveChatId()); // Cek apakah chat sedang dibuka
-
-            // LOGIKA: Tutup jika: Item hilang, Timer hilang, di-Archive, atau SEDANG DIBUKA (Seen)
-            const shouldClose = !item || !hasTimer || isArchived || isActive;
-
-            if (shouldClose) {
-                if (!toast.classList.contains('hide')) {
-                    console.log(`🧹 Menutup notifikasi (Navigasi/Selesai): ${chatId}`);
-
-                    // Bersihkan flag Shown agar bisa muncul lagi jika nanti pindah chat lagi
-                    if (item) {
-                        delete item.dataset.redToastShown;
-                        delete item.dataset.yellowToastShown;
                     }
+                );
 
-                    toast.classList.add('hide');
-                    setTimeout(() => toast.remove(), 200);
-                }
-            } else {
-                // Update angka baris jika masih aktif (tetap muncul sampai dibalas)
-                const liveIdxSpan = toast.querySelector('.live-idx');
-                if (liveIdxSpan && item) {
-                    const currentIdx = allItems.indexOf(item) + 1;
-                    if (currentIdx > 0) liveIdxSpan.textContent = currentIdx;
-                }
-            }
-        });
-    };
-
-    // === PERFORMANCE OPTIMIZATION: Visibility-aware Interval ===
-    let periodicCheckerId = null;
-
-    function runPeriodicChecker() {
-        // Skip jika tab tidak terlihat
-        if (document.hidden) return;
-
-        const allItems = document.querySelectorAll('.chat-item');
-        const activeIds = new Set();
-
-        allItems.forEach(item => {
-            const id = getChatIdFromItem(item);
-            if (id) activeIds.add(id);
-            // Kita panggil ulang styling untuk update status blink/badge
-            applySingleChatStyling(item);
-        });
-
-        // Cleanup: Hapus timer dari storage hanya jika chat benar-benar hilang permanen
-        // JANGAN hapus jika masih dalam masa loading (Grace Period 10 detik pertama)
-        const isBooting = (Date.now() - bootTime < 10000);
-        let isChanged = false;
-
-        if (!isBooting && activeIds.size > 0) {
-            unrepliedStartTimes.forEach((v, k) => {
-                if (!activeIds.has(k)) {
-                    unrepliedStartTimes.delete(k);
-                    isChanged = true;
-                }
-            });
-            if (isChanged) saveUnrepliedTimers();
         }
 
-        // Update angka baris di notifikasi agar selalu aktual (100% akurat)
-        updateLiveToastIndices();
-    }
+        catch (error) {
 
-    // Start interval - 500ms adalah angka aman agar tidak lag
-    periodicCheckerId = setInterval(runPeriodicChecker, 500);
-
-    // Pause/resume saat tab visibility berubah
-    document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) {
-            // Tab aktif kembali - jalankan segera
-            runPeriodicChecker();
-        }
-    });
-
-    // tokenOrNull: 'yellow' | 'black' | null
-    const applyToggleToken = (item, tokenOrNull) => {
-        if (!item) return;
-        if (tokenOrNull === null) { clearSavedColor(item); setYellowTimer(item, false); }
-        else { saveColor(item, tokenOrNull); setYellowTimer(item, tokenOrNull === 'yellow'); }
-        applySingleChatStyling(item);
-    };
-
-    // =========================
-    // Navigation (Alt+↑/↓)
-    // =========================
-    const enablePriorityNavigation = () => {
-        let lastIndex = 0;
-        const getUnrepliedChats = () => {
-            return Array.from(document.querySelectorAll('.chat-item')).filter(item => {
-                const isReplied = item.querySelector('[data-testid="replied"]');
-                const itemText = (item.textContent || "").toLowerCase();
-                const isArchived = archTags.some(function (tag) { return itemText.indexOf(tag) !== -1; });
-                const isBlackToggled = getSavedColor(item) === 'black';
-                const isYellowToggled = getSavedColor(item) === 'yellow';
-                const isTyping = detectIsTyping(item);
-                return !isReplied && !isArchived && !isBlackToggled && !isYellowToggled && !isTyping;
-            });
-        };
-        const focusChat = (chat) => {
-            if (!chat) return;
-            chat.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            chat.click();
-            chat.focus();
-        };
-        const navigateUnreplied = (direction) => {
-            const chats = getUnrepliedChats();
-            if (chats.length === 0) return;
-            if (direction === 'down') lastIndex = (lastIndex + 1) % chats.length;
-            else if (direction === 'up') lastIndex = (lastIndex - 1 + chats.length) % chats.length;
-            focusChat(chats[lastIndex]);
-            console.log(`🔁 Lompat ke chat belum dibalas [${lastIndex + 1}/${chats.length}]`);
-        };
-        document.addEventListener('keydown', (e) => {
-            if (e.altKey && e.key === 'ArrowDown') { e.preventDefault(); navigateUnreplied('down'); }
-            else if (e.altKey && e.key === 'ArrowUp') { e.preventDefault(); navigateUnreplied('up'); }
-        });
-        console.log('✅ Navigasi semua chat belum dibalas AKTIF. Gunakan Alt + ↑ atau Alt + ↓');
-    };
-
-    // =========================
-    // Layout (Sidebar width + CSS var)
-    // =========================
-    const applySidebarWidth = () => {
-        const leftSidebar = document.querySelector('.css-1cmlcj3');
-        const rightSidebar = document.querySelector('.css-1orfco2');
-        if (leftSidebar) {
-            leftSidebar.style.width = '350px';
-            leftSidebar.style.minWidth = '350px';
-            leftSidebar.style.maxWidth = '350px';
-            leftSidebar.style.paddingRight = '10px';
-            document.documentElement.style.setProperty('--mp-left-sidebar-w', '350px'); // dipakai bila perlu
-        }
-        if (rightSidebar) {
-            rightSidebar.style.width = '320px';
-            rightSidebar.style.minWidth = '320px';
-            rightSidebar.style.maxWidth = '320px';
-        }
-    };
-
-    // =======================================
-    // Helpers
-    // =======================================
-    const hexToRgb = (hex) => {
-        let h = (hex || '').replace('#', '').trim();
-        if (!h) return { r: 255, g: 255, b: 255 };
-        if (h.length === 3) h = h.split('').map(c => c + c).join('');
-        const n = parseInt(h, 16);
-        return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-    };
-
-    // =======================================
-    // Styling per item (garis kiri seragam)
-    // =======================================
-    const applySingleChatStyling = (item) => {
-        const chatId = getChatIdFromItem(item);
-        if (!chatId) return;
-
-        const hasReplyIcon = !!item.querySelector('[data-testid="replied"]');
-        const hasUnread = !!item.querySelector('[data-testid="unread-messages-count"]');
-        const itemText = (item.textContent || "").toLowerCase();
-
-        const isLeft = archTags.some(function (tag) { return itemText.indexOf(tag) !== -1; });
-
-        // --- TRANSFERRED & RICH MESSAGE LOGIC ---
-        const isTransferred = itemText.includes('transferred') || itemText.includes('ditransfer');
-        const isRichMessage = itemText.includes('sent a rich message') || itemText.includes('mengirim pesan');
-        const isAgentAction = isRichMessage || (/^[a-z0-9]+\s+[a-z0-9]+\s+sent/i.test(itemText)) || itemText.includes('you:');
-
-        const hasReply = !!hasReplyIcon || isAgentAction;
-        const isTyping = detectIsTyping(item);
-        const saved = getSavedColor(item);
-        let startTime = unrepliedStartTimes.get(chatId);
-        const now = Date.now();
-
-        // Jika timer sudah sangat lama (misal > 30 menit) dan baru muncul lagi, reset saja.
-        if (startTime && (now - startTime > 1800000)) {
-            unrepliedStartTimes.delete(chatId);
-            startTime = null;
-            saveUnrepliedTimers();
-        }
-
-        const elapsed = startTime ? (now - startTime) : 0;
-        let leftColor = '#ff0000'; // Merah Terang
-        let isRedState = false;
-
-        // --- CEK MANUAL OVERRIDE (Instan Hijau) ---
-        const isManuallyReplied = manuallyRepliedIds.has(chatId);
-
-        // Jika ditransfer atau mengirim rich message dan tidak ada pesan baru (unread), hapus timer jika ada
-        if ((isTransferred || isAgentAction) && !hasUnread && unrepliedStartTimes.has(chatId)) {
-            unrepliedStartTimes.delete(chatId);
-            saveUnrepliedTimers();
-            startTime = null;
-        }
-
-        // --- LOGIKA PRIORITAS WARNA (PROFESSIONAL MASTER PRIORITY) ---
-        const isSlaAlert = (hasUnread || (unrepliedStartTimes.has(chatId) && !hasReply)) && (elapsed >= YELLOW_THRESHOLD_MS);
-
-        // 1. STATUS ARCHIVE/LEFT (HIGHEST PRIORITY): Langsung kunci warna biru gelap & stop semua indikator lain.
-        if (isLeft) {
-            item.classList.remove('is-typing', 'blink-red', 'is-red', 'blink-yellow');
-            leftColor = '#011635ff';
-            isRedState = false;
-        }
-        // 2. TAHAP SLA ALERT: Jika sudah >= 2 menit, abaikan pelangi agar Agent fokus SLA.
-        else if (isSlaAlert) {
-            item.classList.remove('is-typing');
-            isRedState = true;
-            if (elapsed >= BLINK_DELAY_MS) {
-                leftColor = '#ff0000'; // Red Blink (3m)
-            } else {
-                leftColor = '#ffb300'; // Kuning Amber (2m)
-            }
-        }
-        // 3. TYPING RAINBOW: Muncul sebagai hiasan selama durasi chat masih aman (< 2 menit).
-        else if (isTyping) {
-            item.classList.add('is-typing');
-            leftColor = 'transparent';
-            isRedState = false;
-        }
-        // 4. SAVED TAGS: Manual override (Yellow/Black)
-        else if (saved === 'yellow') {
-            item.classList.remove('is-typing');
-            leftColor = '#ffb300';
-        } else if (saved === 'black') {
-            item.classList.remove('is-typing');
-            leftColor = '#021736ff';
-        }
-        // 5. BELUM DIBALAS (FASE AWAL < 2 MENIT): Merah Statis
-        else if (hasUnread || (unrepliedStartTimes.has(chatId) && !hasReply)) {
-            item.classList.remove('is-typing');
-            isRedState = true;
-            leftColor = '#ff0000';
-        }
-        // 6. SUDAH DIBALAS / DEFAULT: Hijau Emerald
-        else {
-            item.classList.remove('is-typing', 'blink-red', 'is-red', 'blink-yellow');
-            leftColor = '#00a300';
-        }
-
-        // --- TERAPKAN CSS VARIABLES ---
-        const { r, g, b } = hexToRgb(leftColor);
-        item.style.setProperty('--leftbar-color', leftColor);
-        item.style.setProperty('--leftbar-rgb', `${r}, ${g}, ${b}`);
-        item.style.setProperty('--leftbar-w', `${LEFTBAR_WIDTH_PX}px`);
-        item.classList.add('mp-lined');
-        item.classList.toggle('rainbow', saved === TAG_RAINBOW);
-
-        if (getComputedStyle(item).position === 'static') item.style.position = 'relative';
-
-        // Reset default LiveChat styling
-        item.style.backgroundColor = '';
-        item.style.color = '';
-
-        // Jalankan logic blink & badge
-        setRedBlinkState(item, isRedState);
-    };
-
-    const applyAllChatStyling = () => {
-        const allItems = document.querySelectorAll('.chat-item');
-        allItems.forEach(item => applySingleChatStyling(item));
-
-        // Tambahan: Notifikasi MODE SERIUS
-        const unreplied = Array.from(allItems).filter(item => {
-            const hasReplyIcon = item.querySelector('[data-testid="replied"]');
-            const itemText = (item.textContent || "").toLowerCase();
-            const isTransferred = itemText.includes('transferred');
-            const isReplied = !!hasReplyIcon;
-            const isArchived = archTags.some(function (tag) { return itemText.indexOf(tag) !== -1; });
-            const isTyping = detectIsTyping(item);
-            const isBlackToggled = getSavedColor(item) === 'black';
-            const isYellowToggled = getSavedColor(item) === 'yellow';
-            return !isReplied && !isArchived && !isTyping && !isBlackToggled && !isYellowToggled;
-        });
-
-        if (unreplied.length > 3 && !document.body.dataset.seriousToastShown) {
-            showToast('🔥 MODE SERIUS: >3 Chat Pending!', TOAST_ACCENT_COLOR_RED, null, 10000); // Auto-hide 10 detik
-            document.body.dataset.seriousToastShown = '1';
-
-            // Reset agar bisa muncul lagi setelah 1 menit
-            setTimeout(() => {
-                delete document.body.dataset.seriousToastShown;
-            }, 60000); // 1 menit
-        }
-    };
-
-
-
-    const injectMinimalStyles = () => {
-        const style = document.createElement('style');
-        style.textContent = `
-/* —— Garis kiri seragam —— */
-.chat-item.mp-lined::before {
-content:"";
-position:absolute;
-left:0; top:0; bottom:0;
-width: var(--leftbar-w, 5px); /* Diperlapis menjadi 5px agar lebih tegas */
-background: var(--leftbar-color, currentColor);
-border-radius: 0;
-transform-origin:left center;
-z-index: 10;
-pointer-events: none;
-transition: background 0.4s ease, border-color 0.4s ease, transform 0.3s ease;
-/* Outline & Shadow lebih tegas agar tidak menyatu dengan BACKGROUND PUTIH */
-box-shadow: 1px 0 4px rgba(0,0,0,0.4), inset -1px 0 0 rgba(0,0,0,0.1);
-}
-
-/* —— Pulse halus —— */
-@keyframes leftBarPulseRed {
-    0%,100% { transform: scaleX(1); }
-    50% { transform: scaleX(4.6); }
-}
-@keyframes leftBarPulseYellow {
-    0%,100% { transform: scaleX(1); opacity: 1; }
-    50% { transform: scaleX(2.5); opacity: 0.7; }
-}
-
-.chat-item.blink-red::before {
-    animation: leftBarPulseRed .7s ease-in-out infinite;
-}
-.chat-item.blink-yellow::before {
-    animation: leftBarPulseYellow 2s ease-in-out infinite; /* Detak pelan (2 detik) */
-}
-
-/* —— Toast host —— */
-.my-toast-host {
-position: fixed;
-bottom: 20px;
-left: 65px;
-display: flex;
-flex-direction: column-reverse;
-gap: 10px;
-z-index: 99999;
-pointer-events: none;
-width: max-content;
-max-width: calc(100vw - 77px);
-}
-
-/* —— Toast card —— */
-.my-toast {
-position: relative;
-pointer-events: auto;
-cursor: pointer;
-display: inline-flex;
-align-items: center;
-gap: 10px;
-padding: 12px 36px 12px 16px;
-border-radius: 12px;
-background: rgba(15, 15, 20, 0.98); /* Lebih gelap & solid */
-color: #ffffff;
-border: 2px solid var(--toast-accent, ${TOAST_ACCENT_COLOR});
-box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 10px rgba(0,0,0,0.2); /* Shadow lebih kuat */
-width: 280px;
-max-width: 280px;
-overflow: hidden;
-animation: toastIn 160ms ease-out both;
-}
-
-.my-toast::before {
-content: "";
-position: absolute;
-left: 0;
-top: 0;
-bottom: 0;
-width: 4px;
-background: var(--toast-accent, ${TOAST_ACCENT_COLOR});
-border-radius: 2px 0 0 2px;
-}
-
-.my-toast .my-toast-msg {
-white-space: nowrap;
-overflow: hidden;
-text-overflow: ellipsis;
-font-size: 13px;
-line-height: 1.25;
-padding-right: 6px;
-}
-
-.my-toast .my-toast-close {
-position: absolute;
-right: 8px;
-top: 8px;
-width: 24px;
-height: 24px;
-border-radius: 6px;
-border: 1px solid var(--toast-accent, ${TOAST_ACCENT_COLOR});
-background: transparent;
-color: var(--toast-accent, ${TOAST_ACCENT_COLOR});
-font-size: 16px;
-display: grid;
-place-items: center;
-}
-
-.my-toast .my-toast-close:hover {
-background: rgba(255,255,255,0.06);
-}
-
-.my-toast.hide {
-animation: toastOut 140ms ease-in both;
-}
-
-@keyframes toastIn {
-from { opacity: 0; transform: translateY(8px) scale(.98); }
-to { opacity: 1; transform: none; }
-}
-
-@keyframes toastOut {
-from { opacity: 1; transform: none; }
-to { opacity: 0; transform: translateY(8px) scale(.98); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-.chat-item.blink-red::before,
-.chat-item.blink-yellow::before {
-animation: none;
-}
-.my-toast, .my-toast.hide {
-animation: none;
-}
-}
-
-/* 🌈 Mode Rainbow */
-.chat-item.mp-lined.rainbow::before {
-background: linear-gradient(90deg, red, orange, yellow, green, blue, indigo, violet);
-background-size: 400% 100%;
-animation: rainbowPulse 3s linear infinite;
-}
-
-@keyframes rainbowPulse {
-0% { background-position: 0% 50%; }
-100% { background-position: 400% 50%; }
-}
-
-/* 🌈 Mode Typing Rainbow (Tanpa Merah agar tidak terkecoh) */
-@keyframes rainbowBar {
-    0% { background: #00ff00; } /* Hijau */
-    20% { background: #00ffff; } /* Cyan */
-    40% { background: #0000ff; } /* Biru */
-    60% { background: #ff00ff; } /* Magenta */
-    80% { background: #ffff00; } /* Kuning */
-    100% { background: #00ff00; }
-}
-.chat-item.is-typing::before {
-    animation: rainbowBar 1s linear infinite !important;
-    width: 6px !important;
-    box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
-}
-
-/* —— Warning Badge (3 menit) —— */
-.warning-badge-3min {
-    position: absolute;
-    right: 8px; /* Lebih ke pinggir */
-    bottom: 8px;
-    font-size: 20px; /* Lebih besar */
-    z-index: 100;
-    /* Efek Glow & Shadow Ganda agar terbaca di putih */
-    filter: drop-shadow(0 0 5px rgba(255, 255, 0, 0.8)) drop-shadow(0 2px 5px rgba(0,0,0,0.6));
-    animation: badgePulse 0.8s ease-in-out infinite;
-    user-select: none;
-    pointer-events: none;
-}
-
-@keyframes badgePulse {
-    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 5px rgba(255, 255, 0, 0.8)) drop-shadow(0 2px 5px rgba(0,0,0,0.6)); }
-    50% { transform: scale(1.4); filter: drop-shadow(0 0 15px rgba(255, 255, 0, 1)) drop-shadow(0 4px 8px rgba(0,0,0,0.8)); }
-}
-`;
-
-        document.head.appendChild(style);
-    };
-
-    // =========================
-    // Global keybinds (Alt+. / Alt+/)
-    // =========================
-    document.addEventListener('keydown', (e) => {
-        const isRainbow = e.ctrlKey && (e.key === '.' || e.code === 'Period'); // Ctrl + .
-        const isBlack = e.altKey && (e.key === '/' || e.code === 'Slash' || e.code === 'NumpadDivide'); // Alt + /
-        if (!isRainbow && !isBlack) return;
-        e.preventDefault();
-
-        const item = getCurrentChatItem();
-        if (!item) return;
-
-        const current = getSavedColor(item);
-        const desired = isRainbow ? TAG_RAINBOW : 'black'; // kalau rainbow toggle rainbow, kalau black toggle black
-        const nextToken = (current === desired) ? null : desired;
-
-        applyToggleToken(item, nextToken);
-    });
-
-    // =========================
-    // Observer & bootstrap - OPTIMIZED
-    // =========================
-    // Debounce helper untuk observer
-    function debounceUI(func, wait) {
-        let timeout;
-        return function executedFunction(...args) {
-            clearTimeout(timeout);
-            timeout = setTimeout(() => func.apply(this, args), wait);
-        };
-    }
-
-    // Debounced styling function for general UI updates (PENTING AGAR TIDAK LAG)
-    const debouncedStyling = debounceUI(() => {
-        applySidebarWidth();
-        applyAllChatStyling();
-        updateLiveToastIndices();
-    }, 80); // 80ms: instan di mata, tapi ringan di prosesor
-
-    const observer = new MutationObserver((mutations) => {
-        // Deteksi apakah ada perubahan DI DALAM chat-item
-        const isRelevant = mutations.some(m => {
-            const target = (m.type === 'attributes' || m.type === 'characterData') ? m.target : m.addedNodes[0];
-            if (!target) return false;
-
-            // Jika teks atau elemen berubah di dalam .chat-item, maka itu RELEVAN
-            const node = (target.nodeType === 3) ? target.parentElement : target;
-            return node && (node.closest?.('.chat-item') || (node.classList && node.classList.contains('chat-item')));
-        });
-
-        if (isRelevant) {
-            debouncedStyling();
-        }
-    });
-
-    const init = () => {
-        // Observe seluruh body untuk cakupan maksimal (Penting untuk SPA seperti LiveChat)
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true,
-            characterData: true,
-            attributes: true
-        });
-
-        applySidebarWidth();
-        applyAllChatStyling();
-        injectMinimalStyles(); // CSS garis kiri + toast accent
-        enablePriorityNavigation();
-    };
-
-    onRouteChange(() => {
-        debouncedStyling();
-    });
-    // =========================
-    // === 🔴 Deteksi Spam Langsung Saat Pesan Baru Masuk ===
-    function setupLiveSpamDetector() {
-        // normalisasi teks (hapus tanda baca, ubah ke huruf kecil)
-        const normalize = txt => txt.replace(/[!?.]/g, '').trim().toLowerCase();
-
-        // tempat menyimpan teks pesan yang sudah pernah muncul
-        const seenMessages = new Map();
-
-        // fungsi untuk menandai pesan spam
-        const markAsSpam = (el, count) => {
-            el.style.color = '#ff0000';
-            el.style.fontWeight = '900';
-            el.style.backgroundColor = 'rgba(255, 0, 0, 0.2)';
-            el.style.borderLeft = '6px solid #ff0000';
-            el.style.boxShadow = 'inset 0 0 10px rgba(0,0,0,0.1)';
-            el.setAttribute('title', `Spam terdeteksi (${count}x)`);
-        };
-        // fungsi untuk memproses satu pesan
-        const processMessage = (el) => {
-            // Ambil semua teks termasuk <span> dan <a> di dalam bubble chat
-            const text = normalize(
-                Array.from(el.querySelectorAll('*'))
-                    .map(n => n.textContent)
-                    .join(' ')
-                    .trim()
+            console.warn(
+                '[SLEEKSHOT] cache load error',
+                error
             );
 
-            if (!text) return;
-            const count = (seenMessages.get(text) || 0) + 1;
-            seenMessages.set(text, count);
+        }
 
-            // Tandai spam kalau muncul 2 kali atau lebih
-            if (count >= 2) markAsSpam(el, count);
-        };
-
-        // proses semua pesan yang sudah ada saat awal
-        document.querySelectorAll('[data-testid="message-text"], .message__text, .message, .message-text')
-            .forEach(processMessage);
-
-        // pantau pesan baru yang masuk
-        const chatContainer = document.querySelector('[data-testid="chat-messages-list"]') || document.body;
-        const observer = new MutationObserver(mutations => {
-            for (const m of mutations) {
-                m.addedNodes.forEach(node => {
-                    if (node.nodeType === 1) {
-                        const msg = node.querySelector('[data-testid="message-text"], .message__text, .message, .message-text');
-                        if (msg) processMessage(msg);
-                    }
-                });
-            }
-        });
-
-        observer.observe(chatContainer, { childList: true, subtree: true });
-        console.log('✅ Live spam detector aktif');
     }
 
-    // aktifkan deteksi spam
-    setupLiveSpamDetector();
 
-    waitForElement('.chat-item', init);
+    function saveLinkCache() {
+
+        try {
+
+            const entries =
+                [
+                    ...uploadCache.entries()
+                ]
+                .slice(
+                    -MAX_LINK_CACHE
+                );
+
+
+            localStorage.setItem(
+
+                LINK_CACHE_KEY,
+
+                JSON.stringify(
+                    Object.fromEntries(
+                        entries
+                    )
+                )
+
+            );
+
+        }
+
+        catch {}
+
+    }
+
+
+    loadLinkCache();
+
+
+    // ============================================================
+    // CSS
+    // ============================================================
+
+    GM_addStyle(`
+
+        #ss-bubble {
+
+            position: fixed;
+
+            right: 28px;
+            bottom: 80px;
+
+            z-index: 999999;
+
+            display: none;
+            align-items: center;
+
+            width: 210px;
+
+            padding: 9px 12px 9px 9px;
+
+            box-sizing: border-box;
+
+            border-radius: 22px;
+
+            border:
+                1px solid
+                rgba(238,58,74,.52);
+
+            background:
+
+                radial-gradient(
+                    circle at 15% 10%,
+                    rgba(224,42,58,.20),
+                    transparent 42%
+                ),
+
+                linear-gradient(
+                    145deg,
+                    rgba(25,13,16,.985),
+                    rgba(6,6,8,.995)
+                );
+
+            box-shadow:
+
+                0 16px 44px
+                rgba(0,0,0,.65),
+
+                0 0 27px
+                rgba(225,40,55,.16),
+
+                inset 0 1px 0
+                rgba(255,255,255,.055);
+
+            backdrop-filter: blur(20px);
+
+            -webkit-backdrop-filter: blur(20px);
+
+            font-family:
+                Inter,
+                "Segoe UI",
+                Arial,
+                sans-serif;
+
+            color: #fffafb;
+
+            user-select: none;
+
+            touch-action: none;
+
+            cursor: grab;
+
+            transition:
+                border-color .18s ease,
+                box-shadow .18s ease,
+                transform .18s ease;
+        }
+
+
+        #ss-bubble.visible {
+            display: flex;
+        }
+
+
+        #ss-bubble:hover {
+
+            border-color:
+                rgba(255,78,92,.9);
+
+            transform:
+                translateY(-2px);
+
+            box-shadow:
+
+                0 20px 54px
+                rgba(0,0,0,.72),
+
+                0 0 36px
+                rgba(235,45,60,.24);
+        }
+
+
+        #ss-bubble.dragging {
+
+            cursor: grabbing;
+
+            transform:
+                scale(1.025);
+        }
+
+
+        #ss-bubble.uploading #ss-icon {
+
+            animation:
+                ssPulse
+                1s ease-in-out
+                infinite;
+        }
+
+
+        @keyframes ssPulse {
+
+            50% {
+
+                transform:
+                    scale(.87);
+
+                opacity:
+                    .65;
+            }
+
+        }
+
+
+        #ss-icon {
+
+            width: 46px;
+            height: 46px;
+
+            flex: 0 0 46px;
+
+            display: flex;
+
+            align-items: center;
+            justify-content: center;
+
+            border-radius: 15px;
+
+            background:
+
+                linear-gradient(
+                    145deg,
+                    #ff5663,
+                    #d72b39 50%,
+                    #86141e
+                );
+
+            box-shadow:
+
+                0 9px 23px
+                rgba(205,30,45,.34),
+
+                inset 0 1px 1px
+                rgba(255,255,255,.18);
+
+            font-size: 19px;
+        }
+
+
+        #ss-info {
+
+            flex: 1;
+
+            min-width: 0;
+
+            margin-left: 10px;
+        }
+
+
+        #ss-title {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 6px;
+
+            color: #fffafb;
+
+            font-size: 13px;
+
+            font-weight: 750;
+        }
+
+
+        #ss-dot {
+
+            width: 6px;
+            height: 6px;
+
+            flex: 0 0 6px;
+
+            border-radius: 50%;
+
+            background: #5bd5a8;
+
+            box-shadow:
+                0 0 9px
+                rgba(91,213,168,.65);
+        }
+
+
+        #ss-status {
+
+            margin-top: 4px;
+
+            max-width: 123px;
+
+            overflow: hidden;
+
+            white-space: nowrap;
+
+            text-overflow: ellipsis;
+
+            color: #b89ca1;
+
+            font-size: 9.5px;
+        }
+
+
+        #ss-drag {
+
+            width: 13px;
+
+            display: grid;
+
+            grid-template-columns:
+                repeat(2,3px);
+
+            gap: 3px;
+
+            opacity: .30;
+        }
+
+
+        #ss-drag span {
+
+            width: 3px;
+            height: 3px;
+
+            border-radius: 50%;
+
+            background:
+                rgba(255,255,255,.70);
+        }
+
+
+        .ss-selected-image {
+
+            outline:
+                2px solid
+                rgba(235,55,70,.74) !important;
+
+            outline-offset:
+                3px !important;
+
+            box-shadow:
+
+                0 0 0 4px
+                rgba(220,40,55,.055),
+
+                0 0 19px
+                rgba(220,40,55,.16) !important;
+        }
+
+
+        #ss-overlay {
+
+            position: fixed;
+
+            inset: 0;
+
+            z-index: 1000000;
+
+            display: none;
+
+            align-items: center;
+            justify-content: center;
+
+            padding: 10px;
+
+            box-sizing: border-box;
+
+            background:
+
+                radial-gradient(
+                    circle at 50% 10%,
+                    rgba(175,25,38,.13),
+                    transparent 42%
+                ),
+
+                rgba(0,0,0,.92);
+
+            backdrop-filter: blur(15px);
+
+            -webkit-backdrop-filter: blur(15px);
+        }
+
+
+        #ss-overlay.visible {
+
+            display: flex;
+        }
+
+
+        #ss-modal {
+
+            width:
+                min(680px,95vw);
+
+            max-height: 95vh;
+
+            overflow-y: auto;
+
+            padding: 14px;
+
+            box-sizing: border-box;
+
+            border-radius: 22px;
+
+            border:
+                1px solid
+                rgba(226,55,70,.20);
+
+            background:
+
+                radial-gradient(
+                    circle at 8% 0%,
+                    rgba(190,30,43,.12),
+                    transparent 32%
+                ),
+
+                linear-gradient(
+                    155deg,
+                    rgba(20,14,17,.995),
+                    rgba(5,5,6,.998)
+                );
+
+            box-shadow:
+
+                0 38px 100px
+                rgba(0,0,0,.86),
+
+                0 0 48px
+                rgba(200,28,43,.10),
+
+                inset 0 1px 0
+                rgba(255,255,255,.04);
+
+            color: #fff8f9;
+
+            font-family:
+                Inter,
+                "Segoe UI",
+                Arial,
+                sans-serif;
+
+            animation:
+                ssModalIn
+                .18s ease both;
+        }
+
+
+        @keyframes ssModalIn {
+
+            from {
+
+                opacity: 0;
+
+                transform:
+                    translateY(10px)
+                    scale(.985);
+            }
+
+            to {
+
+                opacity: 1;
+
+                transform:
+                    translateY(0)
+                    scale(1);
+            }
+
+        }
+
+
+        #ss-modal::-webkit-scrollbar {
+
+            width: 5px;
+        }
+
+
+        #ss-modal::-webkit-scrollbar-thumb {
+
+            border-radius: 20px;
+
+            background:
+                rgba(215,55,68,.22);
+        }
+
+
+        #ss-header {
+
+            display: flex;
+
+            align-items: center;
+
+            padding:
+                1px 2px 11px;
+        }
+
+
+        #ss-header-icon {
+
+            width: 42px;
+            height: 42px;
+
+            flex: 0 0 42px;
+
+            display: flex;
+
+            align-items: center;
+            justify-content: center;
+
+            margin-right: 10px;
+
+            border-radius: 13px;
+
+            background:
+
+                linear-gradient(
+                    145deg,
+                    #ff5663,
+                    #d42a38 50%,
+                    #80131c
+                );
+
+            box-shadow:
+                0 8px 20px
+                rgba(190,30,44,.25);
+
+            font-size: 18px;
+        }
+
+
+        #ss-header-info {
+
+            flex: 1;
+
+            min-width: 0;
+        }
+
+
+        #ss-header-title {
+
+            font-size: 16px;
+
+            font-weight: 760;
+        }
+
+
+        #ss-header-sub {
+
+            margin-top: 3px;
+
+            color: #947d81;
+
+            font-size: 9px;
+        }
+
+
+        #ss-count {
+
+            margin-right: 8px;
+
+            padding: 4px 8px;
+
+            border-radius: 999px;
+
+            border:
+                1px solid
+                rgba(220,55,70,.17);
+
+            background:
+                rgba(215,40,55,.10);
+
+            color: #e99ca4;
+
+            font-size: 8px;
+        }
+
+
+        #ss-esc {
+
+            margin-right: 8px;
+
+            color: #745f63;
+
+            font-size: 8px;
+        }
+
+
+        #ss-esc span {
+
+            margin-left: 3px;
+
+            padding:
+                3px 6px;
+
+            border-radius: 6px;
+
+            border:
+                1px solid
+                rgba(255,255,255,.07);
+
+            color: #ab9296;
+        }
+
+
+        #ss-close {
+
+            width: 35px;
+            height: 35px;
+
+            flex: 0 0 35px;
+
+            border-radius: 11px;
+
+            border:
+                1px solid
+                rgba(255,255,255,.05);
+
+            background:
+                rgba(255,255,255,.025);
+
+            color: #a58b90;
+
+            font-size: 21px;
+
+            cursor: pointer;
+        }
+
+
+        #ss-preview-card {
+
+            overflow: hidden;
+
+            border-radius: 17px;
+
+            border:
+                1px solid
+                rgba(220,65,78,.11);
+
+            background: #030304;
+
+            box-shadow:
+                0 15px 48px
+                rgba(0,0,0,.52);
+        }
+
+
+        #ss-preview-bar {
+
+            height: 30px;
+
+            display: flex;
+
+            align-items: center;
+
+            padding:
+                0 11px;
+
+            box-sizing: border-box;
+
+            border-bottom:
+                1px solid
+                rgba(255,255,255,.04);
+        }
+
+
+        #ss-preview-title {
+
+            color: #c59da3;
+
+            font-size: 9px;
+
+            font-weight: 700;
+        }
+
+
+        #ss-preview-info {
+
+            margin-left: auto;
+
+            color: #826a6e;
+
+            font-size: 8px;
+        }
+
+
+        #ss-grid {
+
+            display: grid;
+
+            grid-template-columns:
+                repeat(2,minmax(0,1fr));
+
+            gap: 8px;
+
+            max-height: 56vh;
+
+            overflow-y: auto;
+
+            padding: 9px;
+
+            box-sizing: border-box;
+
+            background:
+
+                radial-gradient(
+                    circle at center,
+                    rgba(150,22,34,.065),
+                    transparent 65%
+                ),
+
+                #030304;
+        }
+
+
+        #ss-grid.one {
+
+            grid-template-columns:
+                1fr;
+        }
+
+
+        #ss-grid.three {
+
+            grid-template-columns:
+                repeat(3,minmax(0,1fr));
+        }
+
+
+        .ss-image-box {
+
+            position: relative;
+
+            min-width: 0;
+
+            display: flex;
+
+            align-items: center;
+            justify-content: center;
+
+            padding: 5px;
+
+            box-sizing: border-box;
+
+            overflow: hidden;
+
+            border-radius: 11px;
+
+            border:
+                1px solid
+                rgba(215,55,68,.10);
+
+            background: #080607;
+        }
+
+
+        .ss-image-box img {
+
+            display: block;
+
+            width: 100%;
+
+            max-height: 47vh;
+
+            object-fit: contain;
+
+            border-radius: 8px;
+        }
+
+
+        .ss-image-number {
+
+            position: absolute;
+
+            top: 7px;
+            left: 7px;
+
+            min-width: 20px;
+            height: 20px;
+
+            display: flex;
+
+            align-items: center;
+            justify-content: center;
+
+            padding: 0 5px;
+
+            box-sizing: border-box;
+
+            border-radius: 999px;
+
+            background:
+                rgba(7,7,8,.86);
+
+            border:
+                1px solid
+                rgba(235,60,74,.32);
+
+            color: #f1b4ba;
+
+            font-size: 8px;
+
+            font-weight: 700;
+        }
+
+
+        #ss-details {
+
+            margin-top: 9px;
+
+            padding: 10px;
+
+            border-radius: 15px;
+
+            border:
+                1px solid
+                rgba(205,60,73,.10);
+
+            background:
+
+                linear-gradient(
+                    145deg,
+                    rgba(27,18,21,.80),
+                    rgba(10,9,11,.88)
+                );
+        }
+
+
+        #ss-details-head {
+
+            display: flex;
+
+            align-items: center;
+
+            margin-bottom: 6px;
+        }
+
+
+        #ss-link-label {
+
+            font-size: 9.5px;
+
+            font-weight: 750;
+        }
+
+
+        #ss-link-state {
+
+            margin-left: auto;
+
+            padding:
+                3px 7px;
+
+            border-radius: 999px;
+
+            border:
+                1px solid
+                rgba(210,50,65,.14);
+
+            background:
+                rgba(205,35,50,.10);
+
+            color: #e89ba3;
+
+            font-size: 8px;
+        }
+
+
+        #ss-link-row {
+
+            display: flex;
+
+            gap: 6px;
+        }
+
+
+        #ss-link {
+
+            height: 36px;
+
+            min-width: 0;
+
+            flex: 1;
+
+            padding:
+                0 11px;
+
+            box-sizing: border-box;
+
+            border-radius: 10px;
+
+            border:
+                1px solid
+                rgba(207,65,78,.11);
+
+            outline: none;
+
+            background:
+                rgba(4,4,5,.82);
+
+            color: #eadde0;
+
+            font-family:
+                Consolas,
+                monospace;
+
+            font-size: 9px;
+        }
+
+
+        #ss-copy {
+
+            width: 40px;
+
+            flex: 0 0 40px;
+
+            border: 0;
+
+            border-radius: 10px;
+
+            background:
+
+                linear-gradient(
+                    145deg,
+                    #ed4452,
+                    #ae202e
+                );
+
+            color: #fff;
+
+            cursor: pointer;
+        }
+
+
+        #ss-actions {
+
+            display: grid;
+
+            grid-template-columns:
+                1fr 1fr;
+
+            gap: 7px;
+
+            margin-top: 7px;
+        }
+
+
+        .ss-button {
+
+            min-height: 36px;
+
+            border-radius: 10px;
+
+            font-family:
+                "Segoe UI",
+                Arial;
+
+            font-size: 9.5px;
+
+            font-weight: 700;
+
+            cursor: pointer;
+        }
+
+
+        #ss-open {
+
+            border:
+                1px solid
+                rgba(255,91,102,.24);
+
+            background:
+
+                linear-gradient(
+                    135deg,
+                    #ed4653,
+                    #bf2332 48%,
+                    #79111a
+                );
+
+            color: #fff;
+        }
+
+
+        #ss-retry {
+
+            border:
+                1px solid
+                rgba(205,80,90,.10);
+
+            background:
+                rgba(30,20,23,.90);
+
+            color: #cdb4b8;
+        }
+
+
+        #ss-error {
+
+            display: none;
+
+            margin-top: 7px;
+
+            padding:
+                7px 9px;
+
+            border-radius: 10px;
+
+            border:
+                1px solid
+                rgba(220,55,70,.12);
+
+            background:
+                rgba(100,20,30,.13);
+
+            color: #ffb5bd;
+
+            font-size: 9px;
+        }
+
+
+        #ss-toast {
+
+            position: fixed;
+
+            left: 50%;
+            bottom: 22px;
+
+            z-index: 1000002;
+
+            padding:
+                9px 14px;
+
+            border-radius: 11px;
+
+            border:
+                1px solid
+                rgba(210,65,78,.15);
+
+            background:
+                rgba(18,11,13,.98);
+
+            box-shadow:
+                0 15px 45px
+                rgba(0,0,0,.65);
+
+            color: #eadbdd;
+
+            font-family:
+                "Segoe UI",
+                Arial;
+
+            font-size: 9px;
+
+            pointer-events: none;
+
+            opacity: 0;
+
+            transform:
+                translate(-50%,8px);
+
+            transition: .18s ease;
+        }
+
+
+        #ss-toast.show {
+
+            opacity: 1;
+
+            transform:
+                translate(-50%,0);
+        }
+
+
+        @media (max-height:800px) {
+
+            #ss-modal {
+
+                max-height: 96vh;
+
+                padding: 11px;
+            }
+
+
+            #ss-grid {
+
+                max-height: 49vh;
+            }
+
+
+            .ss-image-box img {
+
+                max-height: 41vh;
+            }
+
+        }
+
+
+        @media (max-width:650px) {
+
+            #ss-bubble {
+
+                width: 188px;
+
+                right: 15px;
+                bottom: 65px;
+            }
+
+
+            #ss-modal {
+
+                width: 100%;
+
+                padding: 10px;
+
+                border-radius: 18px;
+            }
+
+
+            #ss-esc {
+
+                display: none;
+            }
+
+
+            #ss-grid.three {
+
+                grid-template-columns:
+                    repeat(2,minmax(0,1fr));
+            }
+
+        }
+
+    `);
+
+
+    // ============================================================
+    // CREATE BUBBLE
+    // ============================================================
+
+    const bubble =
+        document.createElement(
+            'div'
+        );
+
+
+    bubble.id =
+        'ss-bubble';
+
+
+    bubble.innerHTML = `
+
+        <div id="ss-icon">
+            🖼
+        </div>
+
+        <div id="ss-info">
+
+            <div id="ss-title">
+
+                Sleekshot
+
+                <span id="ss-dot"></span>
+
+            </div>
+
+            <div id="ss-status">
+                Menunggu gambar
+            </div>
+
+        </div>
+
+        <div id="ss-drag">
+
+            <span></span>
+            <span></span>
+
+            <span></span>
+            <span></span>
+
+            <span></span>
+            <span></span>
+
+        </div>
+
+    `;
+
+
+    document.body.appendChild(
+        bubble
+    );
+
+
+    // ============================================================
+    // CREATE MODAL
+    // ============================================================
+
+    const overlay =
+        document.createElement(
+            'div'
+        );
+
+
+    overlay.id =
+        'ss-overlay';
+
+
+    overlay.innerHTML = `
+
+        <div id="ss-modal">
+
+            <div id="ss-header">
+
+                <div id="ss-header-icon">
+                    🖼
+                </div>
+
+                <div id="ss-header-info">
+
+                    <div id="ss-header-title">
+                        Sleekshot Preview
+                    </div>
+
+                    <div id="ss-header-sub">
+                        ● KHUSUS VALIDASI
+                    </div>
+
+                </div>
+
+                <div id="ss-count">
+                    1 GAMBAR
+                </div>
+
+                <div id="ss-esc">
+
+                    Tekan
+
+                    <span>ESC</span>
+
+                </div>
+
+                <button
+                    id="ss-close"
+                    title="Tutup"
+                >
+                    ×
+                </button>
+
+            </div>
+
+
+            <div id="ss-preview-card">
+
+                <div id="ss-preview-bar">
+
+                    <div id="ss-preview-title">
+                        1 PESAN
+                    </div>
+
+                    <div id="ss-preview-info">
+                        1 gambar
+                    </div>
+
+                </div>
+
+                <div id="ss-grid"></div>
+
+            </div>
+
+
+            <div id="ss-details">
+
+                <div id="ss-details-head">
+
+                    <div id="ss-link-label">
+                        1 Link Sleekshot
+                    </div>
+
+                    <div id="ss-link-state">
+                        MENUNGGU
+                    </div>
+
+                </div>
+
+
+                <div id="ss-link-row">
+
+                    <input
+                        id="ss-link"
+                        readonly
+                        placeholder="Link Sleekshot..."
+                    >
+
+                    <button
+                        id="ss-copy"
+                        title="Salin link"
+                    >
+                        📋
+                    </button>
+
+                </div>
+
+
+                <div id="ss-actions">
+
+                    <button
+                        id="ss-open"
+                        class="ss-button"
+                    >
+                        ↗ Buka Sleekshot
+                    </button>
+
+                    <button
+                        id="ss-retry"
+                        class="ss-button"
+                    >
+                        ↻ Upload Ulang
+                    </button>
+
+                </div>
+
+                <div id="ss-error"></div>
+
+            </div>
+
+        </div>
+
+    `;
+
+
+    document.body.appendChild(
+        overlay
+    );
+
+
+    // ============================================================
+    // TOAST
+    // ============================================================
+
+    const toast =
+        document.createElement(
+            'div'
+        );
+
+
+    toast.id =
+        'ss-toast';
+
+
+    document.body.appendChild(
+        toast
+    );
+
+
+    const bubbleStatus =
+        document.querySelector(
+            '#ss-status'
+        );
+
+
+    const grid =
+        document.querySelector(
+            '#ss-grid'
+        );
+
+
+    const countBadge =
+        document.querySelector(
+            '#ss-count'
+        );
+
+
+    const previewInfo =
+        document.querySelector(
+            '#ss-preview-info'
+        );
+
+
+    const linkInput =
+        document.querySelector(
+            '#ss-link'
+        );
+
+
+    const linkState =
+        document.querySelector(
+            '#ss-link-state'
+        );
+
+
+    const errorBox =
+        document.querySelector(
+            '#ss-error'
+        );
+
+
+    // ============================================================
+    // TOAST
+    // ============================================================
+
+    let toastTimer;
+
+
+    function showToast(text) {
+
+        toast.textContent =
+            text;
+
+
+        toast.classList.add(
+            'show'
+        );
+
+
+        clearTimeout(
+            toastTimer
+        );
+
+
+        toastTimer =
+            setTimeout(
+                () => {
+
+                    toast.classList.remove(
+                        'show'
+                    );
+
+                },
+                1600
+            );
+
+    }
+
+
+    // ============================================================
+    // ROOM
+    // ============================================================
+
+    function normalizeText(text) {
+
+        return String(
+            text || ''
+        )
+            .replace(
+                /\s+/g,
+                ' '
+            )
+            .trim()
+            .toUpperCase();
+
+    }
+
+
+    function isValidationRoom() {
+
+        const active =
+            document.querySelectorAll(`
+
+                [aria-selected="true"],
+                [aria-current="page"],
+                [data-state="active"],
+                .active,
+                .selected
+
+            `);
+
+
+        for (
+            const el
+            of active
+        ) {
+
+            if (
+                normalizeText(
+                    el.textContent
+                ).includes(
+                    ROOM_NAME
+                )
+            ) {
+
+                return true;
+
+            }
+
+        }
+
+
+        const headers =
+            document.querySelectorAll(`
+
+                h1,
+                h2,
+                h3,
+                header,
+
+                [class*="chat-title"],
+                [class*="room-title"],
+                [class*="conversation-title"],
+                [class*="channel-title"],
+                [class*="header-title"]
+
+            `);
+
+
+        for (
+            const el
+            of headers
+        ) {
+
+            if (
+                normalizeText(
+                    el.textContent
+                ) ===
+                ROOM_NAME
+            ) {
+
+                return true;
+
+            }
+
+        }
+
+
+        return false;
+
+    }
+
+
+    // ============================================================
+    // URL
+    // ============================================================
+
+    function absoluteURL(url) {
+
+        try {
+
+            return new URL(
+                url,
+                location.href
+            ).href;
+
+        }
+
+        catch {
+
+            return url || '';
+
+        }
+
+    }
+
+
+    function getFullImageURL(img) {
+
+        if (!img) {
+
+            return '';
+
+        }
+
+
+        const anchor =
+            img.closest(
+                'a[href]'
+            );
+
+
+        if (anchor) {
+
+            const href =
+                anchor.getAttribute(
+                    'href'
+                );
+
+
+            const lower =
+                String(
+                    href || ''
+                ).toLowerCase();
+
+
+            if (
+                href &&
+                href !== '#' &&
+                !href.startsWith(
+                    'javascript:'
+                ) &&
+                (
+                    lower.includes(
+                        '/uploads/'
+                    ) ||
+
+                    lower.includes(
+                        '/media/'
+                    ) ||
+
+                    /\.(jpg|jpeg|png|webp|gif)(\?|$)/i
+                        .test(
+                            lower
+                        )
+                )
+            ) {
+
+                return absoluteURL(
+                    href
+                );
+
+            }
+
+        }
+
+
+        const attrs = [
+
+            'data-full',
+
+            'data-full-src',
+
+            'data-original',
+
+            'data-original-src',
+
+            'data-src-original',
+
+            'data-image-url',
+
+            'data-url',
+
+            'data-src'
+
+        ];
+
+
+        for (
+            const attr
+            of attrs
+        ) {
+
+            const value =
+                img.getAttribute(
+                    attr
+                );
+
+
+            if (value) {
+
+                return absoluteURL(
+                    value
+                );
+
+            }
+
+        }
+
+
+        return absoluteURL(
+
+            img.currentSrc ||
+
+            img.src ||
+
+            ''
+
+        );
+
+    }
+
+
+    // ============================================================
+    // MESSAGE CONTAINER
+    // ============================================================
+
+    function getMessageContainer(element) {
+
+        if (!element) {
+
+            return null;
+
+        }
+
+
+        const byID =
+            element.closest(`
+
+                [data-message-id],
+                [data-msg-id],
+                [data-messageid]
+
+            `);
+
+
+        if (
+            byID &&
+            !byID.closest(
+                '#ss-overlay,#ss-bubble'
+            )
+        ) {
+
+            return byID;
+
+        }
+
+
+        const strong =
+            element.closest(`
+
+                [class*="message-item"],
+                [class*="message_item"],
+
+                [class*="chat-message"],
+                [class*="chat_message"],
+
+                [class*="message-row"],
+                [class*="message_row"],
+
+                [class*="msg-item"],
+                [class*="msg_item"],
+
+                [class*="msg-row"],
+                [class*="msg_row"]
+
+            `);
+
+
+        if (
+            strong &&
+            !strong.closest(
+                '#ss-overlay,#ss-bubble'
+            )
+        ) {
+
+            return strong;
+
+        }
+
+
+        let node =
+            element.parentElement;
+
+
+        let depth =
+            0;
+
+
+        while (
+            node &&
+            node !== document.body &&
+            depth < 10
+        ) {
+
+            if (
+                node.id === 'ss-overlay' ||
+                node.id === 'ss-bubble'
+            ) {
+
+                return null;
+
+            }
+
+
+            const signature =
+                String(
+
+                    (node.id || '') +
+
+                    ' ' +
+
+                    (node.className || '')
+
+                )
+                .toLowerCase();
+
+
+            const messageLike =
+                /(^|[\s_-])(message|msg)([\s_-]|$)/
+                    .test(
+                        signature
+                    );
+
+
+            const mediaLike =
+                /(gallery|media-grid|image-grid|image-list|attachment-list)/
+                    .test(
+                        signature
+                    );
+
+
+            if (
+                messageLike &&
+                !mediaLike
+            ) {
+
+                return node;
+
+            }
+
+
+            node =
+                node.parentElement;
+
+
+            depth++;
+
+        }
+
+
+        return null;
+
+    }
+
+
+    // ============================================================
+    // FILTER IMAGE
+    // ============================================================
+
+    function isSentChatImage(img) {
+
+        if (
+            !img ||
+            img.closest(
+                '#ss-overlay,#ss-bubble'
+            )
+        ) {
+
+            return false;
+
+        }
+
+
+        const url =
+            getFullImageURL(
+                img
+            );
+
+
+        if (!url) {
+
+            return false;
+
+        }
+
+
+        const info =
+            String([
+
+                img.id,
+
+                img.className,
+
+                img.alt,
+
+                img.title,
+
+                img.parentElement
+                    ?.id,
+
+                img.parentElement
+                    ?.className
+
+            ].join(' '))
+            .toLowerCase();
+
+
+        const forbidden = [
+
+            'avatar',
+
+            'profile',
+
+            'user-photo',
+
+            'userphoto',
+
+            'user-image',
+
+            'profile-image',
+
+            'profile-photo',
+
+            'member-avatar',
+
+            'sender-avatar',
+
+            'chat-avatar',
+
+            'emoji',
+
+            'logo',
+
+            'icon',
+
+            'badge'
+
+        ];
+
+
+        if (
+            forbidden.some(
+                word =>
+                    info.includes(
+                        word
+                    )
+            )
+        ) {
+
+            return false;
+
+        }
+
+
+        if (
+            img.closest(`
+
+                header,
+                nav,
+                aside,
+
+                [class*="sidebar"],
+                [class*="member-list"],
+                [class*="user-list"],
+                [class*="contact-list"],
+                [class*="navigation"]
+
+            `)
+        ) {
+
+            return false;
+
+        }
+
+
+        const rect =
+            img.getBoundingClientRect();
+
+
+        if (
+            rect.width <= 0 ||
+            rect.height <= 0
+        ) {
+
+            return false;
+
+        }
+
+
+        if (
+            rect.width < 60 ||
+            rect.height < 60
+        ) {
+
+            return false;
+
+        }
+
+
+        const naturalW =
+            img.naturalWidth || 0;
+
+
+        const naturalH =
+            img.naturalHeight || 0;
+
+
+        if (
+            naturalW &&
+            naturalH &&
+            naturalW < 100 &&
+            naturalH < 100
+        ) {
+
+            return false;
+
+        }
+
+
+        const lower =
+            url.toLowerCase();
+
+
+        const mediaURL =
+
+            lower.includes(
+                '/uploads/linetogel/media/'
+            ) ||
+
+            (
+                lower.includes(
+                    '/uploads/'
+                ) &&
+                lower.includes(
+                    '/media/'
+                )
+            );
+
+
+        return (
+            mediaURL ||
+            !!getMessageContainer(
+                img
+            )
+        );
+
+    }
+
+
+    // ============================================================
+    // UNIQUE
+    // ============================================================
+
+    function uniqueImages(images) {
+
+        const used =
+            new Set();
+
+
+        return images.filter(
+            img => {
+
+                const url =
+                    getFullImageURL(
+                        img
+                    );
+
+
+                if (
+                    !url ||
+                    used.has(
+                        url
+                    )
+                ) {
+
+                    return false;
+
+                }
+
+
+                used.add(
+                    url
+                );
+
+
+                return true;
+
+            }
+        );
+
+    }
+
+
+    // ============================================================
+    // HIGHLIGHT
+    // ============================================================
+
+    function clearHighlight() {
+
+        document
+            .querySelectorAll(
+                '.ss-selected-image'
+            )
+            .forEach(
+                el => {
+
+                    el.classList.remove(
+                        'ss-selected-image'
+                    );
+
+                }
+            );
+
+    }
+
+
+    // ============================================================
+    // NEAREST IMAGE
+    // ============================================================
+
+    function findNearestImage() {
+
+        const images =
+            [
+                ...document.querySelectorAll(
+                    'img'
+                )
+            ]
+            .filter(
+                isSentChatImage
+            );
+
+
+        const visible =
+            images.filter(
+                img => {
+
+                    const r =
+                        img.getBoundingClientRect();
+
+
+                    return (
+
+                        r.bottom > 0 &&
+
+                        r.top <
+                        window.innerHeight &&
+
+                        r.right > 0 &&
+
+                        r.left <
+                        window.innerWidth
+
+                    );
+
+                }
+            );
+
+
+        if (!visible.length) {
+
+            return null;
+
+        }
+
+
+        const centerY =
+            window.innerHeight /
+            2;
+
+
+        let best =
+            null;
+
+
+        let bestScore =
+            -Infinity;
+
+
+        for (
+            const img
+            of visible
+        ) {
+
+            const r =
+                img.getBoundingClientRect();
+
+
+            const visibleTop =
+                Math.max(
+                    0,
+                    r.top
+                );
+
+
+            const visibleBottom =
+                Math.min(
+                    window.innerHeight,
+                    r.bottom
+                );
+
+
+            const visibleHeight =
+                Math.max(
+                    0,
+                    visibleBottom -
+                    visibleTop
+                );
+
+
+            const ratio =
+                Math.min(
+
+                    1,
+
+                    visibleHeight /
+
+                    Math.max(
+                        r.height,
+                        1
+                    )
+
+                );
+
+
+            const imageCenter =
+                r.top +
+                r.height / 2;
+
+
+            const distance =
+                Math.abs(
+                    imageCenter -
+                    centerY
+                );
+
+
+            const score =
+
+                ratio *
+                10000 -
+
+                distance;
+
+
+            if (
+                score >
+                bestScore
+            ) {
+
+                bestScore =
+                    score;
+
+
+                best =
+                    img;
+
+            }
+
+        }
+
+
+        return best;
+
+    }
+
+
+    // ============================================================
+    // MESSAGE KEY
+    // ============================================================
+
+    function getMessageKey(
+        message,
+        urls
+    ) {
+
+        if (!message) {
+
+            return (
+                'single::' +
+                urls.join(
+                    '||'
+                )
+            );
+
+        }
+
+
+        const explicit =
+
+            message.getAttribute(
+                'data-message-id'
+            ) ||
+
+            message.getAttribute(
+                'data-msg-id'
+            ) ||
+
+            message.getAttribute(
+                'data-messageid'
+            );
+
+
+        if (explicit) {
+
+            return (
+
+                explicit +
+
+                '::' +
+
+                urls.join(
+                    '||'
+                )
+
+            );
+
+        }
+
+
+        if (
+            !localMessageIds.has(
+                message
+            )
+        ) {
+
+            localMessageIds.set(
+
+                message,
+
+                'message-' +
+                localMessageCounter++
+
+            );
+
+        }
+
+
+        return (
+
+            localMessageIds.get(
+                message
+            ) +
+
+            '::' +
+
+            urls.join(
+                '||'
+            )
+
+        );
+
+    }
+
+
+    // ============================================================
+    // CONTENT KEY
+    //
+    // Dipakai untuk persistent cache link.
+    // ============================================================
+
+    function getContentKey(urls) {
+
+        return urls.join(
+            '||'
+        );
+
+    }
+
+
+    // ============================================================
+    // CACHE UTIL
+    // ============================================================
+
+    function trimMap(
+        map,
+        maximum
+    ) {
+
+        while (
+            map.size >
+            maximum
+        ) {
+
+            const first =
+                map.keys()
+                    .next()
+                    .value;
+
+
+            map.delete(
+                first
+            );
+
+        }
+
+    }
+
+
+    // ============================================================
+    // FAST DOWNLOAD CACHE
+    // ============================================================
+
+    function downloadImageRaw(url) {
+
+        return new Promise(
+            (
+                resolve,
+                reject
+            ) => {
+
+                GM_xmlhttpRequest({
+
+                    method:
+                        'GET',
+
+                    url:
+                        url,
+
+                    responseType:
+                        'blob',
+
+                    timeout:
+                        30000,
+
+
+                    onload(response) {
+
+                        if (
+                            response.status >= 200 &&
+                            response.status < 300
+                        ) {
+
+                            resolve(
+                                response.response
+                            );
+
+                        }
+
+                        else {
+
+                            reject(
+                                new Error(
+                                    'Gagal mengambil gambar. HTTP ' +
+                                    response.status
+                                )
+                            );
+
+                        }
+
+                    },
+
+
+                    onerror() {
+
+                        reject(
+                            new Error(
+                                'Gagal mengambil gambar'
+                            )
+                        );
+
+                    },
+
+
+                    ontimeout() {
+
+                        reject(
+                            new Error(
+                                'Timeout mengambil gambar'
+                            )
+                        );
+
+                    }
+
+                });
+
+            }
+        );
+
+    }
+
+
+    async function downloadImageCached(url) {
+
+        if (
+            blobCache.has(
+                url
+            )
+        ) {
+
+            return await blobCache.get(
+                url
+            );
+
+        }
+
+
+        /*
+         * Simpan Promise langsung,
+         * supaya request URL sama
+         * tidak berjalan dua kali.
+         */
+
+        const promise =
+            downloadImageRaw(
+                url
+            )
+            .then(
+                blob => {
+
+                    blobCache.set(
+                        url,
+                        blob
+                    );
+
+
+                    trimMap(
+                        blobCache,
+                        MAX_BLOB_CACHE
+                    );
+
+
+                    return blob;
+
+                }
+            )
+            .catch(
+                error => {
+
+                    blobCache.delete(
+                        url
+                    );
+
+
+                    throw error;
+
+                }
+            );
+
+
+        blobCache.set(
+            url,
+            promise
+        );
+
+
+        return await promise;
+
+    }
+
+
+    // ============================================================
+    // UPDATE BUBBLE TEXT
+    // ============================================================
+
+    function updateBubbleText() {
+
+        const count =
+            selectedURLs.length;
+
+
+        if (!count) {
+
+            bubbleStatus.textContent =
+                'Belum ada gambar';
+
+
+            return;
+
+        }
+
+
+        /*
+         * Link lama sudah tersedia.
+         */
+
+        const cachedLink =
+
+            uploadCache.get(
+                selectedContentKey
+            ) ||
+
+            uploadCache.get(
+                selectedGroupKey
+            );
+
+
+        if (cachedLink) {
+
+            bubbleStatus.textContent =
+
+                count > 1
+
+                    ? `${count} gambar • Link siap ✓`
+
+                    : '1 gambar • Link siap ✓';
+
+
+            return;
+
+        }
+
+
+        /*
+         * File sudah selesai dipersiapkan.
+         */
+
+        if (
+            preparedCache.has(
+                selectedGroupKey
+            )
+        ) {
+
+            const prepared =
+                preparedCache.get(
+                    selectedGroupKey
+                );
+
+
+            if (
+                prepared instanceof Blob
+            ) {
+
+                bubbleStatus.textContent =
+                    count > 1
+
+                        ? `${count} gambar • Siap cepat ✓`
+
+                        : 'Gambar siap cepat ✓';
+
+
+                return;
+
+            }
+
+        }
+
+
+        bubbleStatus.textContent =
+            count > 1
+
+                ? `${count} gambar • 1 pesan`
+
+                : '1 gambar terdeteksi';
+
+    }
+
+
+    // ============================================================
+    // FIND ONE MESSAGE
+    // ============================================================
+
+    function findNearestMessageGroup() {
+
+        clearHighlight();
+
+
+        const nearest =
+            findNearestImage();
+
+
+        if (!nearest) {
+
+            selectedMessage =
+                null;
+
+
+            selectedImages =
+                [];
+
+
+            selectedURLs =
+                [];
+
+
+            selectedGroupKey =
+                '';
+
+
+            selectedContentKey =
+                '';
+
+
+            updateBubbleText();
+
+
+            return [];
+
+        }
+
+
+        const message =
+            getMessageContainer(
+                nearest
+            );
+
+
+        let images =
+            [];
+
+
+        if (message) {
+
+            images =
+                [
+                    ...message.querySelectorAll(
+                        'img'
+                    )
+                ]
+                .filter(
+                    isSentChatImage
+                );
+
+
+            if (
+                !images.includes(
+                    nearest
+                )
+            ) {
+
+                images.unshift(
+                    nearest
+                );
+
+            }
+
+
+            images =
+                uniqueImages(
+                    images
+                );
+
+        }
+
+
+        if (!images.length) {
+
+            images =
+                [
+                    nearest
+                ];
+
+        }
+
+
+        const previousKey =
+            selectedGroupKey;
+
+
+        selectedMessage =
+            message;
+
+
+        selectedImages =
+            images;
+
+
+        selectedURLs =
+            images
+                .map(
+                    getFullImageURL
+                )
+                .filter(
+                    Boolean
+                );
+
+
+        selectedGroupKey =
+            getMessageKey(
+                message,
+                selectedURLs
+            );
+
+
+        selectedContentKey =
+            getContentKey(
+                selectedURLs
+            );
+
+
+        selectedImages.forEach(
+            img => {
+
+                img.classList.add(
+                    'ss-selected-image'
+                );
+
+            }
+        );
+
+
+        updateBubbleText();
+
+
+        /*
+         * Hanya jadwalkan persiapan
+         * jika target message berubah.
+         */
+
+        if (
+            previousKey !==
+            selectedGroupKey
+        ) {
+
+            scheduleFastPrepare();
+
+        }
+
+
+        return selectedImages;
+
+    }
+
+
+    // ============================================================
+    // PREVIEW
+    // ============================================================
+
+    function showPreview() {
+
+        const count =
+            selectedURLs.length;
+
+
+        grid.innerHTML =
+            '';
+
+
+        grid.classList.remove(
+            'one',
+            'three'
+        );
+
+
+        if (
+            count === 1
+        ) {
+
+            grid.classList.add(
+                'one'
+            );
+
+        }
+
+        else if (
+            count === 3 ||
+            count >= 5
+        ) {
+
+            grid.classList.add(
+                'three'
+            );
+
+        }
+
+
+        countBadge.textContent =
+            `${count} GAMBAR`;
+
+
+        previewInfo.textContent =
+
+            count === 1
+
+                ? '1 gambar dalam 1 pesan'
+
+                : `${count} gambar dalam 1 pesan`;
+
+
+        selectedURLs.forEach(
+            (
+                url,
+                index
+            ) => {
+
+                const box =
+                    document.createElement(
+                        'div'
+                    );
+
+
+                box.className =
+                    'ss-image-box';
+
+
+                const img =
+                    document.createElement(
+                        'img'
+                    );
+
+
+                img.src =
+                    url;
+
+
+                img.alt =
+                    `Gambar ${index + 1}`;
+
+
+                const number =
+                    document.createElement(
+                        'div'
+                    );
+
+
+                number.className =
+                    'ss-image-number';
+
+
+                number.textContent =
+                    index + 1;
+
+
+                box.appendChild(
+                    img
+                );
+
+
+                box.appendChild(
+                    number
+                );
+
+
+                grid.appendChild(
+                    box
+                );
+
+            }
+        );
+
+    }
+
+
+    // ============================================================
+    // FAST IMAGE DECODE
+    // ============================================================
+
+    async function decodeBlob(blob) {
+
+        /*
+         * createImageBitmap biasanya
+         * lebih cepat daripada Image().
+         */
+
+        if (
+            typeof createImageBitmap ===
+            'function'
+        ) {
+
+            try {
+
+                const bitmap =
+                    await createImageBitmap(
+                        blob
+                    );
+
+
+                return {
+
+                    source:
+                        bitmap,
+
+                    width:
+                        bitmap.width,
+
+                    height:
+                        bitmap.height,
+
+                    close() {
+
+                        try {
+
+                            bitmap.close();
+
+                        }
+
+                        catch {}
+
+                    }
+
+                };
+
+            }
+
+            catch {}
+
+        }
+
+
+        /*
+         * Fallback.
+         */
+
+        return new Promise(
+            (
+                resolve,
+                reject
+            ) => {
+
+                const objectURL =
+                    URL.createObjectURL(
+                        blob
+                    );
+
+
+                const img =
+                    new Image();
+
+
+                img.onload =
+                    () => {
+
+                        resolve({
+
+                            source:
+                                img,
+
+                            width:
+                                img.naturalWidth,
+
+                            height:
+                                img.naturalHeight,
+
+                            close() {
+
+                                URL.revokeObjectURL(
+                                    objectURL
+                                );
+
+                            }
+
+                        });
+
+                    };
+
+
+                img.onerror =
+                    () => {
+
+                        URL.revokeObjectURL(
+                            objectURL
+                        );
+
+
+                        reject(
+                            new Error(
+                                'Gambar gagal dibaca'
+                            )
+                        );
+
+                    };
+
+
+                img.src =
+                    objectURL;
+
+            }
+        );
+
+    }
+
+
+    // ============================================================
+    // PREPARE FINAL FILE
+    // ============================================================
+
+    async function prepareFinalBlob(
+        urls
+    ) {
+
+        /*
+         * SATU GAMBAR:
+         * cukup download/cache.
+         */
+
+        if (
+            urls.length === 1
+        ) {
+
+            return await downloadImageCached(
+                urls[0]
+            );
+
+        }
+
+
+        /*
+         * MULTI:
+         * download semua paralel.
+         */
+
+        const blobs =
+            await Promise.all(
+
+                urls.map(
+                    downloadImageCached
+                )
+
+            );
+
+
+        /*
+         * Decode paralel.
+         */
+
+        const images =
+            await Promise.all(
+
+                blobs.map(
+                    decodeBlob
+                )
+
+            );
+
+
+        const count =
+            images.length;
+
+
+        let columns;
+
+
+        if (
+            count <= 3
+        ) {
+
+            columns =
+                count;
+
+        }
+
+        else if (
+            count === 4
+        ) {
+
+            columns =
+                2;
+
+        }
+
+        else {
+
+            columns =
+                3;
+
+        }
+
+
+        const rows =
+            Math.ceil(
+                count /
+                columns
+            );
+
+
+        /*
+         * Sedikit lebih kecil dari versi lama
+         * supaya file hasil jauh lebih ringan
+         * dan upload lebih cepat.
+         */
+
+        const TILE_W =
+            620;
+
+
+        const MAX_TILE_H =
+            860;
+
+
+        const GAP =
+            12;
+
+
+        const PADDING =
+            14;
+
+
+        const proposedHeights =
+            images.map(
+                item => {
+
+                    return Math.min(
+
+                        MAX_TILE_H,
+
+                        item.height *
+
+                        (
+                            TILE_W /
+
+                            Math.max(
+                                item.width,
+                                1
+                            )
+                        )
+
+                    );
+
+                }
+            );
+
+
+        const TILE_H =
+            Math.max(
+
+                380,
+
+                Math.min(
+
+                    MAX_TILE_H,
+
+                    Math.max(
+                        ...proposedHeights
+                    )
+
+                )
+
+            );
+
+
+        const canvas =
+            document.createElement(
+                'canvas'
+            );
+
+
+        canvas.width =
+
+            PADDING * 2 +
+
+            columns *
+            TILE_W +
+
+            (
+                columns - 1
+            ) *
+            GAP;
+
+
+        canvas.height =
+
+            PADDING * 2 +
+
+            rows *
+            TILE_H +
+
+            (
+                rows - 1
+            ) *
+            GAP;
+
+
+        const ctx =
+            canvas.getContext(
+                '2d',
+                {
+                    alpha: false
+                }
+            );
+
+
+        ctx.fillStyle =
+            '#070708';
+
+
+        ctx.fillRect(
+
+            0,
+            0,
+
+            canvas.width,
+            canvas.height
+
+        );
+
+
+        images.forEach(
+            (
+                item,
+                index
+            ) => {
+
+                const col =
+                    index %
+                    columns;
+
+
+                const row =
+                    Math.floor(
+                        index /
+                        columns
+                    );
+
+
+                const x =
+
+                    PADDING +
+
+                    col *
+                    (
+                        TILE_W +
+                        GAP
+                    );
+
+
+                const y =
+
+                    PADDING +
+
+                    row *
+                    (
+                        TILE_H +
+                        GAP
+                    );
+
+
+                ctx.fillStyle =
+                    '#101011';
+
+
+                ctx.fillRect(
+
+                    x,
+                    y,
+
+                    TILE_W,
+                    TILE_H
+
+                );
+
+
+                const scale =
+                    Math.min(
+
+                        TILE_W /
+                        item.width,
+
+                        TILE_H /
+                        item.height
+
+                    );
+
+
+                const drawW =
+                    item.width *
+                    scale;
+
+
+                const drawH =
+                    item.height *
+                    scale;
+
+
+                const drawX =
+
+                    x +
+
+                    (
+                        TILE_W -
+                        drawW
+                    ) /
+                    2;
+
+
+                const drawY =
+
+                    y +
+
+                    (
+                        TILE_H -
+                        drawH
+                    ) /
+                    2;
+
+
+                ctx.drawImage(
+
+                    item.source,
+
+                    drawX,
+                    drawY,
+
+                    drawW,
+                    drawH
+
+                );
+
+            }
+        );
+
+
+        images.forEach(
+            item => {
+
+                item.close();
+
+            }
+        );
+
+
+        return await new Promise(
+            (
+                resolve,
+                reject
+            ) => {
+
+                canvas.toBlob(
+                    blob => {
+
+                        if (blob) {
+
+                            resolve(
+                                blob
+                            );
+
+                        }
+
+                        else {
+
+                            reject(
+                                new Error(
+                                    'Gagal menyusun gambar'
+                                )
+                            );
+
+                        }
+
+                    },
+
+                    'image/png'
+
+                );
+
+            }
+        );
+
+    }
+
+
+    // ============================================================
+    // PREPARED CACHE
+    // ============================================================
+
+    async function getPreparedBlob(
+        groupKey,
+        urls
+    ) {
+
+        if (
+            preparedCache.has(
+                groupKey
+            )
+        ) {
+
+            return await preparedCache.get(
+                groupKey
+            );
+
+        }
+
+
+        const promise =
+            prepareFinalBlob(
+                urls
+            )
+            .then(
+                blob => {
+
+                    preparedCache.set(
+                        groupKey,
+                        blob
+                    );
+
+
+                    trimMap(
+                        preparedCache,
+                        MAX_PREPARED_CACHE
+                    );
+
+
+                    if (
+                        selectedGroupKey ===
+                        groupKey
+                    ) {
+
+                        updateBubbleText();
+
+                    }
+
+
+                    return blob;
+
+                }
+            )
+            .catch(
+                error => {
+
+                    preparedCache.delete(
+                        groupKey
+                    );
+
+
+                    throw error;
+
+                }
+            );
+
+
+        preparedCache.set(
+            groupKey,
+            promise
+        );
+
+
+        trimMap(
+            preparedCache,
+            MAX_PREPARED_CACHE
+        );
+
+
+        return await promise;
+
+    }
+
+
+    // ============================================================
+    // BACKGROUND PREPARE
+    //
+    // TIDAK UPLOAD.
+    // HANYA SIAPKAN FILE DI MEMORY.
+    // ============================================================
+
+    function scheduleFastPrepare() {
+
+        clearTimeout(
+            prepareTimer
+        );
+
+
+        if (
+            !selectedURLs.length ||
+            !selectedGroupKey
+        ) {
+
+            return;
+
+        }
+
+
+        /*
+         * Kalau link sudah ada,
+         * tidak perlu menyiapkan lagi.
+         */
+
+        if (
+            uploadCache.has(
+                selectedContentKey
+            ) ||
+            uploadCache.has(
+                selectedGroupKey
+            )
+        ) {
+
+            return;
+
+        }
+
+
+        const groupKey =
+            selectedGroupKey;
+
+
+        const urls =
+            [
+                ...selectedURLs
+            ];
+
+
+        /*
+         * Tunggu scroll berhenti sedikit.
+         *
+         * Setelah 180ms:
+         * download + susun di memory.
+         *
+         * BELUM upload.
+         */
+
+        prepareTimer =
+            setTimeout(
+                () => {
+
+                    getPreparedBlob(
+                        groupKey,
+                        urls
+                    )
+                    .catch(
+                        error => {
+
+                            console.debug(
+                                '[SLEEKSHOT PRELOAD]',
+                                error
+                            );
+
+                        }
+                    );
+
+                },
+                180
+            );
+
+    }
+
+
+    // ============================================================
+    // UPLOAD SLEEKSHOT
+    // ============================================================
+
+    function uploadToSleekshot(
+        blob
+    ) {
+
+        return new Promise(
+            (
+                resolve,
+                reject
+            ) => {
+
+                const form =
+                    new FormData();
+
+
+                form.append(
+
+                    'image',
+
+                    blob,
+
+                    'screenshot.png'
+
+                );
+
+
+                GM_xmlhttpRequest({
+
+                    method:
+                        'POST',
+
+                    url:
+                        SLEEKSHOT_UPLOAD,
+
+                    data:
+                        form,
+
+                    timeout:
+                        60000,
+
+
+                    headers: {
+
+                        Accept:
+                            'application/json'
+
+                    },
+
+
+                    onload(response) {
+
+                        if (
+                            response.status < 200 ||
+                            response.status >= 300
+                        ) {
+
+                            reject(
+                                new Error(
+                                    'Upload Sleekshot gagal. HTTP ' +
+                                    response.status
+                                )
+                            );
+
+
+                            return;
+
+                        }
+
+
+                        let data;
+
+
+                        try {
+
+                            data =
+                                JSON.parse(
+                                    response.responseText
+                                );
+
+                        }
+
+                        catch {
+
+                            const raw =
+                                String(
+                                    response.responseText ||
+                                    ''
+                                )
+                                .trim();
+
+
+                            if (
+                                raw.startsWith(
+                                    'https://'
+                                )
+                            ) {
+
+                                resolve(
+                                    raw
+                                );
+
+
+                                return;
+
+                            }
+
+
+                            reject(
+                                new Error(
+                                    'Response Sleekshot tidak dikenali'
+                                )
+                            );
+
+
+                            return;
+
+                        }
+
+
+                        let url =
+
+                            data.viewUrl ||
+
+                            data.viewURL ||
+
+                            data.view_url ||
+
+                            data.url ||
+
+                            data.link ||
+
+                            data.shareUrl ||
+
+                            data.shareURL ||
+
+                            data.share_url ||
+
+                            data.result?.viewUrl ||
+
+                            data.result?.url ||
+
+                            data.result?.link ||
+
+                            data.data?.viewUrl ||
+
+                            data.data?.viewURL ||
+
+                            data.data?.view_url ||
+
+                            data.data?.url ||
+
+                            data.data?.link ||
+
+                            data.data?.shareUrl;
+
+
+                        if (
+                            !url &&
+                            (
+                                data.id ||
+                                data.data?.id
+                            )
+                        ) {
+
+                            const id =
+
+                                data.id ||
+
+                                data.data.id;
+
+
+                            url =
+
+                                'https://sleekshot.app/v/' +
+
+                                id;
+
+                        }
+
+
+                        if (!url) {
+
+                            reject(
+                                new Error(
+                                    'Link Sleekshot tidak ditemukan'
+                                )
+                            );
+
+
+                            return;
+
+                        }
+
+
+                        resolve(
+                            url
+                        );
+
+                    },
+
+
+                    onerror() {
+
+                        reject(
+                            new Error(
+                                'Tidak dapat terhubung ke Sleekshot'
+                            )
+                        );
+
+                    },
+
+
+                    ontimeout() {
+
+                        reject(
+                            new Error(
+                                'Upload Sleekshot timeout'
+                            )
+                        );
+
+                    }
+
+                });
+
+            }
+        );
+
+    }
+
+
+    // ============================================================
+    // ERROR
+    // ============================================================
+
+    function showError(text) {
+
+        errorBox.textContent =
+            text;
+
+
+        errorBox.style.display =
+            'block';
+
+    }
+
+
+    function hideError() {
+
+        errorBox.textContent =
+            '';
+
+
+        errorBox.style.display =
+            'none';
+
+    }
+
+
+    // ============================================================
+    // PROCESS MESSAGE
+    // ============================================================
+
+    async function processSelectedMessage(
+        force = false
+    ) {
+
+        if (
+            !selectedURLs.length ||
+            !selectedGroupKey
+        ) {
+
+            return;
+
+        }
+
+
+        /*
+         * Kunci data message saat klik.
+         */
+
+        const urls =
+            [
+                ...selectedURLs
+            ];
+
+
+        const groupKey =
+            selectedGroupKey;
+
+
+        const contentKey =
+            selectedContentKey;
+
+
+        // ========================================================
+        // LINK CACHE
+        // ========================================================
+
+        if (!force) {
+
+            const cached =
+
+                uploadCache.get(
+                    contentKey
+                ) ||
+
+                uploadCache.get(
+                    groupKey
+                );
+
+
+            if (cached) {
+
+                linkInput.value =
+                    cached;
+
+
+                linkState.textContent =
+                    'SIAP ✓';
+
+
+                updateBubbleText();
+
+
+                return;
+
+            }
+
+        }
+
+
+        if (uploading) {
+
+            return;
+
+        }
+
+
+        uploading =
+            true;
+
+
+        bubble.classList.add(
+            'uploading'
+        );
+
+
+        hideError();
+
+
+        linkInput.value =
+            '';
+
+
+        try {
+
+            // ====================================================
+            // FILE SUDAH DIPREPARE SAAT SCROLL
+            // ====================================================
+
+            linkState.textContent =
+                'MENYIAPKAN';
+
+
+            bubbleStatus.textContent =
+                'Menyiapkan cepat...';
+
+
+            /*
+             * Kalau preload selesai,
+             * ini langsung return Blob.
+             *
+             * Kalau masih berjalan,
+             * hanya menunggu sisa proses.
+             */
+
+            const finalBlob =
+                await getPreparedBlob(
+                    groupKey,
+                    urls
+                );
+
+
+            // ====================================================
+            // UPLOAD
+            // ====================================================
+
+            linkState.textContent =
+                'UPLOAD';
+
+
+            bubbleStatus.textContent =
+                'Upload Sleekshot...';
+
+
+            const sleekshotURL =
+                await uploadToSleekshot(
+                    finalBlob
+                );
+
+
+            // ====================================================
+            // CACHE LINK
+            // ====================================================
+
+            uploadCache.set(
+                groupKey,
+                sleekshotURL
+            );
+
+
+            uploadCache.set(
+                contentKey,
+                sleekshotURL
+            );
+
+
+            trimMap(
+                uploadCache,
+                MAX_LINK_CACHE
+            );
+
+
+            saveLinkCache();
+
+
+            linkInput.value =
+                sleekshotURL;
+
+
+            linkState.textContent =
+                'SIAP ✓';
+
+
+            updateBubbleText();
+
+
+            showToast(
+                'Link Sleekshot siap ✓'
+            );
+
+        }
+
+        catch (error) {
+
+            console.error(
+                '[SLEEKSHOT]',
+                error
+            );
+
+
+            linkState.textContent =
+                'GAGAL';
+
+
+            bubbleStatus.textContent =
+                'Upload gagal';
+
+
+            showError(
+                error.message
+            );
+
+        }
+
+        finally {
+
+            uploading =
+                false;
+
+
+            bubble.classList.remove(
+                'uploading'
+            );
+
+        }
+
+    }
+
+
+    // ============================================================
+    // OPEN BUBBLE
+    // ============================================================
+
+    async function openBubble() {
+
+        if (
+            !isValidationRoom()
+        ) {
+
+            return;
+
+        }
+
+
+        /*
+         * Cari SATU message berdasarkan
+         * gambar terdekat dengan scroll.
+         */
+
+        const group =
+            findNearestMessageGroup();
+
+
+        if (!group.length) {
+
+            showToast(
+                'Dekatkan layar ke gambar'
+            );
+
+
+            return;
+
+        }
+
+
+        showPreview();
+
+
+        overlay.classList.add(
+            'visible'
+        );
+
+
+        hideError();
+
+
+        const cached =
+
+            uploadCache.get(
+                selectedContentKey
+            ) ||
+
+            uploadCache.get(
+                selectedGroupKey
+            );
+
+
+        if (cached) {
+
+            linkInput.value =
+                cached;
+
+
+            linkState.textContent =
+                'SIAP ✓';
+
+
+            return;
+
+        }
+
+
+        linkInput.value =
+            '';
+
+
+        linkState.textContent =
+            'MEMPROSES';
+
+
+        /*
+         * Upload hanya mulai
+         * ketika bubble diklik.
+         */
+
+        await processSelectedMessage();
+
+    }
+
+
+    // ============================================================
+    // CLOSE
+    // ============================================================
+
+    function closeModal() {
+
+        overlay.classList.remove(
+            'visible'
+        );
+
+    }
+
+
+    document
+        .querySelector(
+            '#ss-close'
+        )
+        .addEventListener(
+            'click',
+            closeModal
+        );
+
+
+    overlay.addEventListener(
+        'click',
+        event => {
+
+            if (
+                event.target ===
+                overlay
+            ) {
+
+                closeModal();
+
+            }
+
+        }
+    );
+
+
+    // ============================================================
+    // ESC
+    // ============================================================
+
+    document.addEventListener(
+        'keydown',
+        event => {
+
+            if (
+                (
+                    event.key ===
+                    'Escape' ||
+
+                    event.key ===
+                    'Esc'
+                ) &&
+                overlay.classList.contains(
+                    'visible'
+                )
+            ) {
+
+                event.preventDefault();
+
+                event.stopPropagation();
+
+
+                closeModal();
+
+            }
+
+        },
+        true
+    );
+
+
+    // ============================================================
+    // COPY
+    // ============================================================
+
+    document
+        .querySelector(
+            '#ss-copy'
+        )
+        .addEventListener(
+            'click',
+            function () {
+
+                if (
+                    !linkInput.value
+                ) {
+
+                    showToast(
+                        'Link belum tersedia'
+                    );
+
+
+                    return;
+
+                }
+
+
+                GM_setClipboard(
+                    linkInput.value
+                );
+
+
+                const old =
+                    this.textContent;
+
+
+                this.textContent =
+                    '✓';
+
+
+                showToast(
+                    'Link berhasil disalin'
+                );
+
+
+                setTimeout(
+                    () => {
+
+                        this.textContent =
+                            old;
+
+                    },
+                    800
+                );
+
+            }
+        );
+
+
+    // ============================================================
+    // OPEN LINK
+    // ============================================================
+
+    document
+        .querySelector(
+            '#ss-open'
+        )
+        .addEventListener(
+            'click',
+            function () {
+
+                if (
+                    !linkInput.value
+                ) {
+
+                    showToast(
+                        'Link belum tersedia'
+                    );
+
+
+                    return;
+
+                }
+
+
+                window.open(
+
+                    linkInput.value,
+
+                    '_blank',
+
+                    'noopener,noreferrer'
+
+                );
+
+            }
+        );
+
+
+    // ============================================================
+    // RETRY
+    // ============================================================
+
+    document
+        .querySelector(
+            '#ss-retry'
+        )
+        .addEventListener(
+            'click',
+            async function () {
+
+                if (
+                    uploading ||
+                    !selectedGroupKey
+                ) {
+
+                    return;
+
+                }
+
+
+                /*
+                 * Hapus link saja.
+                 *
+                 * Blob hasil prepare TETAP disimpan
+                 * supaya retry upload jauh lebih cepat.
+                 */
+
+                uploadCache.delete(
+                    selectedGroupKey
+                );
+
+
+                uploadCache.delete(
+                    selectedContentKey
+                );
+
+
+                saveLinkCache();
+
+
+                linkInput.value =
+                    '';
+
+
+                linkState.textContent =
+                    'MENGULANG';
+
+
+                await processSelectedMessage(
+                    true
+                );
+
+            }
+        );
+
+
+    // ============================================================
+    // DRAG
+    // ============================================================
+
+    let dragging = false;
+
+    let moved = false;
+
+    let startX = 0;
+
+    let startY = 0;
+
+    let startLeft = 0;
+
+    let startTop = 0;
+
+
+    bubble.addEventListener(
+        'pointerdown',
+        event => {
+
+            if (
+                event.button !== 0
+            ) {
+
+                return;
+
+            }
+
+
+            dragging = true;
+
+            moved = false;
+
+
+            const rect =
+                bubble.getBoundingClientRect();
+
+
+            startX =
+                event.clientX;
+
+
+            startY =
+                event.clientY;
+
+
+            startLeft =
+                rect.left;
+
+
+            startTop =
+                rect.top;
+
+
+            bubble.style.right =
+                'auto';
+
+
+            bubble.style.bottom =
+                'auto';
+
+
+            bubble.style.left =
+                `${rect.left}px`;
+
+
+            bubble.style.top =
+                `${rect.top}px`;
+
+
+            bubble.classList.add(
+                'dragging'
+            );
+
+
+            try {
+
+                bubble.setPointerCapture(
+                    event.pointerId
+                );
+
+            }
+
+            catch {}
+
+        }
+    );
+
+
+    bubble.addEventListener(
+        'pointermove',
+        event => {
+
+            if (!dragging) {
+
+                return;
+
+            }
+
+
+            const dx =
+                event.clientX -
+                startX;
+
+
+            const dy =
+                event.clientY -
+                startY;
+
+
+            if (
+                Math.abs(dx) > 5 ||
+                Math.abs(dy) > 5
+            ) {
+
+                moved = true;
+
+            }
+
+
+            if (!moved) {
+
+                return;
+
+            }
+
+
+            const margin =
+                8;
+
+
+            let left =
+                startLeft +
+                dx;
+
+
+            let top =
+                startTop +
+                dy;
+
+
+            left =
+                Math.max(
+
+                    margin,
+
+                    Math.min(
+
+                        left,
+
+                        window.innerWidth -
+                        bubble.offsetWidth -
+                        margin
+
+                    )
+
+                );
+
+
+            top =
+                Math.max(
+
+                    margin,
+
+                    Math.min(
+
+                        top,
+
+                        window.innerHeight -
+                        bubble.offsetHeight -
+                        margin
+
+                    )
+
+                );
+
+
+            bubble.style.left =
+                `${left}px`;
+
+
+            bubble.style.top =
+                `${top}px`;
+
+        }
+    );
+
+
+    bubble.addEventListener(
+        'pointerup',
+        async event => {
+
+            if (!dragging) {
+
+                return;
+
+            }
+
+
+            dragging = false;
+
+
+            bubble.classList.remove(
+                'dragging'
+            );
+
+
+            try {
+
+                bubble.releasePointerCapture(
+                    event.pointerId
+                );
+
+            }
+
+            catch {}
+
+
+            if (moved) {
+
+                saveBubblePosition();
+
+
+                return;
+
+            }
+
+
+            await openBubble();
+
+        }
+    );
+
+
+    // ============================================================
+    // POSITION
+    // ============================================================
+
+    function saveBubblePosition() {
+
+        const rect =
+            bubble.getBoundingClientRect();
+
+
+        try {
+
+            localStorage.setItem(
+
+                POSITION_KEY,
+
+                JSON.stringify({
+
+                    left:
+                        rect.left,
+
+                    top:
+                        rect.top
+
+                })
+
+            );
+
+        }
+
+        catch {}
+
+    }
+
+
+    function restoreBubblePosition() {
+
+        try {
+
+            const raw =
+                localStorage.getItem(
+                    POSITION_KEY
+                );
+
+
+            if (!raw) {
+
+                return;
+
+            }
+
+
+            const pos =
+                JSON.parse(
+                    raw
+                );
+
+
+            if (
+                typeof pos.left !== 'number' ||
+                typeof pos.top !== 'number'
+            ) {
+
+                return;
+
+            }
+
+
+            bubble.style.right =
+                'auto';
+
+
+            bubble.style.bottom =
+                'auto';
+
+
+            bubble.style.left =
+                `${pos.left}px`;
+
+
+            bubble.style.top =
+                `${pos.top}px`;
+
+        }
+
+        catch {}
+
+    }
+
+
+    function clampBubblePosition() {
+
+        if (!bubble.style.left) {
+
+            return;
+
+        }
+
+
+        const r =
+            bubble.getBoundingClientRect();
+
+
+        const margin =
+            8;
+
+
+        const left =
+            Math.max(
+
+                margin,
+
+                Math.min(
+
+                    r.left,
+
+                    window.innerWidth -
+                    r.width -
+                    margin
+
+                )
+
+            );
+
+
+        const top =
+            Math.max(
+
+                margin,
+
+                Math.min(
+
+                    r.top,
+
+                    window.innerHeight -
+                    r.height -
+                    margin
+
+                )
+
+            );
+
+
+        bubble.style.left =
+            `${left}px`;
+
+
+        bubble.style.top =
+            `${top}px`;
+
+
+        saveBubblePosition();
+
+    }
+
+
+    window.addEventListener(
+        'resize',
+        clampBubblePosition
+    );
+
+
+    // ============================================================
+    // SCROLL
+    // ============================================================
+
+    let scrollTimer;
+
+
+    document.addEventListener(
+        'scroll',
+        () => {
+
+            if (
+                !isValidationRoom()
+            ) {
+
+                return;
+
+            }
+
+
+            /*
+             * Popup terbuka:
+             * target message dikunci.
+             */
+
+            if (
+                overlay.classList.contains(
+                    'visible'
+                )
+            ) {
+
+                return;
+
+            }
+
+
+            clearTimeout(
+                scrollTimer
+            );
+
+
+            scrollTimer =
+                setTimeout(
+                    findNearestMessageGroup,
+                    55
+                );
+
+        },
+        true
+    );
+
+
+    // ============================================================
+    // UPDATE ROOM
+    // ============================================================
+
+    function updateRoom() {
+
+        if (
+            isValidationRoom()
+        ) {
+
+            bubble.classList.add(
+                'visible'
+            );
+
+
+            if (
+                !overlay.classList.contains(
+                    'visible'
+                )
+            ) {
+
+                findNearestMessageGroup();
+
+            }
+
+        }
+
+        else {
+
+            bubble.classList.remove(
+                'visible'
+            );
+
+
+            closeModal();
+
+
+            clearHighlight();
+
+
+            selectedMessage =
+                null;
+
+
+            selectedImages =
+                [];
+
+
+            selectedURLs =
+                [];
+
+
+            selectedGroupKey =
+                '';
+
+
+            selectedContentKey =
+                '';
+
+
+            clearTimeout(
+                prepareTimer
+            );
+
+        }
+
+    }
+
+
+    // ============================================================
+    // OBSERVER
+    // ============================================================
+
+    let observerTimer;
+
+
+    const observer =
+        new MutationObserver(
+            () => {
+
+                clearTimeout(
+                    observerTimer
+                );
+
+
+                observerTimer =
+                    setTimeout(
+                        updateRoom,
+                        180
+                    );
+
+            }
+        );
+
+
+    observer.observe(
+
+        document.documentElement,
+
+        {
+
+            childList:
+                true,
+
+            subtree:
+                true
+
+        }
+
+    );
+
+
+    // ============================================================
+    // START
+    // ============================================================
+
+    restoreBubblePosition();
+
+
+    setInterval(
+        updateRoom,
+        850
+    );
+
+
+    setTimeout(
+        updateRoom,
+        600
+    );
+
 })();
