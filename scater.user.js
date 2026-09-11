@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         LiveChat OCR Claim — WIB/WITA/WIT + Batas 02.00
 // @namespace    linetogel-livechat-ocr-claim-fixed
-// @version      7.7.1
-// @description  Multi Admin Reliable: ketiga alamat admin dicoba mandiri, endpoint hasil login diprioritaskan, sedangkan OCR kode/tanggal/GMT tetap seperti V7.7.0.
+// @version      7.7.7
+// @description  Panel Midnight Gold, OCR tanggal/jam kuat, maksimum dua worker dan pembaruan tampilan ringan. Aturan claim tetap.
 // @author       OpenAI
 // @match        https://my.livechatinc.com/*
 // @run-at       document-idle
@@ -26,7 +26,7 @@
 
     // Versi terbaru mengambil alih UI lama bila lebih dari satu versi tidak sengaja aktif.
     // Ini mencegah script lama memblokir perbaikan melalui guard boolean yang sama.
-    const LCST_BUILD_VERSION = '7.7.1-reliable-three-admin-sources';
+    const LCST_BUILD_VERSION = '7.7.7-midnight-gold-responsive';
     const lcstExistingInstance = window.__LC_BUBBLE_SCREENSHOT_ACTIVE_ONLY__;
     if (lcstExistingInstance && typeof lcstExistingInstance === 'object' && lcstExistingInstance.version === LCST_BUILD_VERSION) return;
     try {
@@ -40,7 +40,7 @@
     const POS_KEY = 'lc_bubble_screenshot_tool_position_active_only_v46_clean_final';
     const DB_KEY  = 'screenshot_tool_db_v1';
     const Z_TOP   = 2147483647;
-    const LCST_DASHBOARD_LOGO_URL = 'https://line32170.com/assets/img/ei/logo.png';
+    const LCST_DASHBOARD_LOGO_URL = 'https://line32762.com/assets/img/ei/logo.png?v=y5h2w2cmxvdvv6zrc0iq';
     let lcstDashboardLogoDataUrl = '';
     let lcstDashboardLogoPromise = null;
 
@@ -1641,7 +1641,7 @@
                 background-color:#26030d!important;
                 background-image:
                     linear-gradient(145deg,rgba(37,2,12,.52) 0%,rgba(78,5,20,.40) 48%,rgba(38,3,13,.50) 100%),
-                    url("https://line32170.com/assets/img/ei/logo.png"),
+                    url("https://line32762.com/assets/img/ei/logo.png?v=y5h2w2cmxvdvv6zrc0iq"),
                     radial-gradient(circle at 7% 2%,rgba(255,197,61,.34),transparent 31%),
                     radial-gradient(circle at 94% 5%,rgba(255,45,68,.32),transparent 30%),
                     radial-gradient(circle at 50% 105%,rgba(255,165,49,.18),transparent 38%),
@@ -2409,6 +2409,191 @@
                 #lcst-bubble-fixed{width:72px!important;height:72px!important}
             }
 
+
+            /* MIDNIGHT GOLD — one scoped finish, no external fonts or animated backgrounds. */
+            #lcst-panel-fixed{
+                --aurora-text:#edf1f8;--aurora-muted:#a8b5c8;--aurora-line:#2c384b;
+                --nova-text:#edf1f8;--nova-muted:#a8b5c8;
+                padding:24px!important;color:#edf1f8!important;
+                background:radial-gradient(ellipse at 90% 0%,#202738 0%,transparent 44%),#0c1220!important;
+                backdrop-filter:none!important;scrollbar-color:#46536a #111a29;
+            }
+            #lcst-panel-fixed:before,#lcst-panel-fixed:after{display:none!important}
+            #lcst-panel-fixed .lcst-wrap{max-width:1540px!important;margin:auto!important}
+            #lcst-panel-fixed *,#lcst-panel-fixed *:before,#lcst-panel-fixed *:after{
+                animation:none!important;backdrop-filter:none!important;text-shadow:none!important;
+            }
+            #lcst-panel-fixed button{transition:background-color .15s,border-color .15s,transform .15s!important}
+            #lcst-panel-fixed .lcst-nova-topbar{
+                position:relative!important;display:flex!important;flex-wrap:wrap!important;gap:18px!important;
+                min-height:96px!important;padding:20px 24px!important;border-radius:20px!important;
+                border:1px solid #384254!important;background:linear-gradient(115deg,#1e293a,#121c2c)!important;
+                box-shadow:0 10px 26px #00000025,inset 0 1px #ffffff0a!important;
+            }
+            #lcst-panel-fixed .lcst-nova-topbar:before{width:3px!important;background:#d4b67d!important;box-shadow:none!important}
+            #lcst-panel-fixed .lcst-nova-topbar:after{display:none!important}
+            #lcst-panel-fixed .lcst-nova-logo{transform:none!important;filter:none!important}
+            #lcst-panel-fixed .lcst-nova-eyebrow,#lcst-panel-fixed .lcst-nova-kicker{
+                color:#d7bc8a!important;letter-spacing:1.6px!important;font-size:10px!important;font-weight:700!important;
+            }
+            #lcst-panel-fixed .lcst-title{color:#f7f3eb!important;font-weight:750!important;letter-spacing:.2px!important}
+            #lcst-panel-fixed .lcst-subtitle{color:#a8b5c8!important;font-size:12px!important;line-height:1.6!important}
+            #lcst-panel-fixed .lcst-version{color:#e3cd9e!important;background:#d4b67d12!important;border:1px solid #d4b67d36!important}
+            #lcst-panel-fixed .lcst-card,#lcst-panel-fixed .lcst-nova-status,#lcst-panel-fixed .lcst-nova-stat{
+                background:#151f30!important;border:1px solid #2c384b!important;border-radius:18px!important;
+                box-shadow:0 6px 18px #0000001a,inset 0 1px #ffffff05!important;color:#edf1f8!important;
+            }
+            #lcst-panel-fixed .lcst-card{padding:20px!important;margin-bottom:16px!important}
+            #lcst-panel-fixed .lcst-card:before,#lcst-panel-fixed .lcst-card:after{display:none!important}
+            #lcst-panel-fixed .lcst-card:hover{border-color:#40506a!important;transform:none!important}
+            #lcst-panel-fixed .lcst-nova-stat{padding:15px 17px!important;min-width:0!important}
+            #lcst-panel-fixed .lcst-nova-stat-label{color:#a8b5c8!important;font-size:10px!important;letter-spacing:1.1px!important}
+            #lcst-panel-fixed .lcst-nova-stat strong{color:#f4f6fa!important;font-size:15px!important;line-height:1.5!important;overflow-wrap:anywhere}
+            #lcst-panel-fixed .lcst-nova-stat small{color:#9aaac2!important;line-height:1.6!important}
+            #lcst-panel-fixed #lcst-live-time{font-variant-numeric:tabular-nums;font-size:14px!important}
+            #lcst-panel-fixed .lcst-nova-workspace{display:grid!important;grid-template-columns:320px minmax(0,1fr)!important;gap:20px!important;align-items:start!important}
+            #lcst-panel-fixed .lcst-nova-sidebar{position:static!important;min-width:0!important}
+            #lcst-panel-fixed .lcst-nova-main{min-width:0!important}
+            #lcst-panel-fixed .lcst-nova-section-head{gap:12px!important;padding-bottom:14px!important;margin-bottom:15px!important;border-bottom:1px solid #2c384b!important}
+            #lcst-panel-fixed .lcst-nova-step{background:#d4b67d14!important;border:1px solid #d4b67d30!important;color:#e0c591!important;border-radius:11px!important;box-shadow:none!important}
+            #lcst-panel-fixed .lcst-nova-section-head b{font-size:15px!important;font-weight:700!important;color:#f2f4f9!important;line-height:1.4!important}
+            #lcst-panel-fixed .lcst-nova-section-head small,#lcst-panel-fixed .lcst-nova-guide-row small{color:#a8b5c8!important;line-height:1.6!important}
+            #lcst-panel-fixed .lcst-nova-gallery-head,#lcst-panel-fixed .lcst-output-head{gap:16px!important;align-items:center!important;flex-wrap:wrap!important;margin-bottom:18px!important}
+            #lcst-panel-fixed .lcst-nova-gallery-head h4,#lcst-panel-fixed .lcst-nova-output-card h4{margin:7px 0!important;font-size:21px!important;letter-spacing:-.3px!important;color:#f3f5fa!important;font-weight:750!important}
+            #lcst-panel-fixed .lcst-nova-gallery-head p,#lcst-panel-fixed .lcst-nova-output-card p{color:#a8b5c8!important;font-size:12px!important;line-height:1.7!important}
+            #lcst-panel-fixed .lcst-input,#lcst-panel-fixed #lcst-output{
+                background:#0e1726!important;border:1px solid #344259!important;color:#edf1f8!important;
+                border-radius:12px!important;box-shadow:inset 0 1px 4px #00000026!important;
+            }
+            #lcst-panel-fixed .lcst-input{min-height:44px!important;font-size:13px!important}
+            #lcst-panel-fixed .lcst-input:focus,#lcst-panel-fixed #lcst-output:focus{border-color:#d4b67d!important;outline:2px solid #d4b67d25!important;outline-offset:2px!important}
+            #lcst-panel-fixed #lcst-output{min-height:150px!important;line-height:1.8!important;padding:16px!important;font:12px/1.8 Consolas,monospace!important}
+            #lcst-panel-fixed .lcst-btn{background:#25344a!important;border:1px solid #40536d!important;color:#eaf0f8!important;border-radius:11px!important;box-shadow:inset 0 1px #ffffff08!important;min-height:38px!important;letter-spacing:.2px!important}
+            #lcst-panel-fixed .lcst-btn:hover{background:#30435c!important;filter:none!important;transform:translateY(-1px)!important}
+            #lcst-panel-fixed .lcst-btn:disabled{transform:none!important;opacity:.55!important;cursor:wait!important}
+            #lcst-panel-fixed .lcst-nova-scan-btn{background:linear-gradient(120deg,#e1c897,#c4a36a)!important;color:#211c14!important;border-color:#e7d1a6!important;padding:13px 20px!important;box-shadow:0 4px 12px #00000020!important;min-width:174px!important}
+            #lcst-panel-fixed .lcst-nova-scan-btn b,#lcst-panel-fixed .lcst-nova-scan-btn small{color:#211c14!important}
+            #lcst-panel-fixed .lcst-nova-scan-btn:before,#lcst-panel-fixed .lcst-nova-scan-btn:after{display:none!important}
+            #lcst-panel-fixed .lcst-nova-btn-icon{background:#0000000c!important;color:#211c14!important;box-shadow:none!important}
+            #lcst-panel-fixed #lcst-copy{background:#263c53!important;border-color:#547392!important;color:#e7f0fa!important;padding:12px 19px!important;min-width:150px!important}
+            #lcst-panel-fixed .lcst-btn.red{background:#432735!important;color:#f8c6cf!important;border-color:#73414f!important}
+            #lcst-panel-fixed button:focus-visible{outline:2px solid #e1c897!important;outline-offset:3px!important}
+            #lcst-panel-fixed #lcst-image-grid{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:14px!important;align-items:start!important}
+            #lcst-panel-fixed .lcst-img-card{background:#101929!important;border:1px solid #35435a!important;border-radius:14px!important;box-shadow:0 4px 12px #00000020!important;overflow:hidden!important;min-width:0!important}
+            #lcst-panel-fixed .lcst-img-card.target{border-color:#c6a76e!important;box-shadow:0 0 0 1px #c6a76e26!important}
+            #lcst-panel-fixed .lcst-img-card:hover{transform:none!important;border-color:#778ca8!important}
+            #lcst-panel-fixed .lcst-img-media{background:#080f1b!important;height:290px!important;overflow:hidden!important}
+            #lcst-panel-fixed .lcst-img-media img{width:100%!important;height:100%!important;object-fit:contain!important;filter:none!important}
+            #lcst-panel-fixed .lcst-img-index{background:#121c2ef2!important;border:1px solid #455570!important;border-radius:8px!important;color:#eef2f8!important;font-size:10px!important;padding:6px 8px!important}
+            #lcst-panel-fixed .lcst-target-tag{color:#e8cd98!important}
+            #lcst-panel-fixed .lcst-img-label{padding:10px 12px!important;color:#a8b5c8!important;background:#151f30!important;font-size:10px!important}
+            #lcst-panel-fixed .lcst-ocr-badge{font-size:10px!important;line-height:1.65!important;padding:10px 12px!important;white-space:normal!important;overflow-wrap:anywhere}
+            #lcst-panel-fixed .lcst-ocr-badge.success{background:#15352f!important;color:#b3ead2!important;border-color:#356454!important}
+            #lcst-panel-fixed .lcst-ocr-badge.error{background:#402630!important;color:#ffcad2!important;border-color:#724653!important}
+            #lcst-panel-fixed .lcst-ocr-badge.empty{background:#1b2739!important;color:#a8b5c8!important}
+            #lcst-panel-fixed .lcst-scan-state{background:#101b2c!important;border-radius:12px!important;box-shadow:none!important;min-width:0!important}
+            #lcst-panel-fixed .lcst-scan-state-detail{white-space:normal!important;line-height:1.6!important;color:#a8b5c8!important}
+            #lcst-panel-fixed .lcst-scan-state-text{white-space:normal!important;line-height:1.5!important}
+            #lcst-panel-fixed .lcst-progress span{background:linear-gradient(90deg,#c6a76e,#ead7b0)!important;box-shadow:none!important}
+            #lcst-panel-fixed .lcst-nova-guide-row>span{background:#25344a!important;color:#d6c398!important;border-color:#40516a!important}
+            #lcst-bubble-fixed,#lcst-bubble-fixed *,#lcst-bubble-fixed:before,#lcst-bubble-fixed:after{animation:none!important}
+            #lcst-bubble-fixed{box-shadow:0 6px 18px #00000030!important}
+            #lcst-panel-fixed.lcst-performance-mode{background:#0c1220!important}
+            #lcst-panel-fixed.lcst-performance-mode *,#lcst-panel-fixed.lcst-performance-mode *:before,#lcst-panel-fixed.lcst-performance-mode *:after{animation:none!important;transition:none!important;filter:none!important;backdrop-filter:none!important;box-shadow:none!important}
+            @media(max-width:1100px){
+                #lcst-panel-fixed{padding:14px!important}
+                #lcst-panel-fixed .lcst-nova-workspace{grid-template-columns:280px minmax(0,1fr)!important;gap:14px!important}
+                #lcst-panel-fixed .lcst-img-media{height:240px!important}
+                #lcst-panel-fixed .lcst-card{padding:15px!important}
+            }
+            @media(max-width:850px){
+                #lcst-panel-fixed .lcst-nova-workspace{grid-template-columns:minmax(0,1fr)!important}
+                #lcst-panel-fixed .lcst-nova-topbar{padding:16px!important}
+            }
+            @media(max-width:560px){
+                #lcst-panel-fixed{padding:9px!important}
+                #lcst-panel-fixed #lcst-image-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important}
+                #lcst-panel-fixed .lcst-img-media{height:220px!important}
+                #lcst-panel-fixed .lcst-nova-scan-btn,#lcst-panel-fixed #lcst-copy{width:100%!important}
+            }
+
+            #lcst-panel-fixed .lcst-nova-topbar .lcst-brand{position:relative!important;display:flex!important;gap:18px!important;align-items:center!important;min-width:0!important}
+            #lcst-panel-fixed .lcst-nova-logo{position:relative!important;left:auto!important;top:auto!important;right:auto!important;bottom:auto!important;width:114px!important;height:50px!important;flex:0 0 114px!important;margin:0!important;transform:none!important}
+            #lcst-panel-fixed #lcst-header-logo-img{position:relative!important;inset:auto!important;width:100%!important;height:100%!important;object-fit:contain!important;filter:none!important;transform:none!important}
+            #lcst-panel-fixed .lcst-nova-top-actions{margin-left:auto!important;flex-wrap:wrap!important}
+            #lcst-panel-fixed .lcst-nova-gallery-head{background:#1b293b!important;border:1px solid #34465d!important;box-shadow:none!important;padding:16px!important;border-radius:13px!important}
+            #lcst-panel-fixed .lcst-nova-gallery-head .lcst-nova-kicker,#lcst-panel-fixed .lcst-nova-output-card .lcst-nova-kicker{color:#d7bc8a!important}
+            #lcst-panel-fixed .lcst-nova-status .lcst-status-title{color:#d7bc8a!important}
+            #lcst-panel-fixed .lcst-bank-head{display:flex!important;flex-wrap:wrap!important;gap:12px!important}
+            #lcst-panel-fixed .lcst-bank-head-main{min-width:0!important;flex:1 1 180px!important}
+            #lcst-panel-fixed .lcst-bank-refresh{font-size:10px!important;flex:0 0 auto!important}
+            #lcst-panel-fixed .lcst-nova-live-chip{color:#b8dace!important;background:#1a332e!important;border-color:#34564b!important;box-shadow:none!important}
+            @media(max-width:560px){#lcst-panel-fixed .lcst-nova-logo{width:76px!important;flex-basis:76px!important;height:42px!important}#lcst-panel-fixed .lcst-title{font-size:18px!important}#lcst-panel-fixed .lcst-nova-top-actions{width:100%!important;justify-content:space-between!important}}
+
+            /* Visual polish only: legible editing, selection and copy feedback. */
+            #lcst-panel-fixed .lcst-nova-topbar{
+                background:linear-gradient(115deg,#243149 0%,#1b2538 58%,#242c3d)!important;
+                border-color:#48556b!important;box-shadow:0 8px 22px #00000025,inset 0 1px #e4cc9a18!important;
+            }
+            #lcst-panel-fixed .lcst-card{
+                background:linear-gradient(145deg,#192437,#141e2e)!important;
+                border-color:#354359!important;
+            }
+            #lcst-panel-fixed .lcst-nova-stat{
+                background:linear-gradient(135deg,#1e2c42,#182337)!important;
+                border:1px solid #3b4a63!important;
+            }
+            #lcst-panel-fixed .lcst-nova-stat.user{border-color:#6b6085!important}
+            #lcst-panel-fixed .lcst-nova-stat.user .lcst-nova-stat-label{color:#d4c1f1!important}
+            #lcst-panel-fixed .lcst-nova-stat.user small{color:#b7c5da!important;font-size:10px!important;line-height:1.5!important}
+            #lcst-panel-fixed .lcst-nova-user-line{gap:9px!important;align-items:center!important;min-width:0!important}
+            #lcst-panel-fixed #lcst-user-text,
+            #lcst-panel-fixed #lcst-user-text:hover,
+            #lcst-panel-fixed #lcst-user-text:focus,
+            #lcst-panel-fixed #lcst-user-text:active{
+                box-sizing:border-box!important;flex:1 1 0!important;width:100%!important;min-width:0!important;
+                min-height:38px!important;padding:8px 10px!important;margin:0!important;
+                border:1px solid #53647d!important;border-radius:9px!important;
+                background:#101c30!important;color:#f1f5fc!important;
+                -webkit-text-fill-color:#f1f5fc!important;caret-color:#ffe1a1!important;
+                font:650 14px/1.4 'Segoe UI',Arial,sans-serif!important;
+                letter-spacing:.3px!important;opacity:1!important;
+                box-shadow:inset 0 1px 3px #00000026!important;
+                outline:none!important;text-shadow:none!important;
+            }
+            #lcst-panel-fixed #lcst-user-text:hover{border-color:#8a9fbe!important;background:#152239!important}
+            #lcst-panel-fixed #lcst-user-text:focus,
+            #lcst-panel-fixed #lcst-user-text:focus-visible{
+                background:#182941!important;color:#ffffff!important;-webkit-text-fill-color:#ffffff!important;
+                border-color:#e2c28b!important;outline:2px solid #e2c28b42!important;outline-offset:2px!important;
+                box-shadow:inset 0 1px 3px #00000026!important;
+            }
+            #lcst-panel-fixed ::selection{background:#a9cafa!important;color:#102039!important;-webkit-text-fill-color:#102039!important;text-shadow:none!important}
+            #lcst-panel-fixed #lcst-user-text::selection,
+            #lcst-panel-fixed input::selection,
+            #lcst-panel-fixed textarea::selection{
+                background:#a9cafa!important;color:#102039!important;-webkit-text-fill-color:#102039!important;
+            }
+            #lcst-panel-fixed #lcst-copy-user{
+                display:grid!important;place-items:center!important;flex:0 0 36px!important;
+                width:36px!important;height:36px!important;min-height:36px!important;padding:0!important;
+                border-radius:10px!important;border:1px solid #87779e!important;
+                background:#3a304e!important;color:#ecddff!important;box-shadow:inset 0 1px #ffffff0c!important;
+            }
+            #lcst-panel-fixed #lcst-copy-user svg{width:16px!important;height:16px!important}
+            #lcst-panel-fixed #lcst-copy-user:hover{background:#52406c!important;border-color:#baa1da!important;transform:translateY(-1px)!important}
+            #lcst-panel-fixed #lcst-copy-user:active{background:#655080!important;transform:none!important}
+            #lcst-panel-fixed #lcst-copy-user:focus-visible{outline:2px solid #e2c28b!important;outline-offset:3px!important}
+            #lcst-panel-fixed #lcst-copy-user.copied{background:#204b3c!important;color:#d2ffe8!important;border-color:#72b998!important}
+            #lcst-panel-fixed .lcst-nova-section-head{border-bottom-color:#40506a!important}
+            #lcst-panel-fixed .lcst-nova-section-head b{color:#f2e4c9!important;letter-spacing:.15px!important}
+            #lcst-panel-fixed .lcst-nova-gallery-head{background:linear-gradient(110deg,#23324a,#1b283d)!important;border-color:#455776!important}
+            #lcst-panel-fixed .lcst-nova-gallery-head h4,#lcst-panel-fixed .lcst-nova-output-card h4{color:#f5ead6!important}
+            #lcst-panel-fixed .lcst-img-card{border-color:#475570!important;border-radius:15px!important}
+            #lcst-panel-fixed .lcst-img-card.target{border-color:#ddbf87!important;box-shadow:0 0 0 1px #ddbf8720!important}
+            #lcst-panel-fixed .lcst-img-index{background:#1a2740f5!important;border-color:#526786!important}
+            #lcst-panel-fixed .lcst-target-tag{color:#ffe2a6!important}
+            #lcst-panel-fixed.lcst-performance-mode #lcst-user-text:focus{outline-color:#e2c28b80!important}
         `;
         document.head.appendChild(style);
     }
@@ -4241,9 +4426,7 @@
         LCST_REPORTED_DEVICE_MEMORY_GB > 0
         ? LCST_REPORTED_DEVICE_MEMORY_GB
         : 4;
-    const LCST_MAX_OCR_WORKERS = LCST_CPU_THREADS >= 12 && LCST_DEVICE_MEMORY_GB >= 12
-        ? 3
-        : (LCST_CPU_THREADS >= 4 && LCST_DEVICE_MEMORY_GB >= 4 ? 2 : 1);
+    const LCST_MAX_OCR_WORKERS = LCST_CPU_THREADS >= 4 && LCST_DEVICE_MEMORY_GB >= 4 ? 2 : 1;
     const LCST_DUAL_PACKAGE_OCR = LCST_MAX_OCR_WORKERS >= 2;
     const LCST_TURBO_PARALLEL_OCR = LCST_MAX_OCR_WORKERS >= 3;
     // Worker ke-4 sengaja dimatikan. Timestamp berbagi worker metadata supaya
@@ -4262,7 +4445,7 @@
     const LCST_NIGHT_CLAIM_START_MINUTES = 23 * 60;
     const LCST_NUMERIC_OCR_WHITELIST = '0123456789';
     // GMT/UTC/WIB/WITA/WIT ikut diizinkan agar zona gambar dapat dibaca OCR.
-    const LCST_TIMESTAMP_OCR_WHITELIST = '0123456789:/.-+−() AMPampGMTgmtUTCutcWIBwibWITAita';
+    const LCST_TIMESTAMP_OCR_WHITELIST = '0123456789:/.,-+−() ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 
     // Selisih terhadap jam perangkat. Nilainya diperbarui dari header Date server
     // secara non-blocking agar proses scan tidak menunggu koneksi internet.
@@ -4319,9 +4502,10 @@
         }
     }
 
+    let lcstWibFormatter = null;
     function lcstGetWibParts(dateValue) {
         const date = dateValue instanceof Date ? dateValue : new Date(dateValue != null ? dateValue : lcstNowMs());
-        const formatter = new Intl.DateTimeFormat('en-CA', {
+        const formatter = lcstWibFormatter || (lcstWibFormatter = new Intl.DateTimeFormat('en-CA', {
             timeZone: LCST_CLAIM_TIME_ZONE,
             year: 'numeric',
             month: '2-digit',
@@ -4330,7 +4514,7 @@
             minute: '2-digit',
             second: '2-digit',
             hourCycle: 'h23'
-        });
+        }));
         const values = {};
         formatter.formatToParts(date).forEach((part) => {
             if (part.type !== 'literal') values[part.type] = part.value;
@@ -4460,6 +4644,9 @@
             .replace(/\s+/g, ' ')
             .trim();
         if (!value) return null;
+        value = value.replace(/\bW\s*I\s*T\s*A\b/g,'WITA')
+            .replace(/\bW\s*I\s*[B8]\b/g,'WIB')
+            .replace(/\bW\s*I\s*T\b/g,'WIT');
 
         // Nama zona Indonesia didahulukan agar WIB/WITA/WIT tidak salah dianggap GMT+7.
         if (/\bWITA\b/.test(value)) return 8 * 60;
@@ -4512,6 +4699,11 @@
         const hour = Math.floor(absolute / 60);
         const minute = absolute % 60;
         return 'GMT' + sign + hour + (minute ? ':' + String(minute).padStart(2, '0') : '');
+    }
+
+    function lcstIndonesianZoneLabel(offsetMinutes) {
+        const name = ({420:'WIB',480:'WITA',540:'WIT'})[offsetMinutes];
+        return (name ? name + '/' : '') + lcstGmtOffsetLabel(offsetMinutes);
     }
 
     function lcstNormalizeTimestampToWib(timestamp, sourceGmtOffsetMinutes, evidenceText) {
@@ -4569,7 +4761,7 @@
             },
             sourceDateKey: String(base.year).padStart(4, '0') + String(base.month).padStart(2, '0') + String(base.day).padStart(2, '0'),
             sourceGmtOffsetMinutes: sourceOffset,
-            sourceGmtLabel: lcstGmtOffsetLabel(sourceOffset),
+            sourceGmtLabel: lcstIndonesianZoneLabel(sourceOffset),
             targetGmtOffsetMinutes: LCST_TARGET_GMT_OFFSET_MINUTES,
             normalizedGmtLabel: 'GMT+7',
             timezoneAdjusted: sourceOffset !== LCST_TARGET_GMT_OFFSET_MINUTES,
@@ -4670,221 +4862,92 @@
     }
 
     function lcstParseImageTimestampText(rawText, fallbackPeriod, nowValue, sourceGmtOffsetMinutes) {
-        const original = String(rawText == null ? '' : rawText)
-            .replace(/\r/g, '\n')
-            .replace(/[\t ]+/g, ' ')
-            .replace(/\n+/g, '\n')
-            .trim();
-        const numeric = lcstFixOcrNumericText(original);
-        const nowWib = lcstGetWibParts(nowValue || lcstNowDate());
+        const original = String(rawText || '').replace(/\r/g, '').trim();
+        const text = lcstFixOcrNumericText(original).replace(/[\t ]+/g, ' ');
+        if (!text) return null;
+        const now = lcstGetWibParts(nowValue || lcstNowDate());
+        const periodDate = lcstParseClaimDateFromPeriod(fallbackPeriod);
+        const anchor = periodDate || now;
+        const anchorMs = Date.UTC(anchor.year, anchor.month - 1, anchor.day);
+        const dates = [];
+        const spans = [];
+        const yearFor = (month, day) => {
+            const options = [anchor.year - 1, anchor.year, anchor.year + 1]
+                .map(year => lcstValidDateParts(year, month, day)).filter(Boolean);
+            options.sort((a, b) => Math.abs(Date.UTC(a.year, a.month - 1, a.day) - anchorMs) -
+                Math.abs(Date.UTC(b.year, b.month - 1, b.day) - anchorMs));
+            return options[0] || null;
+        };
+        const addDate = (match, year, month, day, explicitYear, priority) => {
+            const date = explicitYear ? lcstValidDateParts(year, month, day) : yearFor(month, day);
+            if (date) dates.push({date, text:match[0], index: match.index, end: match.index + match[0].length, explicitYear, priority});
+        };
+        let m;
+        let re = /\b(20\d{2})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{1,2})\b/g;
+        while ((m = re.exec(text))) {
+            spans.push([m.index, re.lastIndex]);
+            addDate(m, +m[1], +m[2], +m[3], true, 100);
+        }
+        re = /\b(\d{1,2})\s*([-/.])\s*(\d{1,2})\s*\2\s*(20\d{2}|\d{2})\b/g;
+        while ((m = re.exec(text))) {
+            if (spans.some(([a,b]) => m.index < b && re.lastIndex > a)) continue;
+            spans.push([m.index, re.lastIndex]);
+            const year = m[4].length === 2 ? 2000 + +m[4] : +m[4];
+            // Tanggal lengkap lokal DD/MM/YYYY; MM/DD/YYYY bila DD/MM tidak valid.
+            if (+m[3] <= 12) addDate(m, year, +m[3], +m[1], true, 100);
+            else addDate(m, year, +m[1], +m[3], true, 100);
+        }
+        const names = Object.keys(LCST_MONTH_NUMBER).sort((a,b) => b.length-a.length).join('|');
+        re = new RegExp('\\b(\\d{1,2})\\s+(' + names + ')\\s+(20\\d{2})\\b', 'g');
+        while ((m = re.exec(text))) {
+            spans.push([m.index, re.lastIndex]);
+            addDate(m, +m[3], LCST_MONTH_NUMBER[m[2]], +m[1], true, 100);
+        }
+        re = /\b(\d{1,2})\s*[-/.]\s*(\d{1,2})\b/g;
+        while ((m = re.exec(text))) {
+            if (spans.some(([a,b]) => m.index < b && re.lastIndex > a)) continue;
+            // Jangan membaca pecahan dari tanggal lengkap yang rusak.
+            if (/\d\s*[-/.]\s*$/.test(text.slice(0,m.index)) || /^\s*[-/.]\s*\d/.test(text.slice(re.lastIndex))) continue;
+            // Kolom history tanpa tahun menggunakan MM/DD; DD/MM jika bulan > 12.
+            const month = +m[1] > 12 ? +m[2] : +m[1];
+            const day = +m[1] > 12 ? +m[1] : +m[2];
+            addDate(m, 0, month, day, false, 50);
+        }
+        const clocks = [];
+        re = /\b([0-2]?\d)\s*:\s*([0-5]\d)(?:\s*[:.]\s*([0-5]\d))?\s*(A\.?M\.?|P\.?M\.?)?/gi;
+        while ((m = re.exec(text))) {
+            const clock = lcstParseClockParts(m[1],m[2],m[3],m[4]);
+            if (clock) clocks.push({clock,index:m.index,end:re.lastIndex});
+        }
+        // Jam bertitik hanya dengan detik lengkap agar 09.10 tidak dikira jam.
+        re = /\b([0-2]?\d)\s*\.\s*([0-5]\d)\s*\.\s*([0-5]\d)\b(?!\d)/g;
+        while ((m = re.exec(text))) {
+            if (dates.some(d => m.index < d.end && re.lastIndex > d.index && d.explicitYear)) continue;
+            const clock = lcstParseClockParts(m[1],m[2],m[3],'');
+            if (clock) clocks.push({clock,index:m.index,end:re.lastIndex});
+        }
         const candidates = [];
-
-        const addCandidate = (yearRaw, monthRaw, dayRaw, hourRaw, minuteRaw, secondRaw, ampmRaw, index, source) => {
-            let year = Number(yearRaw);
-            if (year >= 0 && year < 100) year += year >= 70 ? 1900 : 2000;
-            const dateInfo = lcstValidDateParts(year, Number(monthRaw), Number(dayRaw));
-            if (!dateInfo) return;
-            const clock = hourRaw == null || minuteRaw == null
-                ? null
-                : lcstParseClockParts(hourRaw, minuteRaw, secondRaw, ampmRaw);
-            if (hourRaw != null && minuteRaw != null && !clock) return;
-            const explicitYear = String(yearRaw == null ? '' : yearRaw).replace(/\D/g, '').length >= 4;
-            candidates.push({
-                timestamp: lcstMakeImageTimestamp(dateInfo, clock, original, source, 0, sourceGmtOffsetMinutes),
-                index: Number(index) || 0,
-                // UI kolom Waktu memakai MM/DD. Kandidat MM/DD dengan jam diberi prioritas
-                // agar 08/09 tidak terbalik menjadi 8 September.
-                score: (clock ? 45 : 15) +
-                    (/image-2-row/.test(source) ? 90 : 0) +
-                    (/(?:time-md|ocr-md)(?:$|\+)/.test(source) ? 34 : 0) +
-                    (explicitYear ? 95 : 0)
-            });
-        };
-
-        const timeTail = '(?:[T,\\s]+([0-2]?\\d)\\s*[:.]\\s*([0-5]\\d)(?:\\s*[:.]\\s*([0-5]\\d))?\\s*(A\\.?M\\.?|P\\.?M\\.?)?)?';
-        let match;
-        let re = new RegExp('\\b(20\\d{2})\\s*[-/.]\\s*([01]?\\d)\\s*[-/.]\\s*([0-3]?\\d)' + timeTail, 'gi');
-        while ((match = re.exec(numeric))) addCandidate(match[1], match[2], match[3], match[4], match[5], match[6], match[7], match.index, 'image-2-ocr-ymd');
-
-        re = new RegExp('\\b([0-3]?\\d)\\s*[-/.]\\s*([01]?\\d)\\s*[-/.]\\s*(20\\d{2}|\\d{2})' + timeTail, 'gi');
-        while ((match = re.exec(numeric))) addCandidate(match[3], match[2], match[1], match[4], match[5], match[6], match[7], match.index, 'image-2-ocr-dmy');
-
-        const monthNames = Object.keys(LCST_MONTH_NUMBER).sort((a, b) => b.length - a.length).join('|');
-        re = new RegExp('\\b([0-3]?\\d)\\s+(?:' + monthNames + ')\\s+(20\\d{2}|\\d{2})' + timeTail, 'gi');
-        while ((match = re.exec(original.toUpperCase()))) {
-            const monthWordMatch = String(match[0]).toUpperCase().match(new RegExp('(' + monthNames + ')'));
-            const month = monthWordMatch ? LCST_MONTH_NUMBER[monthWordMatch[1]] : null;
-            if (month) addCandidate(match[2], month, match[1], match[3], match[4], match[5], match[6], match.index, 'image-2-ocr-month');
+        for (const date of dates) for (const time of clocks) {
+            if (time.index < date.end && time.end > date.index) continue;
+            const gap = time.index >= date.end ? text.slice(date.end,time.index) : text.slice(time.end,date.index);
+            // Hanya baris bersebelahan/label waktu, bukan angka transaksi lain.
+            if (gap.length > 32 || (gap.match(/\n/g)||[]).length > 2 || /\d/.test(gap)) continue;
+            if (!/^[\s,T|:;()\-]*(?:(?:JAM|WAKTU|TIME|TANGGAL|DATE)[\s:;()\-]*)?$/i.test(gap)) continue;
+            const start = Math.min(date.index,time.index);
+            const end = Math.max(date.end,time.end);
+            const evidence = text.slice(start,end);
+            const ts = lcstMakeImageTimestamp(date.date,time.clock,evidence,'image-row-date-time',0,sourceGmtOffsetMinutes);
+            ts.dateEvidence = 'image';
+            ts.dateText = date.text;
+            ts.yearInferred = !date.explicitYear;
+            candidates.push({ts, score:date.priority-gap.length, index:start});
         }
-
-        // Format tanpa tahun, misalnya 31/07 23:58. Tahun dipilih yang paling dekat dengan hari ini.
-        re = /\b([0-3]?\d)\s*[-/.]\s*([01]?\d)(?!\s*[-/.]\s*\d{2,4})(?:\s+|\s*[,|-]\s*)([0-2]?\d)\s*[:.]\s*([0-5]\d)(?:\s*[:.]\s*([0-5]\d))?\s*(A\.?M\.?|P\.?M\.?)?/gi;
-        while ((match = re.exec(numeric))) {
-            const inferredYear = lcstInferYearForMonthDay(Number(match[2]), Number(match[1]), nowWib);
-            if (inferredYear) addCandidate(inferredYear, match[2], match[1], match[3], match[4], match[5], match[6], match.index, 'image-2-ocr-dm');
-        }
-
-        // Format tanpa tahun MM/DD HH:MM, misalnya 07/31 16:33 atau 07/31, 16:33.
-        re = /\b([01]?\d)\s*[-/.]\s*([0-3]?\d)(?!\s*[-/.]\s*\d{2,4})(?:\s+|\s*[,|-]\s*)([0-2]?\d)\s*[:.]\s*([0-5]\d)(?:\s*[:.]\s*([0-5]\d))?\s*(A\.?M\.?|P\.?M\.?)?/gi;
-        while ((match = re.exec(numeric))) {
-            const inferredYear = lcstInferYearForMonthDay(Number(match[1]), Number(match[2]), nowWib);
-            if (inferredYear) addCandidate(inferredYear, match[1], match[2], match[3], match[4], match[5], match[6], match.index, 'image-2-ocr-md');
-        }
-
-        // Format waktu lebih dulu, lalu tanggal di baris/kolom berikutnya.
-        // Mendukung susunan seperti "16:33:25 07/31" yang umum pada screenshot Riwayat Permainan.
-        re = /\b([0-2]?\d)\s*[:.]\s*([0-5]\d)(?:\s*[:.]\s*([0-5]\d))?\s*(A\.?M\.?|P\.?M\.?)?(?:\s+|\s*[,|-]\s*)([01]?\d)\s*[-/.]\s*([0-3]?\d)\b(?!\s*[-/.]\s*\d{2,4})/gi;
-        while ((match = re.exec(numeric))) {
-            const inferredYear = lcstInferYearForMonthDay(Number(match[5]), Number(match[6]), nowWib);
-            if (inferredYear) addCandidate(inferredYear, match[5], match[6], match[1], match[2], match[3], match[4], match.index, 'image-2-row-time-md');
-        }
-        re = /\b([0-2]?\d)\s*[:.]\s*([0-5]\d)(?:\s*[:.]\s*([0-5]\d))?\s*(A\.?M\.?|P\.?M\.?)?(?:\s+|\s*[,|-]\s*)([0-3]?\d)\s*[-/.]\s*([01]?\d)\b(?!\s*[-/.]\s*\d{2,4})/gi;
-        while ((match = re.exec(numeric))) {
-            const inferredYear = lcstInferYearForMonthDay(Number(match[6]), Number(match[5]), nowWib);
-            if (inferredYear) addCandidate(inferredYear, match[6], match[5], match[1], match[2], match[3], match[4], match.index, 'image-2-ocr-time-dm');
-        }
-
-        // Bila tanggal dan jam terpisah oleh baris/label, gabungkan tanggal terbaik dengan jam terdekat.
-        const dateOnly = [];
-        const addDateOnly = (yearRaw, monthRaw, dayRaw, index) => {
-            const explicitYear = String(yearRaw == null ? '' : yearRaw).replace(/\D/g, '').length >= 4;
-            let year = Number(yearRaw);
-            if (year >= 0 && year < 100) year += year >= 70 ? 1900 : 2000;
-            const dateInfo = lcstValidDateParts(year, Number(monthRaw), Number(dayRaw));
-            if (dateInfo) dateOnly.push({ dateInfo, index, explicitYear });
-        };
-        const addDateOnlyNoYear = (monthRaw, dayRaw, index, format) => {
-            const inferredYear = lcstInferYearForMonthDay(Number(monthRaw), Number(dayRaw), nowWib);
-            const dateInfo = inferredYear ? lcstValidDateParts(inferredYear, Number(monthRaw), Number(dayRaw)) : null;
-            if (dateInfo) dateOnly.push({ dateInfo, index, explicitYear: false, format: format || '' });
-        };
-        re = /\b(20\d{2})\s*[-/.]\s*([01]?\d)\s*[-/.]\s*([0-3]?\d)\b/g;
-        while ((match = re.exec(numeric))) addDateOnly(match[1], match[2], match[3], match.index);
-        re = /\b([0-3]?\d)\s*[-/.]\s*([01]?\d)\s*[-/.]\s*(20\d{2}|\d{2})\b/g;
-        while ((match = re.exec(numeric))) addDateOnly(match[3], match[2], match[1], match.index);
-        // Format tanpa tahun pada kolom waktu game sering memakai MM/DD, mis. 07/31.
-        re = /\b([01]?\d)\s*[-/.]\s*([0-3]?\d)\b(?!\s*[-/.]\s*\d{2,4})/g;
-        while ((match = re.exec(numeric))) addDateOnlyNoYear(match[1], match[2], match.index, 'md');
-        // Tambahkan juga pembacaan DD/MM agar format lokal tetap terbaca bila muncul.
-        re = /\b([0-3]?\d)\s*[-/.]\s*([01]?\d)\b(?!\s*[-/.]\s*\d{2,4})/g;
-        while ((match = re.exec(numeric))) addDateOnlyNoYear(match[2], match[1], match.index, 'dm');
-
-        const times = [];
-        re = /\b([0-2]?\d)\s*[:.]\s*([0-5]\d)(?:\s*[:.]\s*([0-5]\d))?\s*(A\.?M\.?|P\.?M\.?)?/gi;
-        while ((match = re.exec(numeric))) {
-            const clock = lcstParseClockParts(match[1], match[2], match[3], match[4]);
-            if (clock) times.push({ clock, index: match.index });
-        }
-        dateOnly.forEach((dateItem) => {
-            const nearest = times.slice().sort((a, b) => Math.abs(a.index - dateItem.index) - Math.abs(b.index - dateItem.index))[0];
-            if (nearest && Math.abs(nearest.index - dateItem.index) <= 120) {
-                candidates.push({
-                    timestamp: lcstMakeImageTimestamp(dateItem.dateInfo, nearest.clock, original, 'image-2-ocr-split', 0, sourceGmtOffsetMinutes),
-                    index: dateItem.index,
-                    score: 52 - Math.min(20, Math.floor(Math.abs(nearest.index - dateItem.index) / 8)) +
-                        (dateItem.format === 'md' ? 30 : 0) +
-                        (dateItem.explicitYear ? 95 : 0)
-                });
-            }
-        });
-
-
-        // Cadangan ketika Tesseract menghilangkan tanda ':' '/' '-'.
-        // Contoh gambar Riwayat Permainan dapat terbaca sebagai dua baris:
-        // 163325 dan 0731, atau 1600 dan 31072025.
-        const compactRows = original.split(/\n+/).map((line, index) => ({
-            index,
-            digits: String(line || '').replace(/\D/g, '')
-        })).filter((item) => item.digits.length >= 4 && item.digits.length <= 12);
-        const compactDates = [];
-        const compactTimes = [];
-
-        const pushCompactDate = (year, month, day, index, source) => {
-            const valid = lcstValidDateParts(Number(year), Number(month), Number(day));
-            if (valid) compactDates.push({ dateInfo: valid, index, source });
-        };
-        const pushCompactDateNoYear = (month, day, index, source) => {
-            const year = lcstInferYearForMonthDay(Number(month), Number(day), nowWib);
-            if (year) pushCompactDate(year, month, day, index, source);
-        };
-        const pushCompactTime = (hour, minute, second, index, source) => {
-            const clock = lcstParseClockParts(hour, minute, second, '');
-            if (clock) compactTimes.push({ clock, index, source });
-        };
-
-        compactRows.forEach((item) => {
-            const d = item.digits;
-            if (d.length === 4) {
-                pushCompactTime(d.slice(0, 2), d.slice(2, 4), '0', item.index, 'image-2-compact-hm');
-                pushCompactDateNoYear(d.slice(0, 2), d.slice(2, 4), item.index, 'image-2-compact-md');
-                pushCompactDateNoYear(d.slice(2, 4), d.slice(0, 2), item.index, 'image-2-compact-dm');
-            } else if (d.length === 6) {
-                pushCompactTime(d.slice(0, 2), d.slice(2, 4), d.slice(4, 6), item.index, 'image-2-compact-hms');
-            } else if (d.length === 8) {
-                if (/^20\d{6}$/.test(d)) pushCompactDate(d.slice(0, 4), d.slice(4, 6), d.slice(6, 8), item.index, 'image-2-compact-ymd');
-                pushCompactDate(d.slice(4, 8), d.slice(2, 4), d.slice(0, 2), item.index, 'image-2-compact-dmy');
-                pushCompactDate(d.slice(4, 8), d.slice(0, 2), d.slice(2, 4), item.index, 'image-2-compact-mdy');
-            } else if (d.length === 10) {
-                // HHMMSS + MMDD atau MMDD + HHMMSS.
-                pushCompactTime(d.slice(0, 2), d.slice(2, 4), d.slice(4, 6), item.index, 'image-2-compact-hms-md');
-                pushCompactDateNoYear(d.slice(6, 8), d.slice(8, 10), item.index, 'image-2-compact-hms-md');
-                pushCompactDateNoYear(d.slice(0, 2), d.slice(2, 4), item.index, 'image-2-compact-md-hms');
-                pushCompactTime(d.slice(4, 6), d.slice(6, 8), d.slice(8, 10), item.index, 'image-2-compact-md-hms');
-            } else if (d.length === 12) {
-                // HHMM + DDMMYYYY / MMDDYYYY atau tanggal 8 digit + HHMM.
-                pushCompactTime(d.slice(0, 2), d.slice(2, 4), '0', item.index, 'image-2-compact-hm-date');
-                pushCompactDate(d.slice(8, 12), d.slice(6, 8), d.slice(4, 6), item.index, 'image-2-compact-hm-dmy');
-                pushCompactDate(d.slice(8, 12), d.slice(4, 6), d.slice(6, 8), item.index, 'image-2-compact-hm-mdy');
-                if (/^20\d{6}/.test(d)) {
-                    pushCompactDate(d.slice(0, 4), d.slice(4, 6), d.slice(6, 8), item.index, 'image-2-compact-ymd-hm');
-                    pushCompactTime(d.slice(8, 10), d.slice(10, 12), '0', item.index, 'image-2-compact-ymd-hm');
-                }
-                pushCompactDate(d.slice(4, 8), d.slice(2, 4), d.slice(0, 2), item.index, 'image-2-compact-dmy-hm');
-                pushCompactTime(d.slice(8, 10), d.slice(10, 12), '0', item.index, 'image-2-compact-dmy-hm');
-            }
-        });
-
-        compactDates.forEach((dateItem) => {
-            const combinedSource = /(?:hms-md|md-hms|hm-dmy|hm-mdy|ymd-hm|dmy-hm)/.test(dateItem.source);
-            const timePool = compactTimes.filter((timeItem) => combinedSource || timeItem.index !== dateItem.index);
-            const nearest = timePool.sort((a, b) => Math.abs(a.index - dateItem.index) - Math.abs(b.index - dateItem.index))[0];
-            if (!nearest || Math.abs(nearest.index - dateItem.index) > 3) return;
-            const explicitYear = /(?:ymd|dmy|mdy)/.test(dateItem.source) && !/(?:compact-md$|compact-dm$)/.test(dateItem.source);
-            candidates.push({
-                timestamp: lcstMakeImageTimestamp(
-                    dateItem.dateInfo,
-                    nearest.clock,
-                    original,
-                    dateItem.source + '+' + nearest.source,
-                    0,
-                    sourceGmtOffsetMinutes
-                ),
-                index: Math.min(dateItem.index, nearest.index),
-                score: 40 - Math.abs(nearest.index - dateItem.index) * 4 +
-                    (/compact-md/.test(dateItem.source) ? 28 : 0) +
-                    (explicitYear ? 95 : 0)
-            });
-        });
-
-        if (candidates.length) {
-            const todayDay = Math.floor(Date.UTC(nowWib.year, nowWib.month - 1, nowWib.day) / 86400000);
-            candidates.forEach((item) => {
-                const ts = item.timestamp;
-                const itemDay = Math.floor(Date.UTC(ts.year, ts.month - 1, ts.day) / 86400000);
-                const dayDistance = todayDay - itemDay;
-                if (dayDistance >= 0 && dayDistance <= 3) item.score += 30;
-                else if (dayDistance < -1) item.score -= 45;
-                if (ts.hasTime) item.score += 12;
-            });
-            candidates.sort((a, b) => (b.score - a.score) || (a.index - b.index));
-            return candidates[0].timestamp;
-        }
-
-        const fallbackDate = lcstParseClaimDateFromPeriod(fallbackPeriod);
-        if (fallbackDate) {
-            return lcstMakeImageTimestamp(fallbackDate, null, original, 'period-date-fallback', 0, sourceGmtOffsetMinutes);
-        }
-        return null;
+        candidates.sort((a,b) => b.score-a.score || a.index-b.index);
+        if (!candidates.length) return null;
+        // Satu crop tidak boleh memilih otomatis di antara beberapa transaksi.
+        const distinct = new Set(candidates.map(x => x.ts.sourceDateKey+'|'+x.ts.originalTimestamp.hour+':'+x.ts.originalTimestamp.minute+':'+x.ts.originalTimestamp.second));
+        if (distinct.size > 1) return null;
+        return candidates[0].ts;
     }
 
     function lcstFormatClaimDate(dateInfo) {
@@ -7202,78 +7265,33 @@
         if (!sourceCanvas || !marker) return [];
         const width = sourceCanvas.width;
         const height = sourceCanvas.height;
-        const layout = lcstGetHistoryLayoutProfile(sourceCanvas, marker);
-        const markerHeight = Math.max(
-            8,
-            Number(marker.height) || (Number(marker.bottom) - Number(marker.top)) || 0,
-            width * 0.011,
-            height * 0.0065
-        );
-        const rowTop = Math.max(
-            0,
-            Math.floor(marker.top - Math.max(markerHeight * 3.65, height * 0.060))
-        );
-        const rowBottom = Math.min(
-            height,
-            Math.ceil(marker.top + Math.max(markerHeight * 0.50, height * 0.009))
-        );
-        const leftColumnRight = Math.min(
-            width,
-            Math.max(
-                width * layout.timeRight,
-                Math.min(width * (layout.compact ? 0.34 : 0.38), marker.left + width * 0.038)
-            )
-        );
+        const markerHeight = Math.max(8, Number(marker.height) || (marker.bottom - marker.top) || 0);
+        // Bulatan berada di BAWAH kode, bukan di tengah baris waktu.
+        // Sisi kanan berhenti SEBELUM kolom transaksi; crop tinggi tidak memakai
+        // persentase tinggi screenshot karena itu mengambil baris sebelumnya.
+        const right = Math.min(width * 0.23, Math.max(width * 0.16, marker.left - width * 0.015));
         const variants = [
-            {
-                name: layout.compact ? 'image-2-row-left-v2' : 'image-2-row-left-v1',
-                left: 0,
-                top: rowTop,
-                width: leftColumnRight,
-                height: rowBottom - rowTop
-            },
-            {
-                name: 'image-2-row-wide-dual',
-                left: 0,
-                top: Math.max(0, rowTop - height * 0.020),
-                width: Math.min(width, width * (layout.compact ? 0.54 : 0.58)),
-                height: Math.min(height, rowBottom + height * 0.020) - Math.max(0, rowTop - height * 0.020)
-            }
+            {name:'image-time-column', left:width * 0.015,
+             top:Math.max(0, marker.top - markerHeight * 2.5),
+             width:right - width * 0.015, height:markerHeight * 3.85},
+            {name:'image-time-column-margin', left:0,
+             top:Math.max(0, marker.top - markerHeight * 2.85),
+             width:right, height:markerHeight * 4.2}
         ];
-        return variants
-            .filter((rect) => rect.width >= 70 && rect.height >= 20)
-            // Canvas dibuat saat pass benar-benar diperlukan. Biasanya pass pertama
-            // sudah berhasil, jadi crop lebar kedua tidak lagi disalin sia-sia.
-            .map((rect) => ({ name: rect.name, rect }));
+        return variants.filter(rect => rect.width >= 25 && rect.height >= 16)
+            .map(rect => ({name:rect.name,rect}));
     }
 
     function buildClaimTimezoneCropCanvases(sourceCanvas, marker) {
         if (!sourceCanvas) return [];
-        const width = sourceCanvas.width;
-        const height = sourceCanvas.height;
-        // V7.6 RAPID GMT: hanya area yang secara nyata memuat label GMT/WIB.
-        // Versi lama menyalin enam area (termasuk gambar penuh) walaupun sebagian
-        // besar tidak pernah membantu, sehingga klik SCAN terasa macet.
+        const width = sourceCanvas.width, height = sourceCanvas.height;
         const rects = [
-            { name: 'timezone-top-left', left: 0, top: 0, width: width * 0.55, height: Math.max(40, height * 0.30) }
+            {name:'timezone-time-column', left:0, top:height * 0.07,
+             width:width * 0.22, height:height * 0.28},
+            {name:'timezone-header-wide', left:0, top:0,
+             width:width * 0.55, height:height * 0.30}
         ];
-
-        if (marker) {
-            const markerHeight = Math.max(8, Number(marker.height) || 0, height * 0.008);
-            const top = Math.max(0, marker.top - Math.max(markerHeight * 4.2, height * 0.075));
-            const bottom = Math.min(height, marker.top + Math.max(markerHeight * 1.2, height * 0.025));
-            rects.unshift({
-                name: 'timezone-transaction-row',
-                left: 0,
-                top,
-                width,
-                height: Math.max(30, bottom - top)
-            });
-        }
-
-        return rects
-            .filter((rect) => rect.width >= 80 && rect.height >= 25)
-            .map((rect) => ({ name: rect.name, rect }));
+        return rects.map(rect => ({name:rect.name,rect}));
     }
 
     async function lcstSetTimestampOcrMode(worker) {
@@ -7295,174 +7313,91 @@
     }
 
     async function lcstReadExplicitTimezoneOffsetFromImage(sourceCanvas, marker, worker, knownRawParts) {
-        const combinedKnownText = (knownRawParts || []).join('\n');
-        const knownOffset = lcstFindExplicitGmtOffsetMinutes(combinedKnownText);
-        if (knownOffset != null) {
-            return { offsetMinutes: knownOffset, rawText: combinedKnownText, source: 'timestamp-raw' };
-        }
-
-        if (sourceCanvas && lcstTimezoneOffsetCache.has(sourceCanvas)) {
-            return lcstTimezoneOffsetCache.get(sourceCanvas);
-        }
-
-        const crops = buildClaimTimezoneCropCanvases(sourceCanvas, marker);
-        let resultInfo = null;
-        // V7.6 RAPID GMT: satu pass kecil pada header. Area transaksi sudah dibaca
-        // oleh OCR timestamp, jadi mengulangnya hanya menambah antrean dan lag.
-        const passPlan = [];
-        [
-            { name: 'timezone-top-left', mode: 'soft', psm: 11 }
-        ].forEach((pass) => {
-            const index = crops.findIndex((item) => item.name === pass.name);
-            if (index >= 0) passPlan.push({ index, mode: pass.mode, psm: pass.psm });
-        });
-
-        const usedPassKeys = new Set();
-        for (const pass of passPlan) {
+        const knownText = (knownRawParts || []).join('\n');
+        const knownOffset = lcstFindExplicitGmtOffsetMinutes(knownText);
+        if (knownOffset != null) return {offsetMinutes:knownOffset,rawText:knownText,source:'timestamp-raw'};
+        const cached = sourceCanvas && lcstTimezoneOffsetCache.get(sourceCanvas);
+        if (cached && cached.offsetMinutes != null) return cached;
+        const crops = buildClaimTimezoneCropCanvases(sourceCanvas,marker);
+        const passes = [{index:0,mode:'soft',psm:11}, {index:1,mode:'soft',psm:11}, {index:0,mode:'otsu',psm:6}];
+        for (const pass of passes) {
             const item = crops[pass.index];
             if (!item) continue;
-            const key = item.name + '|' + pass.mode + '|' + pass.psm;
-            if (usedPassKeys.has(key)) continue;
-            usedPassKeys.add(key);
             try {
-                if (!item.canvas) item.canvas = cropCanvas(sourceCanvas, item.rect);
-                const prepared = renderPreparedVariant(item.canvas, pass.mode, false, 96);
-                const result = await recognizePrepared(worker, prepared, pass.psm);
+                await new Promise(resolve => setTimeout(resolve, 0));
+                if (!item.canvas) item.canvas = cropCanvas(sourceCanvas,item.rect);
+                const prepared = renderPreparedVariant(item.canvas,pass.mode,false,132);
+                const result = await recognizePrepared(worker,prepared,pass.psm);
                 const raw = String(result && result.data && result.data.text || '');
-                const offset = lcstFindExplicitGmtOffsetMinutes(raw);
-                if (offset != null) {
-                    resultInfo = {
-                        offsetMinutes: offset,
-                        rawText: raw,
-                        source: item.name + '-' + pass.mode + '-psm' + pass.psm
-                    };
-                    break;
+                const offsetMinutes = lcstFindExplicitGmtOffsetMinutes(raw);
+                if (offsetMinutes != null) {
+                    const info = {offsetMinutes,rawText:raw,source:item.name+'-'+pass.mode};
+                    if (sourceCanvas) lcstTimezoneOffsetCache.set(sourceCanvas,info);
+                    return info;
                 }
             } catch (e) {}
         }
-
-        if (!resultInfo) {
-            resultInfo = { offsetMinutes: null, rawText: combinedKnownText, source: 'not-detected' };
-        }
-        if (sourceCanvas) lcstTimezoneOffsetCache.set(sourceCanvas, resultInfo);
-        return resultInfo;
+        // Kegagalan tidak dicache: scan ulang boleh mencoba header kembali.
+        return {offsetMinutes:null,rawText:knownText,source:'not-detected'};
     }
 
     async function readClaimTimestampFromSecondImage(sourceCanvas, marker, worker, fallbackPeriod, existingText) {
+        // existingText adalah OCR kode; jangan pasangkan angkanya dengan jam crop.
         const rawParts = [];
+        const candidates = [];
+        let timezone = null;
         let bestTimestamp = null;
-        let explicitTimezone = null;
-        let timestampModeActive = false;
-
-        const considerRawText = (raw, sourceName, confidence) => {
-            const textValue = String(raw || '');
-            if (textValue) rawParts.push((sourceName || 'ocr') + '\n' + textValue);
-            const zone = lcstFindExplicitGmtOffsetMinutes(textValue);
-            if (zone != null) {
-                explicitTimezone = {
-                    offsetMinutes: zone,
-                    rawText: textValue,
-                    source: sourceName || 'ocr'
-                };
-            }
-            let parsed = lcstParseImageTimestampText(textValue, fallbackPeriod);
-            if (!parsed || !parsed.hasTime || parsed.source === 'period-date-fallback') {
-                const trustedTime = lcstParseClockWithTrustedPeriod(
-                    textValue,
-                    fallbackPeriod,
-                    sourceName || 'image-2-time-with-period-date',
-                    Number(confidence) || 0
-                );
-                if (trustedTime && trustedTime.hasTime) parsed = trustedTime;
-            }
-            if (parsed && parsed.hasTime && parsed.source !== 'period-date-fallback') {
-                parsed.source = sourceName || parsed.source;
-                parsed.confidence = Number(confidence) || parsed.confidence || 0;
-                if (!bestTimestamp || parsed.confidence > (bestTimestamp.confidence || 0)) {
-                    bestTimestamp = parsed;
-                }
-            }
-        };
-
-        // Teks lama hanya dipakai bila benar-benar terlihat seperti tanggal + jam.
-        if (lcstLooksLikeTimestampText(existingText || '')) {
-            considerRawText(existingText, 'existing-ocr', 0);
-        }
-
         const crops = buildClaimTimestampCropCanvases(sourceCanvas, marker);
-        const hasTrustedPeriodDate = !!lcstParseClaimDateFromPeriod(fallbackPeriod);
-        const runTimestampPass = async (item, psm, mode) => {
-            try {
-                if (!item.canvas) item.canvas = cropCanvas(sourceCanvas, item.rect);
-                // Jika tanggal sudah dikunci dari periode, tinggi 96px cukup untuk
-                // membaca jam/zona. Jalur tanpa tanggal tepercaya tetap memakai 132px.
-                const prepared = renderPreparedVariant(
-                    item.canvas,
-                    mode,
-                    false,
-                    hasTrustedPeriodDate ? 96 : 132
-                );
-                const result = await recognizePrepared(worker, prepared, psm);
-                const raw = String(result && result.data && result.data.text || '');
-                considerRawText(raw, item.name + '-psm' + psm, Number(result && result.data && result.data.confidence) || 0);
-            } catch (e) {}
-        };
-
+        const passes = [{index:0,psm:6,mode:'soft',height:132},
+            {index:0,psm:6,mode:'soft',height:220},
+            {index:0,psm:6,mode:'otsu',height:220},
+            {index:1,psm:6,mode:'soft',height:220}];
         try {
-            await lcstSetTimestampOcrMode(worker);
-            timestampModeActive = true;
-
-            // Satu crop kecil lebih dahulu. Crop kedua dan Otsu hanya dipakai bila
-            // tanggal/jam belum terbaca; pencarian GMT ditangani satu crop header.
-            if (crops[0]) {
-                // Dengan tanggal tepercaya dari kode, area ini hanya satu baris jam.
-                // PSM 7 dan tinggi 96px lebih cepat daripada mode paragraf PSM 6.
-                await runTimestampPass(crops[0], hasTrustedPeriodDate ? 7 : 6, 'soft');
+            // Kolom ini hanya angka tanggal/jam. Alfabet bebas membuat 09/11 terbaca na/n.
+            await worker.setParameters({tessedit_char_whitelist:'0123456789:/.,- AMPamp',
+                preserve_interword_spaces:'1',classify_bln_numeric_mode:'0'});
+            for (const pass of passes) {
+                const item = crops[pass.index];
+                if (!item) continue;
+                try {
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                    if (!item.canvas) item.canvas = cropCanvas(sourceCanvas,item.rect);
+                    const prepared = renderPreparedVariant(item.canvas,pass.mode,false,pass.height);
+                    const result = await recognizePrepared(worker,prepared,pass.psm);
+                    const raw = String(result && result.data && result.data.text || '');
+                    rawParts.push(raw);
+                    const parsed = lcstParseImageTimestampText(raw,fallbackPeriod);
+                    if (!parsed || !parsed.hasTime) continue;
+                    // Kolom history mencetak MM/DD dua digit. 09/1 bisa kehilangan
+                    // digit terakhir dari 09/11: jangan menerima sebagai 1 September.
+                    if (parsed.yearInferred && !/^\d{2}\s*[-/.]\s*\d{2}$/.test(parsed.dateText || '')) continue;
+                    parsed.confidence = Number(result.data.confidence) || 0;
+                    parsed.source = item.name+'-psm'+pass.psm;
+                    const zone = lcstFindExplicitGmtOffsetMinutes(raw);
+                    const key = JSON.stringify(parsed.originalTimestamp);
+                    candidates.push({parsed,key,zone,raw});
+                    const agreeing = candidates.filter(x => x.key === key);
+                    // Hasil lemah diperiksa ulang; satu pembacaan lemah tidak mengunci tanggal.
+                    if (parsed.confidence >= 60 || agreeing.length >= 2) {
+                        bestTimestamp = parsed;
+                        if (zone != null) timezone = {offsetMinutes:zone,rawText:raw,source:parsed.source};
+                        break;
+                    }
+                } catch (e) {}
             }
-            if (!bestTimestamp && crops[1]) {
-                await runTimestampPass(crops[1], 6, 'soft');
-            }
-            if (!bestTimestamp && crops[0]) {
-                await runTimestampPass(crops[0], 11, 'otsu');
-            }
-
-            // Cari WIB/WITA/WIT atau GMT/UTC di berbagai area gambar. Ini mencegah
-            // waktu WITA/WIT dipakai mentah sebagai WIB.
-            if (!explicitTimezone) {
-                explicitTimezone = await lcstReadExplicitTimezoneOffsetFromImage(
-                    sourceCanvas,
-                    marker,
-                    worker,
-                    rawParts
-                );
+            if (!timezone) {
+                await lcstSetTimestampOcrMode(worker);
+                // Zona berasal dari gambar yang sedang diproses, tidak dari paket lain.
+                timezone = await lcstReadExplicitTimezoneOffsetFromImage(sourceCanvas,marker,worker,[]);
             }
         } finally {
-            if (timestampModeActive) await lcstRestoreNumericOcrMode(worker);
+            await lcstRestoreNumericOcrMode(worker);
         }
-
-        if (!bestTimestamp) {
-            bestTimestamp = lcstParseImageTimestampText(rawParts.join('\n---\n'), fallbackPeriod);
+        if (!bestTimestamp) return null;
+        if (timezone && timezone.offsetMinutes != null) {
+            bestTimestamp = lcstApplySourceGmtOffset(bestTimestamp,timezone.offsetMinutes,timezone.rawText);
+            bestTimestamp.timezoneDetectionSource = timezone.source;
         }
-        if (!bestTimestamp) bestTimestamp = lcstParseImageTimestampText('', fallbackPeriod);
-
-        if (bestTimestamp && bestTimestamp.hasTime && explicitTimezone && explicitTimezone.offsetMinutes != null) {
-            bestTimestamp = lcstApplySourceGmtOffset(
-                bestTimestamp,
-                explicitTimezone.offsetMinutes,
-                explicitTimezone.rawText
-            );
-            bestTimestamp.timezoneExplicit = true;
-            bestTimestamp.timezoneDetectionSource = explicitTimezone.source;
-        }
-
-        if (bestTimestamp && !bestTimestamp.timezoneExplicit) {
-            bestTimestamp.sourceGmtOffsetMinutes = LCST_HISTORY_DEFAULT_GMT_OFFSET_MINUTES;
-            bestTimestamp.sourceGmtLabel = 'GMT+7';
-            bestTimestamp.normalizedGmtLabel = 'GMT+7';
-            bestTimestamp.timezoneAdjusted = false;
-            bestTimestamp.timezoneDetectionSource = 'fallback-gmt7';
-        }
-
         return bestTimestamp;
     }
 
@@ -10185,9 +10120,9 @@
                             <img id="lcst-header-logo-img" alt="" aria-hidden="true" decoding="async">
                         </div>
                         <div class="lcst-nova-brand-copy">
-                            <div class="lcst-nova-eyebrow">LINETOGEL • AURORA PERFORMANCE</div>
-                            <h3 class="lcst-title">Scan Studio Turbo <span class="lcst-version">7.6</span></h3>
-                            <div class="lcst-subtitle">Single Progressive OCR • tanpa scan kode berulang • tanggal/jam lebih ringan</div>
+                            <div class="lcst-nova-eyebrow">LINETOGEL • SCAN STUDIO</div>
+                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.7.7</span></h3>
+                            <div class="lcst-subtitle">Periode, tanggal & waktu dalam satu ruang kerja</div>
                         </div>
                     </div>
                     <div class="lcst-nova-top-actions">
@@ -10293,7 +10228,7 @@
                                 </div>
                                 <button class="lcst-btn primary lcst-nova-scan-btn" id="lcst-ocr-period" type="button">
                                     <span class="lcst-nova-btn-icon">⌁</span>
-                                    <span><b>SCAN CEPAT</b><small>Fast OCR siap</small></span>
+                                    <span><b>SCAN CEPAT</b><small>Baca gambar target</small></span>
                                 </button>
                             </div>
                             <div id="lcst-empty-box" class="lcst-empty" style="display:${scan.images.length ? 'none' : 'block'}">
@@ -10465,12 +10400,12 @@
             return rows;
         }
 
-        function updateCopyAvailability() {
+        function updateCopyAvailability(precomputedOutput) {
             const copyBtn = panel.querySelector('#lcst-copy');
             if (!copyBtn) return;
 
             // makeOutput juga menyegarkan status batas claim berdasarkan waktu WIB saat ini.
-            const output = makeOutput(state.scan).trim();
+            const output = (typeof precomputedOutput === 'string' ? precomputedOutput : makeOutput(state.scan)).trim();
             const betBlockedRows = getBlockedBetRows();
             const claimBlockedRows = getBlockedClaimRows();
             const allRowsBlocked = (betBlockedRows.length > 0 || claimBlockedRows.length > 0) && !output;
@@ -10491,10 +10426,11 @@
 
         function updateOutput() {
             const out = panel.querySelector('#lcst-output');
-            if (out) out.value = makeOutput(state.scan);
+            const output = makeOutput(state.scan);
+            if (out && out.value !== output) out.value = output;
             const empty = panel.querySelector('#lcst-empty-box');
             if (empty) empty.style.display = state.scan.images.length ? 'none' : 'block';
-            updateCopyAvailability();
+            updateCopyAvailability(output);
         }
 
         function setProgress(percent) {
@@ -11842,7 +11778,7 @@
                 }
                 if (btn) btn.disabled = false;
                 if (btn) {
-                    btn.innerHTML = '<span class="lcst-nova-btn-icon">⌁</span><span><b>SCAN CEPAT</b><small>Fast OCR siap</small></span>';
+                    btn.innerHTML = '<span class="lcst-nova-btn-icon">⌁</span><span><b>SCAN CEPAT</b><small>Baca gambar target</small></span>';
                 }
                 updateCopyAvailability();
             }
@@ -11974,14 +11910,14 @@
         });
 
         function refreshClaimDeadlineClock() {
-            if (state.closed) return;
+            if (state.closed || document.hidden) return;
             updateLiveTimeDisplay();
             if (state.ocrRunning) return;
 
             const output = makeOutput(state.scan);
             const outputBox = panel.querySelector('#lcst-output');
-            if (outputBox) outputBox.value = output;
-            updateCopyAvailability();
+            if (outputBox && outputBox.value !== output) outputBox.value = output;
+            updateCopyAvailability(output);
 
             const expiredRows = getBlockedClaimRows();
             const expiredSet = new Set(expiredRows);
@@ -12111,13 +12047,7 @@
     ready(() => {
         lcstSyncOnlineTime(true);
         createBubble();
-        // Pemanasan otomatis hanya dimulai ketika browser idle. Timeout menjamin
-        // worker tetap siap walaupun halaman LiveChat terus sibuk melakukan render.
-        if (typeof requestIdleCallback === 'function') {
-            requestIdleCallback(() => warmupOCRWorker(), { timeout: 1800 });
-        } else {
-            setTimeout(() => warmupOCRWorker(), 650);
-        }
+        // Worker disiapkan ketika panel digunakan atau bubble disentuh.
         setInterval(createBubble, 8000);
     });
 })();
