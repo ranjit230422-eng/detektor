@@ -1515,7 +1515,7 @@
                 background-color:#fffaf3!important;
                 background-image:
                     linear-gradient(145deg,rgba(255,255,255,.34) 0%,transparent 34%,rgba(122,15,26,.07) 100%),
-                    url("https://i.postimg.cc/jSc32qYs/85c5a789-2ae2-4b4f-897d-9aab6a0c6b4f.png"),
+                    url("https://line32762.com/assets/img/ei/logo.png?v=y5h2w2cmxvdvv6zrc0iq"),
                     radial-gradient(circle at 32% 20%,#ffffff 0%,#fffdf8 30%,#fff1dc 66%,#e8bd74 100%)!important;
                 background-repeat:no-repeat,no-repeat,no-repeat!important;
                 background-position:center center,center center,center center!important;
