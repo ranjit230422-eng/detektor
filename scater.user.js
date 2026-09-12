@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LiveChat OCR Claim — WIB/WITA/WIT + Batas 02.00
 // @namespace    linetogel-livechat-ocr-claim-fixed
-// @version      7.7.7
+// @version      7.7.9
 // @description  Panel Midnight Gold, OCR tanggal/jam kuat, maksimum dua worker dan pembaruan tampilan ringan. Aturan claim tetap.
 // @author       OpenAI
 // @match        https://my.livechatinc.com/*
@@ -26,7 +26,7 @@
 
     // Versi terbaru mengambil alih UI lama bila lebih dari satu versi tidak sengaja aktif.
     // Ini mencegah script lama memblokir perbaikan melalui guard boolean yang sama.
-    const LCST_BUILD_VERSION = '7.7.7-midnight-gold-responsive';
+    const LCST_BUILD_VERSION = '7.7.9-fast-arrange-new-logo';
     const lcstExistingInstance = window.__LC_BUBBLE_SCREENSHOT_ACTIVE_ONLY__;
     if (lcstExistingInstance && typeof lcstExistingInstance === 'object' && lcstExistingInstance.version === LCST_BUILD_VERSION) return;
     try {
@@ -1515,7 +1515,7 @@
                 background-color:#fffaf3!important;
                 background-image:
                     linear-gradient(145deg,rgba(255,255,255,.34) 0%,transparent 34%,rgba(122,15,26,.07) 100%),
-                    url("https://line32762.com/assets/img/ei/logo.png?v=y5h2w2cmxvdvv6zrc0iq"),
+                    url("https://i.postimg.cc/jSc32qYs/85c5a789-2ae2-4b4f-897d-9aab6a0c6b4f.png"),
                     radial-gradient(circle at 32% 20%,#ffffff 0%,#fffdf8 30%,#fff1dc 66%,#e8bd74 100%)!important;
                 background-repeat:no-repeat,no-repeat,no-repeat!important;
                 background-position:center center,center center,center center!important;
@@ -2594,6 +2594,49 @@
             #lcst-panel-fixed .lcst-img-index{background:#1a2740f5!important;border-color:#526786!important}
             #lcst-panel-fixed .lcst-target-tag{color:#ffe2a6!important}
             #lcst-panel-fixed.lcst-performance-mode #lcst-user-text:focus{outline-color:#e2c28b80!important}
+
+            /* Sapphire and champagne finish; logo is shared with the header. */
+            #lcst-panel-fixed{background:radial-gradient(ellipse at 85% 0%,#24334c 0%,transparent 45%),#0e1625!important}
+            #lcst-panel-fixed .lcst-nova-topbar{background:linear-gradient(115deg,#293a54,#1d293d 64%,#303342)!important;border-color:#5a6273!important}
+            #lcst-panel-fixed .lcst-card{background:linear-gradient(145deg,#1e2b40,#162235)!important;border-color:#42516a!important}
+            #lcst-panel-fixed .lcst-nova-stat{background:linear-gradient(120deg,#263750,#1c2a41)!important;border-color:#4a5e7b!important}
+            #lcst-panel-fixed .lcst-nova-section-head b,#lcst-panel-fixed .lcst-nova-gallery-head h4,#lcst-panel-fixed .lcst-nova-output-card h4{color:#f3dfb9!important}
+            #lcst-panel-fixed .lcst-nova-gallery-head{background:linear-gradient(110deg,#2d405d,#24334c)!important;border-color:#536d91!important}
+            #lcst-panel-fixed .lcst-nova-logo{width:150px!important;flex-basis:150px!important;height:58px!important}
+            #lcst-panel-fixed #lcst-header-logo-img{object-fit:contain!important;filter:none!important}
+            #lcst-panel-fixed .lcst-img-card{background:#152136!important;border-color:#526580!important}
+            #lcst-panel-fixed .lcst-img-card.target{border-color:#e1c48d!important}
+            #lcst-panel-fixed #lcst-copy{background:linear-gradient(120deg,#355577,#294663)!important;border-color:#7194b9!important;color:#f1f7ff!important}
+            #lcst-panel-fixed .lcst-nova-scan-btn{background:linear-gradient(120deg,#ecd7ac,#cdb07c)!important;border-color:#f1deb9!important}
+            #lcst-bubble-fixed{
+                width:108px!important;height:76px!important;min-width:0!important;padding:0!important;
+                border-radius:19px!important;border:1px solid #d0b580!important;
+                background:linear-gradient(140deg,#263951,#101b2d)!important;
+                box-shadow:0 7px 22px #00000045,inset 0 1px #ffffff12!important;
+                overflow:hidden!important;isolation:isolate!important;
+            }
+            #lcst-bubble-fixed:before,#lcst-bubble-fixed:after{display:none!important}
+            #lcst-bubble-fixed #lcst-bubble-brand-image{
+                position:absolute!important;inset:8px 7px 22px!important;
+                width:calc(100% - 14px)!important;height:calc(100% - 30px)!important;
+                object-fit:contain!important;display:block!important;pointer-events:none!important;
+                opacity:1!important;filter:none!important;z-index:1!important;
+            }
+            #lcst-bubble-fixed .lcst-bubble-brand-caption{
+                position:absolute!important;bottom:5px!important;left:0!important;right:0!important;
+                color:#efdbb1!important;font:700 9px/1.5 'Segoe UI',Arial,sans-serif!important;
+                letter-spacing:1.3px!important;text-align:center!important;pointer-events:none!important;z-index:2!important;
+            }
+            #lcst-bubble-fixed:hover{transform:translateY(-2px)!important;border-color:#ffe1a2!important;box-shadow:0 10px 26px #0000004d!important}
+            #lcst-bubble-fixed.lcst-dragging{transform:none!important}
+            @media(max-width:560px){#lcst-panel-fixed .lcst-nova-logo{width:90px!important;flex-basis:90px!important;height:46px!important}#lcst-bubble-fixed{width:96px!important;height:70px!important}}
+
+            #lcst-panel-fixed #lcst-image-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;align-items:start!important}
+            @media(max-width:560px){
+                #lcst-panel-fixed #lcst-image-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:7px!important}
+                #lcst-panel-fixed .lcst-img-media{height:175px!important}
+                #lcst-panel-fixed .lcst-img-index{font-size:8px!important;padding:4px!important;left:3px!important;right:3px!important;flex-wrap:wrap!important}
+            }
         `;
         document.head.appendChild(style);
     }
@@ -2673,20 +2716,11 @@
         bubble.type = 'button';
         bubble.title = 'Buka Scanner LINE TOGEL';
         bubble.setAttribute('aria-label', 'Buka Scanner LINE TOGEL');
-        bubble.innerHTML = `
-            <span class="lcst-nova-ring" aria-hidden="true"></span>
-            <span class="lcst-nova-lens" aria-hidden="true">
-                <span class="lcst-nova-lens-dot"></span>
-                <span class="lcst-nova-laser"></span>
-                <span class="lcst-nova-corner c1"></span>
-                <span class="lcst-nova-corner c2"></span>
-                <span class="lcst-nova-corner c3"></span>
-                <span class="lcst-nova-corner c4"></span>
-            </span>
-            <span class="lcst-nova-caption">SCAN</span>
-            <span class="lcst-nova-online" aria-hidden="true"></span>
-        `;
+        bubble.innerHTML = '<img id="lcst-bubble-brand-image" alt="" aria-hidden="true" draggable="false">' +
+            '<span class="lcst-bubble-brand-caption">SCAN STUDIO</span>';
         document.body.appendChild(bubble);
+        const bubbleLogo = bubble.querySelector('#lcst-bubble-brand-image');
+        lcstApplyDashboardLogo(bubbleLogo);
 
         // Saat pointer mendekati bubble, mulai persiapan non-visual lebih awal.
         // Seluruh OCR tetap berada di Web Worker sehingga hover/click tidak diblokir.
@@ -5134,6 +5168,8 @@
     // crop, paket, dan validasi periode tetap memakai cara kerja V5.5.1.
     const lcstBlobUrlCache = new Map();
     const lcstArrangeCanvasCache = new Map();
+    const lcstVisualMeasureCache = new WeakMap();
+    const lcstOrangeMarkerCache = new WeakMap();
     const lcstImageAnalysisCache = new Map();
     const lcstPeriodResultCache = new Map();
     // Satu screenshot resolusi tinggi dapat memakan puluhan MB ketika menjadi
@@ -5600,6 +5636,14 @@
        - Screenshot lebar/gabungan diprioritaskan sebagai gambar permainan.
        ========================================================= */
     function lcstMeasureScreenshotVisuals(sourceCanvas) {
+        const cached = lcstVisualMeasureCache.get(sourceCanvas);
+        if (cached && cached.width === sourceCanvas.width && cached.height === sourceCanvas.height) return cached.value;
+        const value = lcstMeasureScreenshotVisualsUncached(sourceCanvas);
+        lcstVisualMeasureCache.set(sourceCanvas, {width:sourceCanvas.width, height:sourceCanvas.height, value});
+        return value;
+    }
+
+    function lcstMeasureScreenshotVisualsUncached(sourceCanvas) {
         // Sampling kecil supaya koreksi gambar tetap cepat walaupun screenshot banyak.
         const sample = createCanvas(84, 120);
         const ctx = sample.getContext('2d', { willReadFrequently: true });
@@ -5890,6 +5934,8 @@
         const runner = async () => {
             while (cursor < list.length) {
                 const index = cursor++;
+                const nextIndex = index + concurrency;
+                if (nextIndex < list.length) getArrangeImageCanvas(list[nextIndex]).catch(() => {});
                 try {
                     results[index] = await lcstAnalyzeScreenshotForAutoArrange(list[index], index);
                 } catch (err) {
@@ -6505,44 +6551,6 @@
         };
     }
 
-    async function lcstFastVerifyExistingThreeOrder(images) {
-        const list = Array.isArray(images) ? images.slice() : [];
-        if (!(list.length === 3 || list.length === 6)) return null;
-        if (getPackageSizeFromImages(list) !== 3) return null;
-        // Jangan memakai fast-path bila URL stabil sudah menunjukkan gambar yang
-        // sama. Jalur analisis lengkap harus mendapat kesempatan membuang duplikat.
-        if (lcstHasDuplicateStableSources(list)) return null;
-
-        const historyIndexes = [];
-        for (let base = 0; base < list.length; base += 3) historyIndexes.push(base + 1);
-
-        try {
-            // Hanya cek slot RIWAYAT (gambar 2 dan 5). Bila keduanya memang History,
-            // tidak ada alasan mengunduh/menganalisa empat gambar lain untuk memindahkan kartu.
-            const probes = await Promise.all(historyIndexes.map(async (idx) => {
-                const item = await lcstAnalyzeScreenshotForAutoArrange(list[idx], idx);
-                const looksHistory = !!(
-                    item && item.portrait && !item.isBoardGameCandidate && !item.isPreferredFullGame && (
-                        item.hasHistoryMarker ||
-                        (item.darkRatio >= 0.30 && item.warmRatio <= 0.23)
-                    )
-                );
-                return { idx, item, looksHistory };
-            }));
-            if (!probes.every(p => p.looksHistory)) return null;
-            return {
-                images: list,
-                changed: false,
-                confident: true,
-                visualConfidence: true,
-                rows: list.length / 3,
-                reason: 'hyper-fast-existing-order-verified'
-            };
-        } catch (e) {
-            return null;
-        }
-    }
-
     function prefetchTargetImages(images) {
         const list = images || [];
         if (!list.length) return;
@@ -6808,6 +6816,14 @@
     }
 
     function detectDoubleOrangeMarker(sourceCanvas) {
+        const cached = lcstOrangeMarkerCache.get(sourceCanvas);
+        if (cached && cached.width === sourceCanvas.width && cached.height === sourceCanvas.height) return cached.value;
+        const value = detectDoubleOrangeMarkerUncached(sourceCanvas);
+        lcstOrangeMarkerCache.set(sourceCanvas, {width:sourceCanvas.width, height:sourceCanvas.height, value});
+        return value;
+    }
+
+    function detectDoubleOrangeMarkerUncached(sourceCanvas) {
         const normalized = resizeForMarkerDetection(sourceCanvas);
         const canvas = normalized.canvas;
         const detectionScale = normalized.scale;
@@ -10121,7 +10137,7 @@
                         </div>
                         <div class="lcst-nova-brand-copy">
                             <div class="lcst-nova-eyebrow">LINETOGEL • SCAN STUDIO</div>
-                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.7.7</span></h3>
+                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.7.9</span></h3>
                             <div class="lcst-subtitle">Periode, tanggal & waktu dalam satu ruang kerja</div>
                         </div>
                     </div>
@@ -10898,13 +10914,10 @@
             try {
                 const original = state.scan.images.slice();
 
-                // HYPER FAST: bila 3/6 gambar ternyata sudah dalam urutan yang benar,
-                // cukup validasi gambar History saja (slot 2 dan 5). Empat gambar lain
-                // tidak perlu dianalisis sehingga perpindahan kartu terasa langsung.
+                // Selalu klasifikasi semua slot. Riwayat di posisi 2/5 saja tidak
+                // membuktikan Permainan dan Kemenangan sudah berada di tempatnya.
+                // Cache visual tetap dipakai agar pemeriksaan tidak menghitung ulang piksel.
                 let result = null;
-                if (original.length <= LCST_MAX_SELECTED_IMAGES) {
-                    result = await lcstFastVerifyExistingThreeOrder(original);
-                }
 
                 if (!result) {
                     const analyses = await lcstAnalyzeScreenshotsForAutoArrange(original, (done, total) => {
