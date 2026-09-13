@@ -10377,6 +10377,7 @@
         function closePanel() {
             if (state.closed) return;
             state.closed = true;
+            hideClaimNotification();
             const z = document.getElementById('lcst-zoom');
             if (z) z.remove();
             document.removeEventListener('keydown', escClose, true);
@@ -10528,89 +10529,138 @@
             if (old) old.remove();
 
             const rows = Array.isArray(failedRows)
-                ? failedRows.filter((row) => Number.isInteger(row) && row >= 0)
+                ? [...new Set(failedRows.filter((row) => Number.isInteger(row) && row >= 0))]
                 : [];
             const packageText = rows.length
-                ? 'PAKET ' + rows.map((row) => row + 1).join(', ')
-                : 'KODE TIDAK DITEMUKAN';
+                ? 'Paket ' + rows.map((row) => row + 1).join(' & ')
+                : 'Kode belum ditemukan';
 
+            // Kartu ringan tanpa lapisan layar, blur, atau animasi.
             const overlay = document.createElement('div');
             overlay.id = 'lcst-manual-scan-only';
-            overlay.setAttribute('role', 'alert');
-            overlay.setAttribute('aria-live', 'assertive');
+            overlay.setAttribute('role', 'status');
+            overlay.setAttribute('aria-live', 'polite');
             overlay.style.cssText = [
-                'position:fixed',
-                'inset:0',
-                'z-index:2147483647',
-                'display:flex',
-                'align-items:center',
-                'justify-content:center',
-                'padding:24px',
-                'background:rgba(55,30,4,.62)',
-                'backdrop-filter:blur(8px)',
-                'pointer-events:none'
+                'position:fixed','inset:0','z-index:2147483647',
+                'display:flex','align-items:center','justify-content:center',
+                'padding:16px','box-sizing:border-box','pointer-events:none',
+                'font-family:Segoe UI,Arial,sans-serif','line-height:1.5'
             ].join(';');
 
             overlay.innerHTML =
-                '<div style="width:min(780px,94vw);padding:36px 28px;border-radius:26px;' +
-                'border:4px solid #f59e0b;background:linear-gradient(145deg,#fff 0%,#fffbeb 100%);' +
-                'color:#78350f;text-align:center;box-shadow:0 30px 100px rgba(0,0,0,.58),0 0 55px rgba(245,158,11,.48);' +
-                'font-family:Inter,Segoe UI,Arial,sans-serif">' +
-                    '<div style="font-size:21px;font-weight:1000;letter-spacing:4px;color:#d97706;margin-bottom:8px">SCAN TIDAK DITEMUKAN</div>' +
-                    '<div style="font-size:clamp(30px,5vw,56px);line-height:1.08;font-weight:1000;color:#92400e">SILAKAN CATAT MANUAL YA</div>' +
-                    '<div style="width:130px;height:5px;margin:20px auto;border-radius:999px;background:#f59e0b;box-shadow:0 0 18px rgba(245,158,11,.65)"></div>' +
-                    '<div style="font-size:18px;font-weight:1000;color:#b45309">' + cssEscapeText(packageText) + '</div>' +
-                    '<div style="margin-top:8px;font-size:15px;font-weight:900;color:#92400e">Periksa kode pada gambar lalu isi kolom periode secara manual.</div>' +
+                '<div style="width:min(440px,100%);max-height:calc(100vh - 32px);overflow:auto;box-sizing:border-box;padding:0;border-radius:18px;border:1px solid #655746;background:#1d202b;color:#f2edf4;text-align:left;pointer-events:auto;overscroll-behavior:contain">' +
+                    '<div style="display:flex;align-items:center;gap:12px;padding:18px 20px;background:#2c2930;border-bottom:1px solid #49414a">' +
+                        '<span style="display:grid;place-items:center;width:40px;height:40px;flex:0 0 40px;border-radius:12px;border:1px solid #796447;background:#3a322b;color:#ebc48b">' +
+                            '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 4H6a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M14 5l5 5M10 14l1-4 7-7a2.1 2.1 0 0 1 3 3l-7 7-4 1ZM8 17h7"/></svg>' +
+                        '</span>' +
+                        '<div style="flex:1;min-width:0"><div style="font-size:9px;font-weight:700;letter-spacing:1.4px;color:#d9b988">PERLU DILENGKAPI</div>' +
+                            '<div style="font-size:19px;font-weight:700;line-height:1.35;margin-top:3px;color:#fff1dc">Silakan catat manual</div></div>' +
+                        '<button type="button" aria-label="Tutup notifikasi catat manual" style="display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;border:1px solid #756354;border-radius:9px;background:#211f27;color:#f6dfbe;font-size:21px;line-height:1;cursor:pointer">×</button>' +
+                    '</div>' +
+                    '<div style="padding:18px 20px 20px">' +
+                        '<span style="display:inline-block;padding:5px 10px;border:1px solid #655746;border-radius:7px;background:#302c2b;color:#eac996;font-size:11px;font-weight:600;overflow-wrap:anywhere">' + cssEscapeText(packageText) + '</span>' +
+                        '<p style="margin:12px 0 16px;font-size:13px;line-height:1.7;color:#ccc8d7">Kode periode belum berhasil terbaca otomatis. Lengkapi dari gambar agar pencatatan bisa dilanjutkan.</p>' +
+                        '<div style="display:grid;gap:12px;padding:14px;border:1px solid #444351;border-radius:11px;background:#171a23">' +
+                            '<div style="display:flex;gap:10px;align-items:center"><span style="display:grid;place-items:center;flex:0 0 24px;height:24px;border-radius:7px;background:#33303a;color:#ebca98;font-size:11px;font-weight:700">1</span><span style="font-size:12px;color:#e4deec">Periksa kode periode pada gambar.</span></div>' +
+                            '<div style="display:flex;gap:10px;align-items:center"><span style="display:grid;place-items:center;flex:0 0 24px;height:24px;border-radius:7px;background:#33303a;color:#ebca98;font-size:11px;font-weight:700">2</span><span style="font-size:12px;color:#e4deec">Isi kolom periode pada paket terkait.</span></div>' +
+                        '</div>' +
+                        '<div style="margin-top:12px;font-size:10px;line-height:1.6;color:#aaa6b8">Pastikan angka yang dicatat sama dengan kode pada gambar.</div>' +
+                    '</div>' +
                 '</div>';
 
-            panel.appendChild(overlay);
-            setTimeout(() => {
+            let dismissTimer;
+            const dismiss = () => {
+                clearTimeout(dismissTimer);
                 if (overlay.isConnected) overlay.remove();
-            }, 8000);
+            };
+            overlay.querySelector('button').addEventListener('click', dismiss);
+            panel.appendChild(overlay);
+            dismissTimer = setTimeout(dismiss, 8000);
+        }
+
+        function hideClaimNotification() {
+            if (state.claimNoticeTimer) clearTimeout(state.claimNoticeTimer);
+            state.claimNoticeTimer = null;
+            const notice = panel.querySelector('#lcst-claim-expired-only');
+            if (notice) notice.remove();
         }
 
         function showClaimExpiredNotification(row, claimStatus) {
-            if (state.claimExpiredNotified) state.claimExpiredNotified.add(row);
-            const old = panel.querySelector('#lcst-claim-expired-only');
-            if (old) old.remove();
-
-            const status = claimStatus || (state.scan.claimDeadlineByRow && state.scan.claimDeadlineByRow[row]) || {};
-            const imageTimeText = lcstFormatClaimTimestamp(status.imageTimestamp || status.claimDate);
-            const deadlineText = lcstFormatClaimDeadline(status);
-            const reasonText = lcstClaimStatusMessage(status);
-            const ruleText = status.ruleText || 'Tanggal semalam hanya transaksi 23.00–23.59 WIB dan wajib diajukan sebelum 02.00 WIB.';
-
-            // Notifikasi claim dibuat kecil/compact agar tidak menutupi layar.
+            if (state.closed) return;
+            hideClaimNotification();
+            const count = getPackageCount();
+            let pendingCount = 0;
+            let rejectedCount = 0;
+            const cards = [];
+            for (let index = 0; index < count; index++) {
+                const pending = !!(state.scan.metadataPendingRows || [])[index];
+                const status = index === row && claimStatus ? claimStatus : lcstCheckClaimDeadline(
+                    (state.scan.claimTimestampByRow || [])[index] || null,
+                    (state.scan.ocrPeriods || [])[index] || ''
+                );
+                const rejected = !pending && !!status.expired;
+                const readable = !pending && !!status.hasDate;
+                if (pending) pendingCount++;
+                if (rejected) {
+                    rejectedCount++;
+                    if (state.claimExpiredNotified) state.claimExpiredNotified.add(index);
+                }
+                const accent = pending || !readable ? '#f1ce8a' : rejected ? '#ffb5c2' : '#a2dfc6';
+                const label = pending ? 'SEDANG MEMBACA' : rejected ? 'TIDAK DAPAT CLAIM' :
+                    readable ? 'TANGGAL MEMENUHI ATURAN' : 'PERIKSA TANGGAL';
+                const time = pending ? 'Menunggu hasil pembacaan…' :
+                    readable ? lcstFormatClaimTimestamp(status.imageTimestamp || status.claimDate) : 'Tanggal belum terbaca';
+                const deadline = pending ? 'Menunggu hasil pembacaan…' :
+                    readable ? lcstFormatClaimDeadline(status) : 'Belum dapat ditentukan';
+                const reason = pending ? 'Tanggal dan waktu paket ini sedang diperiksa.' : rejected ?
+                    lcstClaimStatusMessage(status) : readable ? status.ruleText :
+                    'Periksa tanggal pada gambar paket ini secara manual.';
+                cards.push(
+                    '<section style="padding:14px;border:1px solid #454455;border-left:3px solid ' + accent + ';border-radius:12px;background:#242431">' +
+                        '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:space-between;margin-bottom:12px">' +
+                            '<strong style="font-size:12px;letter-spacing:.5px;color:#f2edf8">PAKET ' + (index + 1) + '</strong>' +
+                            '<span style="padding:4px 7px;border-radius:6px;background:#171922;color:' + accent + ';font-size:9px;font-weight:700;letter-spacing:.4px">' + label + '</span>' +
+                        '</div>' +
+                        '<div style="font-size:10px;color:#b9b5c9;margin-bottom:4px">TANGGAL &amp; WAKTU TRANSAKSI</div>' +
+                        '<div style="font-size:13px;font-weight:600;color:#f5f1fa;font-variant-numeric:tabular-nums">' + cssEscapeText(time) + '</div>' +
+                        '<div style="margin-top:10px;padding-top:10px;border-top:1px solid #41404e;display:flex;flex-wrap:wrap;gap:5px 12px;justify-content:space-between">' +
+                            '<span style="font-size:10px;color:#b9b5c9">BATAS CLAIM</span>' +
+                            '<strong style="font-size:12px;color:' + accent + ';font-variant-numeric:tabular-nums">' + cssEscapeText(deadline) + '</strong>' +
+                        '</div>' +
+                        '<div style="margin-top:10px;font-size:11px;line-height:1.6;color:' + accent + '">' + cssEscapeText(reason || '') + '</div>' +
+                    '</section>'
+                );
+            }
             const toast = document.createElement('div');
             toast.id = 'lcst-claim-expired-only';
-            toast.setAttribute('role', 'alert');
-            toast.setAttribute('aria-live', 'assertive');
+            toast.setAttribute('role', 'status');
+            toast.setAttribute('aria-live', 'polite');
+            toast.setAttribute('aria-atomic', 'true');
             toast.style.cssText = [
-                'position:fixed',
-                'top:18px',
-                'right:18px',
-                'z-index:2147483647',
-                'width:min(340px,calc(100vw - 36px))',
-                'padding:14px 16px',
-                'border:2px solid #dc2626',
-                'border-radius:14px',
-                'background:#fff',
-                'color:#7f1d1d',
-                'box-shadow:0 10px 30px rgba(0,0,0,.22)',
-                'font-family:Inter,Segoe UI,Arial,sans-serif',
-                'pointer-events:none'
+                'position:fixed','top:16px','right:16px','z-index:2147483647',
+                'width:min(440px,calc(100vw - 32px))','max-height:calc(100vh - 32px)',
+                'border:1px solid #605064','border-radius:17px','background:#191a24',
+                'color:#f5edf1','box-shadow:none','overflow:auto','box-sizing:border-box',
+                'font-family:Segoe UI,Arial,sans-serif','line-height:1.5','pointer-events:auto',
+                'overscroll-behavior:contain','overflow-wrap:anywhere'
             ].join(';');
-
             toast.innerHTML =
-                '<div style="font-size:16px;line-height:1.15;font-weight:1000;color:#b91c1c">TIDAK DAPAT CLAIM</div>' +
-                '<div style="margin-top:5px;font-size:13px;line-height:1.35;font-weight:900;color:#7f1d1d">PAKET ' + (row + 1) + ' • transaksi ' + cssEscapeText(imageTimeText) + '</div>' +
-                '<div style="margin-top:4px;font-size:12px;line-height:1.35;font-weight:800;color:#991b1b">' + cssEscapeText(reasonText) + '</div>' +
-                '<div style="margin-top:3px;font-size:11px;line-height:1.35;font-weight:700;color:#7f1d1d">' + cssEscapeText(ruleText) + ' • Deadline acuan: ' + cssEscapeText(deadlineText) + '.</div>';
-
+                '<div style="display:flex;align-items:center;gap:12px;padding:16px;background:#302532;border-bottom:1px solid #514050">' +
+                    '<span style="display:grid;place-items:center;flex:0 0 38px;height:38px;border:1px solid #85566b;border-radius:12px;background:#432d3e;color:#ffbacb">' +
+                        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4M17 3v4M3 10h18M12 13v3l2 1"/></svg>' +
+                    '</span>' +
+                    '<div style="flex:1;min-width:0"><div style="font-size:9px;letter-spacing:1.4px;color:#d4afc1;font-weight:700">PEMERIKSAAN TANGGAL</div>' +
+                        '<div style="font-size:18px;font-weight:700;color:#fff0f5;margin-top:2px">Status waktu claim</div>' +
+                        '<div style="font-size:11px;color:#d8becd;margin-top:3px">' + rejectedCount + ' dari ' + count + ' paket tidak dapat claim' +
+                        (pendingCount ? ' • ' + pendingCount + ' masih dibaca' : '') + '</div></div>' +
+                    '<button type="button" aria-label="Tutup notifikasi" style="display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;border:1px solid #84647a;border-radius:9px;background:#211c2a;color:#ffe4f0;cursor:pointer;font-size:21px;line-height:1">×</button>' +
+                '</div>' +
+                '<div style="display:grid;gap:10px;padding:14px">' + cards.join('') + '</div>' +
+                '<div style="padding:0 16px 15px;font-size:10px;color:#b9b5c9;line-height:1.6">Tanggal dan waktu diperiksa terpisah untuk setiap paket. Acuan batas claim: WIB.</div>';
+            toast.querySelector('button').addEventListener('click', hideClaimNotification);
             panel.appendChild(toast);
-            setTimeout(() => {
-                if (toast.isConnected) toast.remove();
-            }, 4500);
+            // Tunggu semua paket selesai agar hasil paket kedua sempat terlihat.
+            if (!pendingCount) state.claimNoticeTimer = setTimeout(hideClaimNotification, 12000);
         }
 
         function setBankState(type, textValue, detailValue) {
@@ -10848,6 +10898,7 @@
             state.scan.claimTimestampByRow = [];
             state.scan.metadataPendingRows = [];
             if (state.claimExpiredNotified) state.claimExpiredNotified.clear();
+            hideClaimNotification();
             const outputAtScanStart = panel.querySelector('#lcst-output');
             if (outputAtScanStart) outputAtScanStart.value = '';
             renderPeriodInputs(false);
@@ -10954,6 +11005,7 @@
                     state.scan.claimTimestampByRow = [];
                     state.scan.metadataPendingRows = [];
                     if (state.claimExpiredNotified) state.claimExpiredNotified.clear();
+            hideClaimNotification();
 
                     // Jika jumlah berubah (>6 menjadi 6), render ulang agar kartu ekstra benar-benar hilang.
                     if (!applyAutoArrangedCardsWithoutReload(original, state.scan.images)) {
@@ -10997,6 +11049,7 @@
             state.scan.claimTimestampByRow = [];
             state.scan.metadataPendingRows = [];
             if (state.claimExpiredNotified) state.claimExpiredNotified.clear();
+            hideClaimNotification();
             panel.querySelector('#lcst-marker-text').textContent = newScan.markerText;
             panel.querySelector('#lcst-user-text').value = String(newScan.userId || '').trim().toLowerCase();
             setScanState('waiting', 'MENUNGGU SCAN', 'Gambar otomatis disusun • klik SCAN CEPAT');
@@ -11445,6 +11498,7 @@
             state.scan.claimTimestampByRow = [];
             state.scan.metadataPendingRows = new Array(rows).fill(true);
             if (state.claimExpiredNotified) state.claimExpiredNotified.clear();
+            hideClaimNotification();
             const liveOutput = panel.querySelector('#lcst-output');
             if (liveOutput) liveOutput.value = '';
 
@@ -11481,6 +11535,7 @@
                         confidence: 0
                     };
                     state.scan.metadataPendingRows[row] = false;
+                    if (panel.querySelector('#lcst-claim-expired-only')) showClaimExpiredNotification(row);
                     completedRows++;
                     return;
                 }
@@ -11589,7 +11644,7 @@
                 if (result.betBelowMin) {
                     showTidakCapaiNotification(row, result.betOdds);
                 }
-                if (claimStatus.expired) {
+                if (claimStatus.expired || panel.querySelector('#lcst-claim-expired-only')) {
                     showClaimExpiredNotification(row, claimStatus);
                 }
 
