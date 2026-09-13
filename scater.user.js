@@ -10484,44 +10484,10 @@
 
 
         function showTidakCapaiNotification(row, odds) {
+            // Betting dan tanggal memakai satu notifikasi agar hasil tiap paket tetap terlihat.
             const old = panel.querySelector('#lcst-tidak-capai-only');
             if (old) old.remove();
-
-            const overlay = document.createElement('div');
-            overlay.id = 'lcst-tidak-capai-only';
-            overlay.setAttribute('role', 'alert');
-            overlay.setAttribute('aria-live', 'assertive');
-            overlay.style.cssText = [
-                'position:fixed',
-                'inset:0',
-                'z-index:2147483647',
-                'display:flex',
-                'align-items:center',
-                'justify-content:center',
-                'padding:24px',
-                'background:rgba(69,10,10,.58)',
-                'backdrop-filter:blur(8px)',
-                'pointer-events:none'
-            ].join(';');
-
-            const value = Number(odds);
-            const oddsText = Number.isFinite(value) ? value.toFixed(2).replace('.', ',') : '-';
-            overlay.innerHTML =
-                '<div style="width:min(760px,94vw);padding:34px 28px;border-radius:26px;' +
-                'border:4px solid #ef4444;background:linear-gradient(145deg,#fff 0%,#fff1f2 100%);' +
-                'color:#7f1d1d;text-align:center;box-shadow:0 30px 100px rgba(0,0,0,.55),0 0 55px rgba(239,68,68,.50);' +
-                'font-family:Inter,Segoe UI,Arial,sans-serif">' +
-                    '<div style="font-size:22px;font-weight:1000;letter-spacing:5px;color:#dc2626;margin-bottom:6px">DANGER</div>' +
-                    '<div style="font-size:clamp(30px,5vw,58px);line-height:1.05;font-weight:1000;color:#991b1b;text-shadow:0 2px 0 #fff">TIDAK MENCAPI BET</div>' +
-                    '<div style="width:120px;height:5px;margin:20px auto;border-radius:999px;background:#ef4444;box-shadow:0 0 18px rgba(239,68,68,.65)"></div>' +
-                    '<div style="font-size:18px;font-weight:1000">PAKET ' + (row + 1) + ' • TARUHAN ' + cssEscapeText(oddsText) + '</div>' +
-                    '<div style="margin-top:8px;font-size:15px;font-weight:900;color:#b91c1c">DI BAWAH 1,60 • DATA PAKET INI TIDAK DAPAT DI-COPY</div>' +
-                '</div>';
-
-            panel.appendChild(overlay);
-            setTimeout(() => {
-                if (overlay.isConnected) overlay.remove();
-            }, 7500);
+            showClaimExpiredNotification(row);
         }
 
         function showManualScanNotification(failedRows) {
@@ -10591,6 +10557,7 @@
             const count = getPackageCount();
             let pendingCount = 0;
             let rejectedCount = 0;
+            const minimumText = LCST_MIN_BET_ODDS.toFixed(2).replace('.', ',');
             const cards = [];
             for (let index = 0; index < count; index++) {
                 const pending = !!(state.scan.metadataPendingRows || [])[index];
@@ -10600,9 +10567,23 @@
                 );
                 const rejected = !pending && !!status.expired;
                 const readable = !pending && !!status.hasDate;
+                const rawBet = (state.scan.betOddsByRow || [])[index];
+                const betValue = typeof rawBet === 'number' ? rawBet : NaN;
+                const betReadable = !pending && Number.isFinite(betValue) && betValue >= 0;
+                const betBlocked = !pending && !!(state.scan.betBelowMinRows || [])[index];
+                const betPassed = betReadable && !betBlocked && betValue >= LCST_MIN_BET_ODDS;
+                const betAccent = pending ? '#f1ce8a' : betBlocked ? '#ffb5c2' : betPassed ? '#a2dfc6' : '#f1ce8a';
+                const betLabel = pending ? 'SEDANG MEMBACA BETTING' : betBlocked ? 'BELUM MENCAPAI MINIMAL BETTING' :
+                    betPassed ? 'SUDAH MENCAPAI MINIMAL BETTING' : 'BETTING PERLU DIPERIKSA';
+                const betText = betReadable ? betValue.toFixed(2).replace('.', ',') : pending ? 'Sedang dibaca…' : 'Belum terbaca';
+                const betReason = pending ? 'Menunggu hasil pembacaan betting paket ini.' : betBlocked ?
+                    'Betting paket ini di bawah minimum ' + minimumText + '. Data paket ini tidak ikut disalin.' : betPassed ?
+                    'Betting paket ini memenuhi minimum ' + minimumText + '. Status tanggal tetap mengikuti pemeriksaan di bawah.' :
+                    'Nilai betting belum dapat dipastikan. Periksa nominal pada gambar paket ini.';
+                if (!pending && (rejected || betBlocked)) rejectedCount++;
+                const cardAccent = rejected || betBlocked ? '#ffb5c2' : pending || !readable || !betPassed ? '#f1ce8a' : '#a2dfc6';
                 if (pending) pendingCount++;
                 if (rejected) {
-                    rejectedCount++;
                     if (state.claimExpiredNotified) state.claimExpiredNotified.add(index);
                 }
                 const accent = pending || !readable ? '#f1ce8a' : rejected ? '#ffb5c2' : '#a2dfc6';
@@ -10616,10 +10597,18 @@
                     lcstClaimStatusMessage(status) : readable ? status.ruleText :
                     'Periksa tanggal pada gambar paket ini secara manual.';
                 cards.push(
-                    '<section style="padding:14px;border:1px solid #454455;border-left:3px solid ' + accent + ';border-radius:12px;background:#242431">' +
+                    '<section style="padding:14px;border:1px solid #454455;border-left:3px solid ' + cardAccent + ';border-radius:12px;background:#242431">' +
                         '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:space-between;margin-bottom:12px">' +
                             '<strong style="font-size:12px;letter-spacing:.5px;color:#f2edf8">PAKET ' + (index + 1) + '</strong>' +
                             '<span style="padding:4px 7px;border-radius:6px;background:#171922;color:' + accent + ';font-size:9px;font-weight:700;letter-spacing:.4px">' + label + '</span>' +
+                        '</div>' +
+                        '<div style="padding:12px;margin-bottom:13px;border:1px solid #454455;border-radius:10px;background:#191b26">' +
+                            '<div style="font-size:9px;font-weight:700;letter-spacing:.35px;color:' + betAccent + ';line-height:1.6">' + betLabel + '</div>' +
+                            '<div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:6px 12px;margin-top:8px">' +
+                                '<div><span style="font-size:10px;color:#b9b5c9">BETTING TERBACA</span><div style="font-size:21px;font-weight:700;font-variant-numeric:tabular-nums;color:' + betAccent + '">' + cssEscapeText(betText) + '</div></div>' +
+                                '<div style="font-size:11px;color:#c9c4d5">Minimum <strong style="color:#f2edf8">' + minimumText + '</strong></div>' +
+                            '</div>' +
+                            '<div style="margin-top:8px;font-size:11px;line-height:1.6;color:#cbc6d6">' + cssEscapeText(betReason) + '</div>' +
                         '</div>' +
                         '<div style="font-size:10px;color:#b9b5c9;margin-bottom:4px">TANGGAL &amp; WAKTU TRANSAKSI</div>' +
                         '<div style="font-size:13px;font-weight:600;color:#f5f1fa;font-variant-numeric:tabular-nums">' + cssEscapeText(time) + '</div>' +
@@ -10649,14 +10638,14 @@
                     '<span style="display:grid;place-items:center;flex:0 0 38px;height:38px;border:1px solid #85566b;border-radius:12px;background:#432d3e;color:#ffbacb">' +
                         '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4M17 3v4M3 10h18M12 13v3l2 1"/></svg>' +
                     '</span>' +
-                    '<div style="flex:1;min-width:0"><div style="font-size:9px;letter-spacing:1.4px;color:#d4afc1;font-weight:700">PEMERIKSAAN TANGGAL</div>' +
-                        '<div style="font-size:18px;font-weight:700;color:#fff0f5;margin-top:2px">Status waktu claim</div>' +
+                    '<div style="flex:1;min-width:0"><div style="font-size:9px;letter-spacing:1.4px;color:#d4afc1;font-weight:700">PEMERIKSAAN BETTING &amp; TANGGAL</div>' +
+                        '<div style="font-size:18px;font-weight:700;color:#fff0f5;margin-top:2px">Status pemeriksaan paket</div>' +
                         '<div style="font-size:11px;color:#d8becd;margin-top:3px">' + rejectedCount + ' dari ' + count + ' paket tidak dapat claim' +
                         (pendingCount ? ' • ' + pendingCount + ' masih dibaca' : '') + '</div></div>' +
                     '<button type="button" aria-label="Tutup notifikasi" style="display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;border:1px solid #84647a;border-radius:9px;background:#211c2a;color:#ffe4f0;cursor:pointer;font-size:21px;line-height:1">×</button>' +
                 '</div>' +
                 '<div style="display:grid;gap:10px;padding:14px">' + cards.join('') + '</div>' +
-                '<div style="padding:0 16px 15px;font-size:10px;color:#b9b5c9;line-height:1.6">Tanggal dan waktu diperiksa terpisah untuk setiap paket. Acuan batas claim: WIB.</div>';
+                '<div style="padding:0 16px 15px;font-size:10px;color:#b9b5c9;line-height:1.6">Betting dan tanggal diperiksa per paket. Memenuhi minimum betting tidak otomatis memenuhi aturan tanggal. Acuan waktu: WIB.</div>';
             toast.querySelector('button').addEventListener('click', hideClaimNotification);
             panel.appendChild(toast);
             // Tunggu semua paket selesai agar hasil paket kedua sempat terlihat.
@@ -11641,10 +11630,7 @@
                 state.scan.claimDeadlineByRow[row] = claimStatus;
 
                 if (result.period) ok++;
-                if (result.betBelowMin) {
-                    showTidakCapaiNotification(row, result.betOdds);
-                }
-                if (claimStatus.expired || panel.querySelector('#lcst-claim-expired-only')) {
+                if (result.betBelowMin || claimStatus.expired || panel.querySelector('#lcst-claim-expired-only')) {
                     showClaimExpiredNotification(row, claimStatus);
                 }
 
