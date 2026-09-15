@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LiveChat OCR Claim — WIB/WITA/WIT + Batas 02.00
 // @namespace    linetogel-livechat-ocr-claim-fixed
-// @version      7.8.3
+// @version      7.8.4
 // @description  Panel OCR LiveChat untuk Android: gambar tetap diambil dari chat aktif, dapat disusun dengan sentuhan, dan tampilan dibuat ringan.
 // @author       OpenAI
 // @match        https://my.livechatinc.com/*
@@ -26,7 +26,7 @@
 
     // Versi terbaru mengambil alih UI lama bila lebih dari satu versi tidak sengaja aktif.
     // Ini mencegah script lama memblokir perbaikan melalui guard boolean yang sama.
-    const LCST_BUILD_VERSION = '7.8.3-android-livechat-touch-sort';
+    const LCST_BUILD_VERSION = '7.8.4-android-livechat-touch-sort';
     const lcstExistingInstance = window.__LC_BUBBLE_SCREENSHOT_ACTIVE_ONLY__;
     if (lcstExistingInstance && typeof lcstExistingInstance === 'object' && lcstExistingInstance.version === LCST_BUILD_VERSION) return;
     try {
@@ -5211,9 +5211,9 @@
     const LCST_ARRANGE_CANVAS_CACHE_LIMIT = 12;
     const LCST_ANALYSIS_CACHE_LIMIT = 12;
     const LCST_RESULT_CACHE_LIMIT = 24;
-    // Setelah jalur cepat gagal, batasi jumlah recognize() mahal. Delapan pass
+    // Setelah jalur cepat gagal, batasi jumlah recognize() mahal. Enam pass
     // sudah mencakup direct lock, dua baris, consensus, dan satu konfirmasi.
-    const LCST_MAX_CODE_FALLBACK_PASSES = 8;
+    const LCST_MAX_CODE_FALLBACK_PASSES = 6;
     let lcstWorkerWarmupStarted = false;
     let lcstWorkerGeneration = 0;
 
@@ -9231,8 +9231,8 @@
             if (onProgress) onProgress('Baris terkunci • ' + label + ' • ' + mode);
             try {
                 const prepared = renderPreparedVariant(canvas, mode, true);
-                const result = await recognizePrepared(worker, prepared, 7);
                 usedPasses++;
+                const result = await recognizePrepared(worker, prepared, 7);
                 logResult(label + '/' + mode, result);
                 collectLineVotes(result, kind, kind === 'top' ? topVotes : bottomVotes, label + '-' + mode, weight);
                 return result;
@@ -9248,8 +9248,8 @@
             if (onProgress) onProgress('Baris terkunci • ' + label + ' • gabungan ' + mode);
             try {
                 const prepared = renderPreparedVariant(canvas, mode, false);
-                const result = await recognizePrepared(worker, prepared, 6);
                 usedPasses++;
+                const result = await recognizePrepared(worker, prepared, 6);
                 logResult(label + '/combined/' + mode, result);
                 collectCombinedVotes(result, topVotes, bottomVotes, label + '-' + mode, weight);
                 return result;
@@ -9262,6 +9262,7 @@
 
 
         const runDirectMarkerBottomLock = async () => {
+            if (!canRunFallbackPass()) return null;
             const directWindow = buildDirectMarkerCodeWindow(
                 sourceCanvas,
                 marker
@@ -9316,13 +9317,13 @@
                         pass.mode,
                         false
                     );
+                    usedPasses++;
                     const result = await recognizePrepared(
                         worker,
                         prepared,
                         pass.psm
                     );
 
-                    usedPasses++;
                     logResult(
                         'direct-marker/' + pass.mode + '/psm-' + pass.psm,
                         result
@@ -9498,6 +9499,7 @@
                 };
             }
 
+            if (!canRunFallbackPass()) return null;
             const variants = buildTightBottomRowVariants(bottomLine);
             if (!variants.length) return null;
 
@@ -9521,8 +9523,8 @@
                     // PSM 7 untuk dua pass pertama. Pass terakhir memakai PSM 13
                     // agar hasil tidak dipengaruhi heuristic pemisahan kata.
                     const psm = i < 2 ? 7 : 13;
-                    const result = await recognizePrepared(worker, variant.canvas, psm);
                     usedPasses++;
+                    const result = await recognizePrepared(worker, variant.canvas, psm);
                     logResult(label + '/tight-' + variant.mode + '/psm-' + psm, result);
 
                     const exact = exactBottomValueFromRecognition(result);
@@ -9648,6 +9650,14 @@
             };
         };
 
+        const geometryCache = new WeakMap();
+        const cachedGeometry = (canvas, kind, digits, resolve) => {
+            let entries = geometryCache.get(canvas);
+            if (!entries) { entries = new Map(); geometryCache.set(canvas, entries); }
+            const key = kind + ':' + digits;
+            if (!entries.has(key)) entries.set(key, resolve(canvas, digits));
+            return entries.get(key);
+        };
         const applyAmbiguousDigitGeometry = (bottomLine, picked, label) => {
             if (lockedBottomValue) {
                 return chooseFinalPeriod(topVotes, bottomVotes, usedPasses);
@@ -9703,13 +9713,13 @@
             };
 
             const originalValue = picked.bottom.value;
-            const resolved09 = resolveZeroNineByGeometry(bottomLine, originalValue);
+            const resolved09 = cachedGeometry(bottomLine, '09', originalValue, resolveZeroNineByGeometry);
             applyResolvedVotes(resolved09, '0/9', 5.10, 1.15, originalValue);
 
             const baseFor27 = (resolved09 && /^\d{10}$/.test(resolved09.value || ''))
                 ? resolved09.value
                 : originalValue;
-            const resolved27 = resolveTwoSevenByGeometry(bottomLine, baseFor27);
+            const resolved27 = cachedGeometry(bottomLine, '27', baseFor27, resolveTwoSevenByGeometry);
             applyResolvedVotes(resolved27, '2/7', 4.95, 1.12, baseFor27);
 
             return chooseFinalPeriod(topVotes, bottomVotes, usedPasses);
@@ -9776,6 +9786,7 @@
         }
 
         for (let rectIndex = 0; rectIndex < rects.length; rectIndex++) {
+            if (!canRunFallbackPass()) break;
             const rect = rects[rectIndex];
             const cropped = cropCanvas(sourceCanvas, rect);
             const lineRects = findTwoLineRects(cropped);
@@ -9826,17 +9837,6 @@
             current = chooseFinalPeriod(topVotes, bottomVotes, usedPasses);
             current = applyAmbiguousDigitGeometry(bottomLine, current, rect.name + '/otsu');
             if (isReliable(current, false)) return makeReturn(current);
-
-            // Adaptive hanya dipakai pada crop utama dan hanya untuk sisi yang masih belum kuat.
-            if (rectIndex === 0) {
-                const topStillWeak = !current.top || current.top.correction > 0 || current.top.votes < 2;
-                const bottomStillWeak = !current.bottom || current.bottom.correction > 0 || current.bottom.votes < 2;
-                if (topStillWeak) await runLine(topLine, 'top', 'adaptive', rect.name + '/atas', 1.30);
-                if (bottomStillWeak) await runLine(bottomLine, 'bottom', 'adaptive', rect.name + '/bawah', 1.40);
-                current = chooseFinalPeriod(topVotes, bottomVotes, usedPasses);
-                current = applyAmbiguousDigitGeometry(bottomLine, current, rect.name + '/adaptive');
-                if (isReliable(current, false)) return makeReturn(current);
-            }
 
             // Satu konfirmasi Otsu terakhir sebelum pindah ke crop lebih lebar.
             if (!current.period || current.top.votes < 2 || current.bottom.votes < 2) {
@@ -10233,7 +10233,7 @@
                         </div>
                         <div class="lcst-nova-brand-copy">
                             <div class="lcst-nova-eyebrow">LINETOGEL • SCAN STUDIO</div>
-                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.8.3</span></h3>
+                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.8.4</span></h3>
                             <div class="lcst-subtitle">Periode, tanggal & waktu dalam satu ruang kerja</div>
                         </div>
                     </div>
@@ -11629,6 +11629,10 @@
                 return;
             }
 
+            if (state.arrangePrefetchTimer) { clearTimeout(state.arrangePrefetchTimer); state.arrangePrefetchTimer = null; }
+            if (state.arrangePrefetchIdle && typeof cancelIdleCallback === 'function') {
+                cancelIdleCallback(state.arrangePrefetchIdle); state.arrangePrefetchIdle = null;
+            }
             setOcrStatus('AURORA TURBO aktif. Menyiapkan pembacaan periode dari history setiap paket...', 36);
             state.ocrRunning = true;
             setScanState('scanning', 'SEDANG DI SCAN', 'Membaca kode + tanggal + jam + GMT bersamaan • WIB/WITA/WIT dinormalisasi ke WIB');
@@ -11849,6 +11853,9 @@
                 // ULTRA FAST: jangan menunggu semua worker siap sebelum paket pertama mulai.
                 // Primary segera dipakai; secondary/metadata loading ditutup oleh proses paket pertama.
                 const primaryPromise = getSharedOCRWorker(null);
+                const secondaryPromise = (rows <= 2 && LCST_DUAL_PACKAGE_OCR)
+                    ? getSecondaryOCRWorker().catch(() => null)
+                    : Promise.resolve(null);
                 let secondaryWorkerUsed = false;
                 // Worker utama dan analisis dua target disiapkan paralel. Setelah itu
                 // setiap screenshot/fingerprint yang sama mendapat ordinal bulatan unik.
@@ -11875,9 +11882,6 @@
                     };
                 });
 
-                const secondaryPromise = (rows <= 2 && LCST_DUAL_PACKAGE_OCR)
-                    ? getSecondaryOCRWorker().catch(() => null)
-                    : Promise.resolve(null);
 
                 if (LCST_TURBO_PARALLEL_OCR) getMetadataOCRWorker().catch(() => null);
                 if (LCST_TURBO_TIMESTAMP_WORKER) getTimestampOCRWorker().catch(() => null);
