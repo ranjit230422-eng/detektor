@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LiveChat OCR Claim — WIB/WITA/WIT + Batas 02.00
 // @namespace    linetogel-livechat-ocr-claim-fixed
-// @version      7.8.6
+// @version      7.8.7
 // @description  Panel OCR LiveChat untuk Android: gambar tetap diambil dari chat aktif, dapat disusun dengan sentuhan, dan tampilan dibuat ringan.
 // @author       OpenAI
 // @match        https://my.livechatinc.com/*
@@ -26,7 +26,7 @@
 
     // Versi terbaru mengambil alih UI lama bila lebih dari satu versi tidak sengaja aktif.
     // Ini mencegah script lama memblokir perbaikan melalui guard boolean yang sama.
-    const LCST_BUILD_VERSION = '7.8.6-android-livechat-touch-sort';
+    const LCST_BUILD_VERSION = '7.8.7-android-livechat-touch-sort';
     const lcstExistingInstance = window.__LC_BUBBLE_SCREENSHOT_ACTIVE_ONLY__;
     if (lcstExistingInstance && typeof lcstExistingInstance === 'object' && lcstExistingInstance.version === LCST_BUILD_VERSION) return;
     try {
@@ -3195,8 +3195,54 @@
         return urls;
     }
 
+    function lcstImageElementContext(el, root) {
+        let attachment = false;
+        let message = false;
+        let excluded = false;
+        let current = el;
+        for (let depth = 0; current && current !== root && depth < 8; depth++, current = current.parentElement) {
+            const tag = String(current.tagName || '').toLowerCase();
+            const label = ['class', 'id', 'data-testid', 'data-test', 'aria-label', 'title', 'alt']
+                .map(key => current.getAttribute && current.getAttribute(key) || '').join(' ');
+            // Inspect element metadata, never message text or sender names.
+            if (/avatar|gravatar|profile[-_ ]?(?:photo|picture|image|icon)|(?:user|agent|visitor|customer)[-_ ]?(?:photo|picture|avatar)|foto\s*profil|profilepicture|profileimage/i.test(label)) excluded = true;
+            if (/lcst-panel-fixed|lcst-bubble-fixed/.test(label)) excluded = true;
+            if (/attachment|message[-_ ]?(?:image|file|media)|file[-_ ]?(?:preview|attachment)|image[-_ ]?(?:attachment|preview)/i.test(label) ||
+                (current.hasAttribute && (current.hasAttribute('data-attachment-url') || current.hasAttribute('data-file-url') || current.hasAttribute('download')))) attachment = true;
+            if (/message|chat[-_ ]?event|conversation[-_ ]?event/i.test(label)) {
+                message = true;
+                // A message's parents may contain profile/sidebar metadata for the whole chat.
+                break;
+            }
+            if (['header', 'nav', 'aside'].includes(tag) || /chat[-_ ]?header|conversation[-_ ]?header|contact[-_ ]?(?:details|profile)|customer[-_ ]?details|sidebar/i.test(label)) excluded = true;
+        }
+        return {attachment, message, excluded};
+    }
+
+    function lcstIsProfileOrUiImage(el, root) {
+        if (!el) return true;
+        const context = lcstImageElementContext(el, root);
+        if (context.excluded) return true;
+        const tag = String(el.tagName || '').toLowerCase();
+        // An avatar link/picture wrapper must not reintroduce its child's URL.
+        if (tag === 'a' || tag === 'picture') {
+            const children = Array.from(el.querySelectorAll ? el.querySelectorAll('img') : []);
+            if (children.length && children.every(child => lcstIsProfileOrUiImage(child, root))) return true;
+        }
+        const visual = tag === 'source' && el.parentElement && el.parentElement.querySelector
+            ? (el.parentElement.querySelector('img') || el) : el;
+        if (visual !== el && lcstImageElementContext(visual, root).excluded) return true;
+        const rect = visual.getBoundingClientRect ? visual.getBoundingClientRect() : null;
+        // Profile originals can be 1024px; rendered dimensions are what distinguish UI thumbnails.
+        if (!context.attachment && rect && rect.width > 0 && rect.height > 0 &&
+            rect.width <= 80 && rect.height <= 80) return true;
+        if (tag === 'img' || tag === 'source' || tag === 'picture') return false;
+        // Generic background images and navigation links are not message attachments.
+        return !context.attachment && !context.message;
+    }
+
     function addElementImageUrls(el, root, marker, images, ignoreMarker) {
-        if (!isRenderedInsideScope(el, root)) return;
+        if (!isRenderedInsideScope(el, root) || lcstIsProfileOrUiImage(el, root)) return;
         if (!ignoreMarker && !isAfterMarker(marker, el)) return;
 
         const tag = String(el.tagName || '').toLowerCase();
@@ -3229,7 +3275,21 @@
         const nodes = [];
         if (root.matches && root.matches(selector)) nodes.push(root);
         try { nodes.push(...root.querySelectorAll(selector)); } catch (e) {}
-        nodes.forEach((el) => addElementImageUrls(el, root, marker, images, ignoreMarker));
+        const excludedUrls = new Set();
+        const candidates = [];
+        nodes.forEach(el => {
+            if (lcstIsProfileOrUiImage(el, root)) {
+                // URLs found on rejected image elements are also rejected if their parent link repeats them.
+                const tag = String(el.tagName || '').toLowerCase();
+                if (['img', 'source', 'picture', 'a'].includes(tag)) {
+                    getImageUrlsFromElement(el).forEach(url => excludedUrls.add(normalizeUrl(url)));
+                }
+            } else candidates.push(el);
+        });
+        candidates.forEach((el) => addElementImageUrls(el, root, marker, images, ignoreMarker));
+        for (let i = images.length - 1; i >= 0; i--) {
+            if (excludedUrls.has(normalizeUrl(images[i]))) images.splice(i, 1);
+        }
         return images;
     }
 
@@ -10320,7 +10380,7 @@
                         </div>
                         <div class="lcst-nova-brand-copy">
                             <div class="lcst-nova-eyebrow">LINETOGEL • SCAN STUDIO</div>
-                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.8.6</span></h3>
+                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.8.7</span></h3>
                             <div class="lcst-subtitle">Periode, tanggal & waktu dalam satu ruang kerja</div>
                         </div>
                     </div>
