@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LiveChat OCR Claim — WIB/WITA/WIT + Batas 02.00
 // @namespace    linetogel-livechat-ocr-claim-fixed
-// @version      7.8.4
+// @version      7.8.5
 // @description  Panel OCR LiveChat untuk Android: gambar tetap diambil dari chat aktif, dapat disusun dengan sentuhan, dan tampilan dibuat ringan.
 // @author       OpenAI
 // @match        https://my.livechatinc.com/*
@@ -26,7 +26,7 @@
 
     // Versi terbaru mengambil alih UI lama bila lebih dari satu versi tidak sengaja aktif.
     // Ini mencegah script lama memblokir perbaikan melalui guard boolean yang sama.
-    const LCST_BUILD_VERSION = '7.8.4-android-livechat-touch-sort';
+    const LCST_BUILD_VERSION = '7.8.5-android-livechat-touch-sort';
     const lcstExistingInstance = window.__LC_BUBBLE_SCREENSHOT_ACTIVE_ONLY__;
     if (lcstExistingInstance && typeof lcstExistingInstance === 'object' && lcstExistingInstance.version === LCST_BUILD_VERSION) return;
     try {
@@ -2656,6 +2656,27 @@
                 #lcst-panel-fixed .lcst-nova-gallery-head{align-items:flex-start!important;gap:10px!important}
                 #lcst-panel-fixed .lcst-nova-scan-btn{width:100%!important;justify-content:center!important}
             }
+
+            #lcst-bubble-fixed{touch-action:none!important;user-select:none!important;-webkit-user-select:none!important}
+            #lcst-panel-fixed.lcst-phone-panel{inset:auto!important;max-width:none!important;max-height:none!important;min-width:0!important;margin:0!important;transform:none!important;padding:8px!important;overflow:auto!important;overflow-x:hidden!important;overscroll-behavior:contain;background:#101a2b!important;backdrop-filter:none!important}
+            #lcst-panel-fixed.lcst-phone-panel:before,#lcst-panel-fixed.lcst-phone-panel:after{display:none!important}
+            #lcst-panel-fixed.lcst-phone-panel *{min-width:0!important;box-sizing:border-box!important;animation:none!important;transition:none!important;backdrop-filter:none!important}
+            #lcst-panel-fixed.lcst-phone-panel .lcst-nova-shell{width:100%!important;max-width:none!important;margin:0!important;padding:0!important}
+            #lcst-panel-fixed.lcst-phone-panel .lcst-nova-workspace{display:flex!important;flex-direction:column!important;gap:10px!important}
+            #lcst-panel-fixed.lcst-phone-panel .lcst-nova-sidebar{width:100%!important;position:static!important;max-height:none!important}
+            #lcst-panel-fixed.lcst-phone-panel .lcst-nova-topbar{position:sticky!important;top:0!important;z-index:30!important;display:flex!important;align-items:center!important;justify-content:space-between!important;min-height:64px!important;padding:8px!important;gap:8px!important;background:#1d2b42!important}
+            #lcst-panel-fixed.lcst-phone-panel .lcst-nova-logo{position:static!important;transform:none!important;left:auto!important;top:auto!important;width:112px!important;height:46px!important;flex:0 0 112px!important;margin:0!important}
+            #lcst-panel-fixed.lcst-phone-panel .lcst-nova-brand-copy,#lcst-panel-fixed.lcst-phone-panel .lcst-nova-live-chip{display:none!important}
+            #lcst-panel-fixed.lcst-phone-panel .lcst-nova-top-actions{display:flex!important;position:static!important;width:auto!important;margin-left:auto!important}
+            #lcst-panel-fixed.lcst-phone-panel #lcst-close{display:flex!important;align-items:center!important;min-height:44px!important;min-width:76px!important;position:static!important}
+            #lcst-panel-fixed.lcst-phone-panel .lcst-nova-gallery-head{display:flex!important;flex-wrap:wrap!important;gap:8px!important}
+            #lcst-panel-fixed.lcst-phone-panel .lcst-nova-scan-btn{width:100%!important;min-height:48px!important;justify-content:center!important}
+            #lcst-panel-fixed.lcst-phone-panel #lcst-image-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
+            #lcst-panel-fixed.lcst-phone-panel .lcst-img-media{height:190px!important}
+            #lcst-panel-fixed.lcst-phone-panel .lcst-touch-handle{display:block!important;min-height:44px!important}
+            #lcst-panel-fixed.lcst-phone-panel .lcst-del{display:grid!important;place-items:center!important;min-width:36px!important;min-height:36px!important}
+            #lcst-panel-fixed.lcst-phone-panel input,#lcst-panel-fixed.lcst-phone-panel textarea{font-size:16px!important;max-width:100%!important}
+            #lcst-panel-fixed.lcst-phone-panel #lcst-output{width:100%!important;min-height:150px!important}
         `;
         document.head.appendChild(style);
     }
@@ -2745,7 +2766,8 @@
         // Seluruh OCR tetap berada di Web Worker sehingga hover/click tidak diblokir.
         bubble.addEventListener('pointerenter', warmupOCRWorker, { once: true, passive: true });
 
-        const saved = safeJSONParse(localStorage.getItem(POS_KEY), null);
+        let saved = null;
+        try { saved = safeJSONParse(localStorage.getItem(POS_KEY), null); } catch (err) {}
         if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
             bubble.style.left = Math.max(10, Math.min(innerWidth - bubble.offsetWidth - 10, saved.left)) + 'px';
             bubble.style.top = Math.max(10, Math.min(innerHeight - bubble.offsetHeight - 10, saved.top)) + 'px';
@@ -2759,9 +2781,11 @@
         let startY = 0;
         let startLeft = 0;
         let startTop = 0;
+        let activePointer = null;
 
         bubble.addEventListener('pointerdown', function (e) {
-            if (e.button != null && e.button !== 0) return;
+            if (e.isPrimary === false || activePointer !== null || (e.button != null && e.button !== 0)) return;
+            activePointer = e.pointerId;
             dragging = true;
             moved = false;
             const rect = bubble.getBoundingClientRect();
@@ -2778,11 +2802,12 @@
         });
 
         bubble.addEventListener('pointermove', function (e) {
-            if (!dragging) return;
+            if (!dragging || e.pointerId !== activePointer) return;
             e.preventDefault();
             const dx = e.clientX - startX;
             const dy = e.clientY - startY;
-            if (Math.abs(dx) + Math.abs(dy) > 5) moved = true;
+            if (Math.hypot(dx, dy) > (e.pointerType === 'touch' ? 12 : 5)) moved = true;
+            if (!moved) return;
             const left = Math.max(6, Math.min(innerWidth - bubble.offsetWidth - 6, startLeft + dx));
             const top  = Math.max(6, Math.min(innerHeight - bubble.offsetHeight - 6, startTop + dy));
             bubble.style.left = left + 'px';
@@ -2790,14 +2815,23 @@
         });
 
         bubble.addEventListener('pointerup', function (e) {
-            if (!dragging) return;
+            if (!dragging || e.pointerId !== activePointer) return;
+            activePointer = null;
             dragging = false;
             bubble.classList.remove('lcst-dragging');
             const rect = bubble.getBoundingClientRect();
-            localStorage.setItem(POS_KEY, JSON.stringify({ left: rect.left, top: rect.top }));
+            try { localStorage.setItem(POS_KEY, JSON.stringify({ left: rect.left, top: rect.top })); } catch (err) {}
+            const shouldOpen = !moved;
             try { bubble.releasePointerCapture(e.pointerId); } catch (err) {}
-            if (!moved) openTool();
+            if (shouldOpen) openTool();
         });
+        const cancelBubbleDrag = () => {
+            activePointer = null; dragging = false; moved = false;
+            bubble.classList.remove('lcst-dragging');
+        };
+        bubble.addEventListener('pointercancel', cancelBubbleDrag);
+        bubble.addEventListener('lostpointercapture', cancelBubbleDrag);
+        bubble.addEventListener('click', e => { if (e.detail === 0) openTool(); });
     }
 
     function isBadUrl(url) {
@@ -10186,10 +10220,47 @@
         return finalResult;
     }
 
+    function lcstFitPhonePanel(panel) {
+        const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+            matchMedia('(pointer:coarse)').matches || innerWidth <= 850;
+        if (!mobile) return () => {};
+        panel.classList.add('lcst-phone-panel');
+        const viewport = window.visualViewport;
+        let frame = 0;
+        const fit = () => {
+            frame = 0;
+            const width = viewport ? viewport.width : innerWidth;
+            const height = viewport ? viewport.height : innerHeight;
+            // Locally compensate desktop-site scaling; do not change LiveChat's viewport.
+            const layoutWidth = document.documentElement.clientWidth || innerWidth;
+            const deviceWidth = screen.width || layoutWidth;
+            const scale = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && layoutWidth > deviceWidth * 1.3
+                ? layoutWidth / deviceWidth : 1;
+            panel.style.setProperty('zoom', String(scale));
+            for (const [key, value] of Object.entries({
+                left: (viewport ? viewport.offsetLeft : 0) / scale,
+                top: (viewport ? viewport.offsetTop : 0) / scale,
+                width: width / scale, height: height / scale
+            })) panel.style.setProperty(key, Math.max(0, value) + 'px', 'important');
+        };
+        const schedule = () => { if (!frame) frame = requestAnimationFrame(fit); };
+        fit();
+        window.addEventListener('resize', schedule, {passive:true});
+        if (viewport) {
+            viewport.addEventListener('resize', schedule, {passive:true});
+            viewport.addEventListener('scroll', schedule, {passive:true});
+        }
+        return () => {
+            if (frame) cancelAnimationFrame(frame);
+            window.removeEventListener('resize', schedule);
+            if (viewport) { viewport.removeEventListener('resize', schedule); viewport.removeEventListener('scroll', schedule); }
+        };
+    }
+
     function openTool() {
         injectStyle();
         const old = document.getElementById('lcst-panel-fixed');
-        if (old) old.remove();
+        if (old) { old.querySelector('#lcst-close')?.focus({preventScroll:true}); return; }
 
         const scan = scanPage();
         const db = getAccountDB();
@@ -10233,7 +10304,7 @@
                         </div>
                         <div class="lcst-nova-brand-copy">
                             <div class="lcst-nova-eyebrow">LINETOGEL • SCAN STUDIO</div>
-                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.8.4</span></h3>
+                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.8.5</span></h3>
                             <div class="lcst-subtitle">Periode, tanggal & waktu dalam satu ruang kerja</div>
                         </div>
                     </div>
@@ -10398,6 +10469,9 @@
         dashboardBrand.appendChild(dashboardLogo);
         panel.prepend(dashboardBrand);
         document.body.appendChild(panel);
+        const disposePhonePanel = lcstFitPhonePanel(panel);
+        const activeBubble = document.getElementById('lcst-bubble-fixed');
+        if (activeBubble) activeBubble.style.setProperty('display', 'none', 'important');
         lcstApplyDashboardLogo(dashboardLogo);
 
         const headerLogo = panel.querySelector('#lcst-header-logo-img');
@@ -10478,6 +10552,8 @@
         function closePanel() {
             if (state.closed) return;
             state.closed = true;
+            disposePhonePanel();
+            if (activeBubble) activeBubble.style.removeProperty('display');
             hideClaimNotification();
             const z = document.getElementById('lcst-zoom');
             if (z) z.remove();
