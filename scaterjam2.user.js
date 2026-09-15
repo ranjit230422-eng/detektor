@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LiveChat OCR Claim — WIB/WITA/WIT + Batas 02.00
 // @namespace    linetogel-livechat-ocr-claim-fixed
-// @version      7.8.5
+// @version      7.8.6
 // @description  Panel OCR LiveChat untuk Android: gambar tetap diambil dari chat aktif, dapat disusun dengan sentuhan, dan tampilan dibuat ringan.
 // @author       OpenAI
 // @match        https://my.livechatinc.com/*
@@ -26,7 +26,7 @@
 
     // Versi terbaru mengambil alih UI lama bila lebih dari satu versi tidak sengaja aktif.
     // Ini mencegah script lama memblokir perbaikan melalui guard boolean yang sama.
-    const LCST_BUILD_VERSION = '7.8.5-android-livechat-touch-sort';
+    const LCST_BUILD_VERSION = '7.8.6-android-livechat-touch-sort';
     const lcstExistingInstance = window.__LC_BUBBLE_SCREENSHOT_ACTIVE_ONLY__;
     if (lcstExistingInstance && typeof lcstExistingInstance === 'object' && lcstExistingInstance.version === LCST_BUILD_VERSION) return;
     try {
@@ -5230,6 +5230,7 @@
     let lcstDashboardYieldCounter = 0;
     const lcstPreparedBaseCache = new WeakMap();
     const lcstTimezoneOffsetCache = new WeakMap();
+    const lcstTimestampReadStatus = new WeakMap();
 
     // Cache hanya mempercepat pemuatan/scan ulang. Pemilihan gambar, marker,
     // crop, paket, dan validasi periode tetap memakai cara kerja V5.5.1.
@@ -5376,8 +5377,10 @@
             const original = worker[method].bind(worker);
             worker[method] = (...values) => {
                 if (stopped) return Promise.reject(new Error('OCR terhenti. Silakan scan ulang.'));
+                const remaining = worker.lcstDeadlineAt ? worker.lcstDeadlineAt - Date.now() : Infinity;
+                if (remaining <= 0) return Promise.reject(new Error('Waktu pembacaan tanggal habis. Silakan scan ulang.'));
                 return lcstBoundPromise(Promise.resolve().then(() => original(...values)),
-                    method === 'recognize' ? 15000 : 5000,
+                    Math.min(method === 'recognize' ? 15000 : 5000, remaining),
                     'OCR melebihi batas waktu. Silakan scan ulang.', stop);
             };
         }
@@ -7449,7 +7452,7 @@
         const cached = sourceCanvas && lcstTimezoneOffsetCache.get(sourceCanvas);
         if (cached && cached.offsetMinutes != null) return cached;
         const crops = buildClaimTimezoneCropCanvases(sourceCanvas,marker);
-        const passes = [{index:0,mode:'soft',psm:11}, {index:1,mode:'soft',psm:11}, {index:0,mode:'otsu',psm:6}];
+        const passes = [{index:0,mode:'soft',psm:11}, {index:1,mode:'soft',psm:11}];
         for (const pass of passes) {
                 if (deadline && Date.now() >= deadline) break;
             const item = crops[pass.index];
@@ -7457,7 +7460,7 @@
             try {
                 await new Promise(resolve => setTimeout(resolve, 0));
                 if (!item.canvas) item.canvas = cropCanvas(sourceCanvas,item.rect);
-                const prepared = renderPreparedVariant(item.canvas,pass.mode,false,132);
+                const prepared = renderPreparedVariant(item.canvas,pass.mode,false,200,true);
                 const result = await recognizePrepared(worker,prepared,pass.psm);
                 const raw = String(result && result.data && result.data.text || '');
                 const offsetMinutes = lcstFindExplicitGmtOffsetMinutes(raw);
@@ -7480,26 +7483,24 @@
         let timezone = null;
         let bestTimestamp = null;
         const crops = buildClaimTimestampCropCanvases(sourceCanvas, marker);
-        const passes = [{index:0,psm:6,mode:'soft',height:132},
-            {index:0,psm:6,mode:'soft',height:220},
-            {index:0,psm:6,mode:'otsu',height:220},
-            {index:1,psm:6,mode:'soft',height:220},
-            {index:2,psm:6,mode:'soft',height:260},
-            {index:3,psm:6,mode:'soft',height:260},
-            {index:3,psm:11,mode:'otsu',height:260}];
+        // Reach the full date column immediately, then change crop/contrast only on failure.
+        const passes = [{index:2,psm:6,mode:'soft',height:200},
+            {index:0,psm:6,mode:'soft',height:200},
+            {index:3,psm:6,mode:'soft',height:220},
+            {index:2,psm:6,mode:'otsu',height:220}];
+        worker.lcstDeadlineAt = deadline;
+        lcstTimestampReadStatus.set(sourceCanvas, 'Tanggal/jam belum terbaca. Periksa gambar target atau scan ulang.');
         try {
-            // Kolom ini hanya angka tanggal/jam. Alfabet bebas membuat 09/11 terbaca na/n.
-            await worker.setParameters({tessedit_char_whitelist:'0123456789:/.,- AMPamp',
-                preserve_interword_spaces:'1',classify_bln_numeric_mode:'0'});
+            await lcstSetTimestampOcrMode(worker);
             for (const pass of passes) {
                 if (deadline && Date.now() >= deadline) break;
                 const item = crops[pass.index];
                 if (!item) continue;
                 try {
                     await new Promise(resolve => setTimeout(resolve, 0));
-                    if (pass.index >= 2) await lcstSetTimestampOcrMode(worker);
+
                     if (!item.canvas) item.canvas = cropCanvas(sourceCanvas,item.rect);
-                    const prepared = renderPreparedVariant(item.canvas,pass.mode,false,pass.height);
+                    const prepared = renderPreparedVariant(item.canvas,pass.mode,false,pass.height,true);
                     const result = await recognizePrepared(worker,prepared,pass.psm);
                     const raw = String(result && result.data && result.data.text || '');
                     rawParts.push(raw);
@@ -7524,17 +7525,27 @@
                         if (zone != null) timezone = {offsetMinutes:zone,rawText:raw,source:parsed.source};
                         break;
                     }
-                } catch (e) {}
+                } catch (e) {
+                    lcstTimestampReadStatus.set(sourceCanvas, 'OCR tanggal terhenti: ' + (e.message || String(e)));
+                    break;
+                }
             }
             if (!timezone && bestTimestamp && Date.now() < deadline) {
                 await lcstSetTimestampOcrMode(worker);
                 // Zona berasal dari gambar yang sedang diproses, tidak dari paket lain.
                 timezone = await lcstReadExplicitTimezoneOffsetFromImage(sourceCanvas,marker,worker,rawParts,deadline);
             }
+        } catch (e) {
+            lcstTimestampReadStatus.set(sourceCanvas, 'OCR tanggal terhenti: ' + (e.message || String(e)));
         } finally {
+            delete worker.lcstDeadlineAt;
             await lcstRestoreNumericOcrMode(worker);
         }
-        if (!bestTimestamp) return null;
+        if (!bestTimestamp) {
+            if (Date.now() >= deadline) lcstTimestampReadStatus.set(sourceCanvas, 'Batas waktu OCR tanggal tercapai. Coba scan ulang gambar target yang lebih jelas.');
+            return null;
+        }
+        lcstTimestampReadStatus.delete(sourceCanvas);
         if (timezone && timezone.offsetMinutes != null) {
             bestTimestamp = lcstApplySourceGmtOffset(bestTimestamp,timezone.offsetMinutes,timezone.rawText);
             bestTimestamp.timezoneDetectionSource = timezone.source;
@@ -7666,7 +7677,12 @@
         }
         return out;
     }
-    function chooseUpscale(source, lineMode, targetHeightOverride) {
+    function chooseUpscale(source, lineMode, targetHeightOverride, boundedTimestamp) {
+        if (boundedTimestamp) {
+            // Cap timestamp/header work without changing period OCR or source images.
+            const desired = Math.max(1, Math.min(4, (Number(targetHeightOverride) || 200) / Math.max(1, source.height)));
+            return Math.min(desired, 1400 / Math.max(1, source.width), 700 / Math.max(1, source.height));
+        }
         // 95-110px tinggi baris sudah cukup untuk angka; versi lama 145-255px membebani CPU/RAM.
         const requestedHeight = Number(targetHeightOverride);
         const targetHeight = Number.isFinite(requestedHeight) && requestedHeight >= 96
@@ -7674,9 +7690,9 @@
             : (lineMode ? 108 : 188);
         return Math.max(3.2, Math.min(7.5, targetHeight / Math.max(1, source.height)));
     }
-    function renderPreparedVariant(source, mode, lineMode, targetHeightOverride) {
+    function renderPreparedVariant(source, mode, lineMode, targetHeightOverride, boundedTimestamp) {
         const requestedHeight = Number(targetHeightOverride);
-        const cacheKey = (lineMode ? 'line' : 'combined') +
+        const cacheKey = (boundedTimestamp ? 'timestamp-' : '') + (lineMode ? 'line' : 'combined') +
             (Number.isFinite(requestedHeight) ? '-' + Math.round(requestedHeight) : '');
         let cache = lcstPreparedBaseCache.get(source);
         if (!cache) {
@@ -7686,7 +7702,7 @@
 
         let preparedBase = cache[cacheKey];
         if (!preparedBase) {
-            const scale = chooseUpscale(source, !!lineMode, targetHeightOverride);
+            const scale = chooseUpscale(source, !!lineMode, targetHeightOverride, boundedTimestamp);
             const base = upscaleCanvas(source, scale);
             const grayData = grayscaleInvertedData(base);
             preparedBase = {
@@ -10138,7 +10154,7 @@
                     betOdds: betInfo ? betInfo.value : null,
                     betBelowMin: !!(betInfo && betInfo.belowMin),
                     claimTimestamp: claimTimestamp || null,
-                    claimTimestampText: claimTimestamp ? lcstFormatClaimTimestamp(claimTimestamp) : ''
+                    claimTimestampText: claimTimestamp ? lcstFormatClaimTimestamp(claimTimestamp) : (lcstTimestampReadStatus.get(sourceCanvas) || 'Tanggal/jam belum terbaca; periksa gambar target.')
                 };
             }
 
@@ -10168,7 +10184,7 @@
                 betOdds: betInfo ? betInfo.value : null,
                 betBelowMin: !!(betInfo && betInfo.belowMin),
                 claimTimestamp: claimTimestamp || null,
-                claimTimestampText: claimTimestamp ? lcstFormatClaimTimestamp(claimTimestamp) : ''
+                claimTimestampText: claimTimestamp ? lcstFormatClaimTimestamp(claimTimestamp) : (lcstTimestampReadStatus.get(sourceCanvas) || 'Tanggal/jam belum terbaca; periksa gambar target.')
             };
         })().catch(error => ({
             betOdds: null, betBelowMin: false, claimTimestamp: null,
@@ -10304,7 +10320,7 @@
                         </div>
                         <div class="lcst-nova-brand-copy">
                             <div class="lcst-nova-eyebrow">LINETOGEL • SCAN STUDIO</div>
-                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.8.5</span></h3>
+                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.8.6</span></h3>
                             <div class="lcst-subtitle">Periode, tanggal & waktu dalam satu ruang kerja</div>
                         </div>
                     </div>
