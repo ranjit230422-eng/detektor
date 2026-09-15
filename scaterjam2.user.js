@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LiveChat OCR Claim — WIB/WITA/WIT + Batas 02.00
 // @namespace    linetogel-livechat-ocr-claim-fixed
-// @version      7.8.1
+// @version      7.8.2
 // @description  Panel OCR LiveChat untuk Android: gambar tetap diambil dari chat aktif, dapat disusun dengan sentuhan, dan tampilan dibuat ringan.
 // @author       OpenAI
 // @match        https://my.livechatinc.com/*
@@ -26,7 +26,7 @@
 
     // Versi terbaru mengambil alih UI lama bila lebih dari satu versi tidak sengaja aktif.
     // Ini mencegah script lama memblokir perbaikan melalui guard boolean yang sama.
-    const LCST_BUILD_VERSION = '7.8.1-android-livechat-touch-sort';
+    const LCST_BUILD_VERSION = '7.8.2-android-livechat-touch-sort';
     const lcstExistingInstance = window.__LC_BUBBLE_SCREENSHOT_ACTIVE_ONLY__;
     if (lcstExistingInstance && typeof lcstExistingInstance === 'object' && lcstExistingInstance.version === LCST_BUILD_VERSION) return;
     try {
@@ -4640,7 +4640,8 @@
     };
 
     function lcstFixOcrNumericText(value) {
-        const source = String(value == null ? '' : value).toUpperCase();
+        const source = String(value == null ? '' : value).normalize('NFKC').toUpperCase()
+            .replace(/[：]/g, ':').replace(/[／]/g, '/').replace(/[–—−]/g, '-');
         let out = '';
         for (let i = 0; i < source.length; i++) {
             const ch = source[i];
@@ -4979,6 +4980,15 @@
             const clock = lcstParseClockParts(m[1],m[2],m[3],'');
             if (clock) clocks.push({clock,index:m.index,end:re.lastIndex});
         }
+        // HH.mm is accepted only following a separate date, never as date evidence itself.
+        re = /\b([0-2]?\d)\s*\.\s*([0-5]\d)\b/g;
+        while ((m = re.exec(text))) {
+            if (/^\s*\.\s*\d/.test(text.slice(re.lastIndex)) || /\d\s*\.\s*$/.test(text.slice(0,m.index))) continue;
+            if (spans.some(([a,b]) => m.index < b && re.lastIndex > a)) continue;
+            if (!dates.some(d => d.end <= m.index && m.index - d.end < 24)) continue;
+            const clock = lcstParseClockParts(m[1],m[2],'','');
+            if (clock) clocks.push({clock,index:m.index,end:re.lastIndex});
+        }
         const candidates = [];
         for (const date of dates) for (const time of clocks) {
             if (time.index < date.end && time.end > date.index) continue;
@@ -4989,7 +4999,10 @@
             const start = Math.min(date.index,time.index);
             const end = Math.max(date.end,time.end);
             const evidence = text.slice(start,end);
-            const ts = lcstMakeImageTimestamp(date.date,time.clock,evidence,'image-row-date-time',0,sourceGmtOffsetMinutes);
+            const rowStart = text.lastIndexOf('\n', start - 1) + 1;
+            const rowEnd = text.indexOf('\n', end);
+            const rowZone = lcstFindExplicitGmtOffsetMinutes(text.slice(rowStart, rowEnd < 0 ? text.length : rowEnd));
+            const ts = lcstMakeImageTimestamp(date.date,time.clock,evidence,'image-row-date-time',0,sourceGmtOffsetMinutes != null ? sourceGmtOffsetMinutes : rowZone);
             ts.dateEvidence = 'image';
             ts.dateText = date.text;
             ts.yearInferred = !date.explicitYear;
@@ -7311,7 +7324,13 @@
              width:right - width * 0.015, height:markerHeight * 3.85},
             {name:'image-time-column-margin', left:0,
              top:Math.max(0, marker.top - markerHeight * 2.85),
-             width:right, height:markerHeight * 4.2}
+             width:right, height:markerHeight * 4.2},
+            {name:'image-time-column-wide', left:0,
+             top:Math.max(0, marker.top - markerHeight * 2.85),
+             width:Math.min(width, Math.max(right, marker.left - width * 0.008)), height:markerHeight * 4.2},
+            {name:'image-time-row-wide', left:0,
+             top:Math.max(0, marker.top - markerHeight * 2.85),
+             width:Math.min(width, Math.max(width * 0.38, marker.left)), height:markerHeight * 4.2}
         ];
         return variants.filter(rect => rect.width >= 25 && rect.height >= 16)
             .map(rect => ({name:rect.name,rect}));
@@ -7386,7 +7405,10 @@
         const passes = [{index:0,psm:6,mode:'soft',height:132},
             {index:0,psm:6,mode:'soft',height:220},
             {index:0,psm:6,mode:'otsu',height:220},
-            {index:1,psm:6,mode:'soft',height:220}];
+            {index:1,psm:6,mode:'soft',height:220},
+            {index:2,psm:6,mode:'soft',height:260},
+            {index:3,psm:6,mode:'soft',height:260},
+            {index:3,psm:11,mode:'otsu',height:260}];
         try {
             // Kolom ini hanya angka tanggal/jam. Alfabet bebas membuat 09/11 terbaca na/n.
             await worker.setParameters({tessedit_char_whitelist:'0123456789:/.,- AMPamp',
@@ -7396,6 +7418,7 @@
                 if (!item) continue;
                 try {
                     await new Promise(resolve => setTimeout(resolve, 0));
+                    if (pass.index >= 2) await lcstSetTimestampOcrMode(worker);
                     if (!item.canvas) item.canvas = cropCanvas(sourceCanvas,item.rect);
                     const prepared = renderPreparedVariant(item.canvas,pass.mode,false,pass.height);
                     const result = await recognizePrepared(worker,prepared,pass.psm);
@@ -7405,7 +7428,11 @@
                     if (!parsed || !parsed.hasTime) continue;
                     // Kolom history mencetak MM/DD dua digit. 09/1 bisa kehilangan
                     // digit terakhir dari 09/11: jangan menerima sebagai 1 September.
-                    if (parsed.yearInferred && !/^\d{2}\s*[-/.]\s*\d{2}$/.test(parsed.dateText || '')) continue;
+                    const shortDate = parsed.yearInferred && !/^\d{2}\s*[-/.]\s*\d{2}$/.test(parsed.dateText || '');
+                    const periodDate = lcstParseClaimDateFromPeriod(fallbackPeriod);
+                    // A single missing digit must not turn 09/15 into 09/1.
+                    // Short dates need both repeated OCR and agreement with the period.
+                    if (shortDate && (!periodDate || periodDate.dateKey !== parsed.sourceDateKey)) continue;
                     parsed.confidence = Number(result.data.confidence) || 0;
                     parsed.source = item.name+'-psm'+pass.psm;
                     const zone = lcstFindExplicitGmtOffsetMinutes(raw);
@@ -7413,7 +7440,7 @@
                     candidates.push({parsed,key,zone,raw});
                     const agreeing = candidates.filter(x => x.key === key);
                     // Hasil lemah diperiksa ulang; satu pembacaan lemah tidak mengunci tanggal.
-                    if (parsed.confidence >= 60 || agreeing.length >= 2) {
+                    if ((!shortDate && parsed.confidence >= 60) || agreeing.length >= 2) {
                         bestTimestamp = parsed;
                         if (zone != null) timezone = {offsetMinutes:zone,rawText:raw,source:parsed.source};
                         break;
@@ -7423,7 +7450,7 @@
             if (!timezone) {
                 await lcstSetTimestampOcrMode(worker);
                 // Zona berasal dari gambar yang sedang diproses, tidak dari paket lain.
-                timezone = await lcstReadExplicitTimezoneOffsetFromImage(sourceCanvas,marker,worker,[]);
+                timezone = await lcstReadExplicitTimezoneOffsetFromImage(sourceCanvas,marker,worker,rawParts);
             }
         } finally {
             await lcstRestoreNumericOcrMode(worker);
@@ -9913,7 +9940,7 @@
 
             const readTimestampAfterCode = async (activeWorker) => {
                 const trustedPeriod = await periodForMetadataPromise;
-                if (!trustedPeriod || !activeWorker) return null;
+                if (!activeWorker) return null;
                 timestampAttempted = true;
                 return readClaimTimestampFromSecondImage(
                     sourceCanvas,
@@ -10156,7 +10183,7 @@
                         </div>
                         <div class="lcst-nova-brand-copy">
                             <div class="lcst-nova-eyebrow">LINETOGEL • SCAN STUDIO</div>
-                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.8.1</span></h3>
+                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.8.2</span></h3>
                             <div class="lcst-subtitle">Periode, tanggal & waktu dalam satu ruang kerja</div>
                         </div>
                     </div>
