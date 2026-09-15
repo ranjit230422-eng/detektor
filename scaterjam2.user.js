@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LiveChat OCR Claim — WIB/WITA/WIT + Batas 02.00
 // @namespace    linetogel-livechat-ocr-claim-fixed
-// @version      7.8.7
+// @version      7.8.8
 // @description  Panel OCR LiveChat untuk Android: gambar tetap diambil dari chat aktif, dapat disusun dengan sentuhan, dan tampilan dibuat ringan.
 // @author       OpenAI
 // @match        https://my.livechatinc.com/*
@@ -26,7 +26,7 @@
 
     // Versi terbaru mengambil alih UI lama bila lebih dari satu versi tidak sengaja aktif.
     // Ini mencegah script lama memblokir perbaikan melalui guard boolean yang sama.
-    const LCST_BUILD_VERSION = '7.8.7-android-livechat-touch-sort';
+    const LCST_BUILD_VERSION = '7.8.8-android-livechat-touch-sort';
     const lcstExistingInstance = window.__LC_BUBBLE_SCREENSHOT_ACTIVE_ONLY__;
     if (lcstExistingInstance && typeof lcstExistingInstance === 'object' && lcstExistingInstance.version === LCST_BUILD_VERSION) return;
     try {
@@ -10199,7 +10199,7 @@
         // Kode, tanggal, jam, dan GMT diselesaikan sebagai satu hasil. Pembacaan
         // metadata tetap sudah dimulai paralel sejak OCR kode berjalan, jadi bagian
         // ini biasanya tinggal mengambil hasil worker yang hampir selesai.
-        const completedMetadata = await (async () => {
+        const finishMetadata = () => (async () => {
             const earlyMetadata = await earlyMetadataPromise;
             let betInfo = earlyMetadata && earlyMetadata.betInfo
                 ? earlyMetadata.betInfo
@@ -10252,6 +10252,9 @@
             validationError: error && error.message ? error.message : String(error)
         }));
 
+        const deferredMetadata = !!(overrides && overrides.deferMetadata && focused && focused.period);
+        const completedMetadata = deferredMetadata ? {} : await finishMetadata();
+
         let finalResult;
         if (!focused.period && LCST_STRICT_DOUBLE_MARKER) {
             const topInfo = focused.debugTop ? ' atas=' + focused.debugTop : '';
@@ -10289,7 +10292,23 @@
         finalResult.markerOccurrence = Number(marker.selectedOccurrence) || 0;
         finalResult.markerOccurrenceCount = Number(marker.selectedOccurrenceCount) || 1;
         finalResult.markerCenterY = Number(marker.centerY) || 0;
-        if (finalResult.period && !finalResult.validationError) {
+        if (deferredMetadata) {
+            // Keep this worker idle until every package's code has been attempted.
+            const codeResult = { ...finalResult };
+            let completion = null;
+            finalResult.finishMetadata = () => {
+                if (!completion) completion = finishMetadata().then(metadata => {
+                    const complete = { ...codeResult, ...metadata };
+                    if (complete.period && !complete.validationError) {
+                        lcstPeriodResultCache.set(cacheKey, complete);
+                        trimFastCache(lcstPeriodResultCache, LCST_RESULT_CACHE_LIMIT);
+                    }
+                    return complete;
+                });
+                return completion;
+            };
+        }
+        if (finalResult.period && !finalResult.validationError && !deferredMetadata) {
             lcstPeriodResultCache.set(cacheKey, finalResult);
             trimFastCache(lcstPeriodResultCache, LCST_RESULT_CACHE_LIMIT);
         }
@@ -10380,7 +10399,7 @@
                         </div>
                         <div class="lcst-nova-brand-copy">
                             <div class="lcst-nova-eyebrow">LINETOGEL • SCAN STUDIO</div>
-                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.8.7</span></h3>
+                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.8.8</span></h3>
                             <div class="lcst-subtitle">Periode, tanggal & waktu dalam satu ruang kerja</div>
                         </div>
                     </div>
@@ -11809,6 +11828,7 @@
             state.scan.claimDeadlineByRow = [];
             state.scan.claimTimestampByRow = [];
             state.scan.metadataPendingRows = new Array(rows).fill(true);
+            renderPeriodInputs(false);
             if (state.claimExpiredNotified) state.claimExpiredNotified.clear();
             hideClaimNotification();
             const liveOutput = panel.querySelector('#lcst-output');
@@ -11816,6 +11836,7 @@
 
             let ok = 0;
             let completedRows = 0;
+            const metadataJobs = [];
             const targetSourcesByRow = [];
             for (let row = 0; row < rows; row++) {
                 const base = row * packageSize;
@@ -11911,6 +11932,7 @@
                         },
                         {
                             ...(workerOverrides || {}),
+                            ...(rows > 1 ? {deferMetadata:true, metadataWorker:null, timestampWorker:null} : {}),
                             markerSelection: markerSelectionByRow[row],
                             onCodeReady: publishCodeReady
                         }
@@ -11926,6 +11948,8 @@
                     };
                 }
 
+                const applyFinishedRow = (result) => {
+                    if (state.closed) return;
                 state.scan.ocrTexts[row] = result.text || '';
                 state.scan.ocrPeriods[row] = result.period || '';
                 state.scan.ocrMeta[row] = {
@@ -11999,6 +12023,15 @@
                         donePct
                     );
                 }
+                };
+                if (result && typeof result.finishMetadata === 'function') {
+                    metadataJobs.push(async () => {
+                        if (state.closed) return;
+                        setScanState('scanning', 'MEMERIKSA PAKET ' + (row + 1), 'Kode semua paket sudah dicoba • memeriksa tanggal dan taruhan');
+                        applyFinishedRow(await result.finishMetadata());
+                    });
+                } else applyFinishedRow(result);
+
             };
 
             try {
@@ -12014,12 +12047,9 @@
                 const startup = await Promise.all([primaryPromise, targetAnalysesPromise]);
                 const targetAnalyses = startup[1] || [];
                 const identityCounts = new Map();
-                const identityByRow = targetSourcesByRow.map((src, row) => {
-                    const analysis = targetAnalyses[row];
-                    const fingerprint = String(analysis && analysis.visualFingerprint || '').trim();
-                    const key = fingerprint
-                        ? 'visual:' + fingerprint
-                        : lcstStableImageSourceKey(src);
+                const identityByRow = targetSourcesByRow.map((src) => {
+                    // Exact source identity includes query parameters: file IDs may live there.
+                    const key = String(src || '').split('#')[0];
                     if (key) identityCounts.set(key, (identityCounts.get(key) || 0) + 1);
                     return key;
                 });
@@ -12065,9 +12095,18 @@
                     });
                 } else {
                     for (let row = 0; row < rows; row++) {
-                        await processRow(row, null);
+                        try { await processRow(row, null); }
+                        catch (error) {
+                            state.scan.metadataPendingRows[row] = false;
+                            state.scan.ocrMeta[row] = {error:String(error.message || error), validationError:'Paket ini gagal diproses. Scan ulang.'};
+                        }
                     }
                 }
+
+                // On one-worker phones both codes are read before either package's metadata.
+                // Separate workers can validate their respective packages together.
+                if (secondaryWorkerUsed) await Promise.all(metadataJobs.map(job => job()));
+                else for (const job of metadataJobs) await job();
 
                 // HARD LOCK KODE UNIK: walaupun dua hasil OCR selesai bersamaan,
                 // periode yang sudah dipakai paket sebelumnya tidak boleh ditempelkan
