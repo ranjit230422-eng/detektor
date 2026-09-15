@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LiveChat OCR Claim — WIB/WITA/WIT + Batas 02.00
 // @namespace    linetogel-livechat-ocr-claim-fixed
-// @version      7.8.2
+// @version      7.8.3
 // @description  Panel OCR LiveChat untuk Android: gambar tetap diambil dari chat aktif, dapat disusun dengan sentuhan, dan tampilan dibuat ringan.
 // @author       OpenAI
 // @match        https://my.livechatinc.com/*
@@ -26,7 +26,7 @@
 
     // Versi terbaru mengambil alih UI lama bila lebih dari satu versi tidak sengaja aktif.
     // Ini mencegah script lama memblokir perbaikan melalui guard boolean yang sama.
-    const LCST_BUILD_VERSION = '7.8.2-android-livechat-touch-sort';
+    const LCST_BUILD_VERSION = '7.8.3-android-livechat-touch-sort';
     const lcstExistingInstance = window.__LC_BUBBLE_SCREENSHOT_ACTIVE_ONLY__;
     if (lcstExistingInstance && typeof lcstExistingInstance === 'object' && lcstExistingInstance.version === LCST_BUILD_VERSION) return;
     try {
@@ -4407,6 +4407,7 @@
             // Kode boleh tampil lebih dahulu di input, tetapi output baru dibuka
             // setelah validasi taruhan dan timestamp paket tersebut selesai.
             if (scan.metadataPendingRows && scan.metadataPendingRows[rowIdx]) continue;
+            if (scan.ocrMeta && scan.ocrMeta[rowIdx] && scan.ocrMeta[rowIdx].validationError) continue;
 
             // Paket dengan Taruhan di bawah 1,60 tidak dimasukkan ke output,
             // sehingga paket tersebut tidak dapat tersalin lewat COPY OUTPUT
@@ -5308,6 +5309,47 @@
             })();
         });
     }
+    function lcstBoundPromise(promise, milliseconds, message, onTimeout) {
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => {
+                if (onTimeout) onTimeout();
+                reject(new Error(message));
+            }, milliseconds);
+            Promise.resolve(promise).then(value => { clearTimeout(timer); resolve(value); },
+                error => { clearTimeout(timer); reject(error); });
+        });
+    }
+
+    async function lcstCreateBoundedWorker(...args) {
+        let abandoned = false;
+        const creation = window.Tesseract.createWorker(...args);
+        creation.then(worker => {
+            if (abandoned) Promise.resolve(worker.terminate()).catch(() => {});
+        }, () => {});
+        const worker = await lcstBoundPromise(creation, 45000,
+            'Persiapan OCR terlalu lama. Coba SCAN TURBO lagi.', () => { abandoned = true; });
+        let stopped = false;
+        const stop = () => {
+            if (stopped) return;
+            stopped = true;
+            if (lcstSharedWorker === worker) lcstSharedWorker = null;
+            if (lcstSecondaryWorker === worker) lcstSecondaryWorker = null;
+            if (lcstMetadataWorker === worker) lcstMetadataWorker = null;
+            if (lcstTimestampWorker === worker) lcstTimestampWorker = null;
+            try { Promise.resolve(worker.terminate()).catch(() => {}); } catch (e) {}
+        };
+        for (const method of ['recognize', 'setParameters']) {
+            const original = worker[method].bind(worker);
+            worker[method] = (...values) => {
+                if (stopped) return Promise.reject(new Error('OCR terhenti. Silakan scan ulang.'));
+                return lcstBoundPromise(Promise.resolve().then(() => original(...values)),
+                    method === 'recognize' ? 15000 : 5000,
+                    'OCR melebihi batas waktu. Silakan scan ulang.', stop);
+            };
+        }
+        return worker;
+    }
+
     async function getSharedOCRWorker(onProgress) {
         await waitForTesseract(15000);
         lcstWorkerProgressHandler = onProgress || null;
@@ -5317,7 +5359,7 @@
 
         const workerGeneration = lcstWorkerGeneration;
         lcstSharedWorkerInit = (async () => {
-            const worker = await window.Tesseract.createWorker(
+            const worker = await lcstCreateBoundedWorker(
                 'eng',
                 1,
                 {
@@ -5371,7 +5413,7 @@
 
         const workerGeneration = lcstWorkerGeneration;
         lcstSecondaryWorkerInit = (async () => {
-            const worker = await window.Tesseract.createWorker(
+            const worker = await lcstCreateBoundedWorker(
                 'eng',
                 1,
                 {
@@ -5411,7 +5453,7 @@
 
         const workerGeneration = lcstWorkerGeneration;
         lcstMetadataWorkerInit = (async () => {
-            const worker = await window.Tesseract.createWorker(
+            const worker = await lcstCreateBoundedWorker(
                 'eng',
                 1,
                 {
@@ -5453,7 +5495,7 @@
 
         const workerGeneration = lcstWorkerGeneration;
         lcstTimestampWorkerInit = (async () => {
-            const worker = await window.Tesseract.createWorker(
+            const worker = await lcstCreateBoundedWorker(
                 'eng',
                 1,
                 {
@@ -7366,7 +7408,7 @@
         } catch (e) {}
     }
 
-    async function lcstReadExplicitTimezoneOffsetFromImage(sourceCanvas, marker, worker, knownRawParts) {
+    async function lcstReadExplicitTimezoneOffsetFromImage(sourceCanvas, marker, worker, knownRawParts, deadline) {
         const knownText = (knownRawParts || []).join('\n');
         const knownOffset = lcstFindExplicitGmtOffsetMinutes(knownText);
         if (knownOffset != null) return {offsetMinutes:knownOffset,rawText:knownText,source:'timestamp-raw'};
@@ -7375,6 +7417,7 @@
         const crops = buildClaimTimezoneCropCanvases(sourceCanvas,marker);
         const passes = [{index:0,mode:'soft',psm:11}, {index:1,mode:'soft',psm:11}, {index:0,mode:'otsu',psm:6}];
         for (const pass of passes) {
+                if (deadline && Date.now() >= deadline) break;
             const item = crops[pass.index];
             if (!item) continue;
             try {
@@ -7398,6 +7441,7 @@
     async function readClaimTimestampFromSecondImage(sourceCanvas, marker, worker, fallbackPeriod, existingText) {
         // existingText adalah OCR kode; jangan pasangkan angkanya dengan jam crop.
         const rawParts = [];
+        const deadline = Date.now() + 12000;
         const candidates = [];
         let timezone = null;
         let bestTimestamp = null;
@@ -7414,6 +7458,7 @@
             await worker.setParameters({tessedit_char_whitelist:'0123456789:/.,- AMPamp',
                 preserve_interword_spaces:'1',classify_bln_numeric_mode:'0'});
             for (const pass of passes) {
+                if (deadline && Date.now() >= deadline) break;
                 const item = crops[pass.index];
                 if (!item) continue;
                 try {
@@ -7447,10 +7492,10 @@
                     }
                 } catch (e) {}
             }
-            if (!timezone) {
+            if (!timezone && bestTimestamp && Date.now() < deadline) {
                 await lcstSetTimestampOcrMode(worker);
                 // Zona berasal dari gambar yang sedang diproses, tidak dari paket lain.
-                timezone = await lcstReadExplicitTimezoneOffsetFromImage(sourceCanvas,marker,worker,rawParts);
+                timezone = await lcstReadExplicitTimezoneOffsetFromImage(sourceCanvas,marker,worker,rawParts,deadline);
             }
         } finally {
             await lcstRestoreNumericOcrMode(worker);
@@ -9875,10 +9920,10 @@
             ? Promise.resolve(overrides.worker)
             : getSharedOCRWorker(onProgress);
         const metadataWorkerPromise = hasOverride('metadataWorker')
-            ? Promise.resolve(overrides.metadataWorker)
+            ? Promise.resolve(overrides.metadataWorker).catch(() => null)
             : getMetadataOCRWorker().catch(() => null);
         const timestampWorkerPromise = hasOverride('timestampWorker')
-            ? Promise.resolve(overrides.timestampWorker)
+            ? Promise.resolve(overrides.timestampWorker).catch(() => null)
             : getTimestampOCRWorker().catch(() => null);
         const helperPeriodWorkerPromise = hasOverride('helperPeriodWorker')
             ? Promise.resolve(overrides.helperPeriodWorker).catch(() => null)
@@ -10091,7 +10136,11 @@
                 claimTimestamp: claimTimestamp || null,
                 claimTimestampText: claimTimestamp ? lcstFormatClaimTimestamp(claimTimestamp) : ''
             };
-        })();
+        })().catch(error => ({
+            betOdds: null, betBelowMin: false, claimTimestamp: null,
+            claimTimestampText: '',
+            validationError: error && error.message ? error.message : String(error)
+        }));
 
         let finalResult;
         if (!focused.period && LCST_STRICT_DOUBLE_MARKER) {
@@ -10119,6 +10168,7 @@
             };
         }
 
+        finalResult.validationError = completedMetadata.validationError || '';
         finalResult.betOdds = completedMetadata ? completedMetadata.betOdds : null;
         finalResult.betBelowMin = !!(completedMetadata && completedMetadata.betBelowMin);
         finalResult.claimTimestamp = completedMetadata ? (completedMetadata.claimTimestamp || null) : null;
@@ -10129,7 +10179,7 @@
         finalResult.markerOccurrence = Number(marker.selectedOccurrence) || 0;
         finalResult.markerOccurrenceCount = Number(marker.selectedOccurrenceCount) || 1;
         finalResult.markerCenterY = Number(marker.centerY) || 0;
-        if (finalResult.period) {
+        if (finalResult.period && !finalResult.validationError) {
             lcstPeriodResultCache.set(cacheKey, finalResult);
             trimFastCache(lcstPeriodResultCache, LCST_RESULT_CACHE_LIMIT);
         }
@@ -10183,7 +10233,7 @@
                         </div>
                         <div class="lcst-nova-brand-copy">
                             <div class="lcst-nova-eyebrow">LINETOGEL • SCAN STUDIO</div>
-                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.8.2</span></h3>
+                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.8.3</span></h3>
                             <div class="lcst-subtitle">Periode, tanggal & waktu dalam satu ruang kerja</div>
                         </div>
                     </div>
@@ -10498,6 +10548,18 @@
             if (out && out.value !== output) out.value = output;
             const empty = panel.querySelector('#lcst-empty-box');
             if (empty) empty.style.display = state.scan.images.length ? 'none' : 'block';
+            if (out) {
+                const reasons = (state.scan.ocrPeriods || []).map((period, row) => {
+                    const label = 'Paket ' + (row + 1) + (period ? ' • ' + period : '');
+                    if (state.scan.metadataPendingRows[row]) return label + ': memeriksa tanggal dan taruhan...';
+                    const meta = state.scan.ocrMeta[row] || {};
+                    if (meta.validationError) return label + ': ' + meta.validationError;
+                    if (state.scan.betBelowMinRows[row]) return label + ': taruhan di bawah 1,60.';
+                    if (state.scan.claimExpiredRows[row]) return label + ': ' + lcstClaimStatusMessage(state.scan.claimDeadlineByRow[row]);
+                    return !period ? label + ': periode belum terbaca.' : '';
+                }).filter(Boolean);
+                out.placeholder = reasons.join('\n') || 'Output Excel muncul setelah paket selesai diperiksa.';
+            }
             updateCopyAvailability(output);
         }
 
@@ -11665,6 +11727,7 @@
                     // output/copy menunggu taruhan serta aturan tanggal semalam selesai.
                     syncSinglePeriodInput(row);
                     updateOcrBadgeRow(row);
+                    updateOutput();
                     setOcrStatus(
                         'Paket <b>' + (row + 1) + '/' + rows +
                         '</b> • kode sudah terkunci: <b style="color:#91f5b7">' +
@@ -11698,8 +11761,9 @@
                     );
                 } catch (err) {
                     result = {
-                        period: '',
-                        text: '',
+                        period: state.scan.ocrPeriods[row] || '',
+                        text: state.scan.ocrTexts[row] || '',
+                        validationError: err && err.message ? err.message : String(err),
                         confidence: 0,
                         markerFound: false,
                         error: err && err.message ? err.message : String(err)
@@ -11717,7 +11781,8 @@
                     markerOccurrenceCount: result.markerOccurrenceCount || 1,
                     source: result.source || '',
                     passes: result.passes || 0,
-                    error: result.error || ''
+                    error: result.error || '',
+                    validationError: result.validationError || ''
                 };
 
                 state.scan.metadataPendingRows[row] = false;
@@ -11756,7 +11821,7 @@
                         cssEscapeText(result.period) + '</b> • keyakinan <b>' +
                         (result.confidence || 0) + '%</b>.' +
                         '<br>Tanggal/Jam/GMT gambar ke-2: <b>' +
-                        cssEscapeText(result.claimTimestampText || 'belum terbaca') +
+                        cssEscapeText(result.validationError || result.claimTimestampText || 'belum terbaca') +
                         '</b>.' +
                         (claimStatus.hasDate
                             ? ' • Deadline <b>' +
@@ -11904,7 +11969,10 @@
                     '<br>' +
                     (ok < rows
                         ? 'Paket gagal sengaja dibiarkan untuk pemeriksaan manual agar OCR tidak mengambil kode dari baris lain.'
-                        : 'Semua kode berhasil dikunci pada baris dengan dua bulatan.'),
+                        : 'Semua kode berhasil dikunci pada baris dengan dua bulatan.') +
+                    '<br><b>Output Excel: ' + makeOutput(state.scan).trim().split('\n').filter(Boolean).length +
+                    ' paket siap disalin.</b>' +
+                    (!makeOutput(state.scan).trim() ? '<br>Lihat keterangan pada kotak Output Excel untuk alasan paket belum dapat ditampilkan.' : ''),
                     100,
                     true
                 );
@@ -11931,6 +11999,13 @@
                 );
                 showManualScanNotification([]);
             } finally {
+                for (let row = 0; row < rows; row++) {
+                    if (!state.scan.metadataPendingRows[row]) continue;
+                    state.scan.metadataPendingRows[row] = false;
+                    state.scan.ocrMeta[row] = { ...(state.scan.ocrMeta[row] || {}),
+                        validationError: 'Pemeriksaan belum selesai. Klik SCAN TURBO untuk mencoba lagi.' };
+                }
+                updateOutput();
                 state.ocrRunning = false;
                 if (!state.scanRunning) {
                     panel.classList.remove('lcst-performance-mode');
