@@ -1,18 +1,24 @@
 // ==UserScript==
-// @name         LiveChat OCR Claim Jam 2 WIB - TERPISAH
-// @namespace    linetogel-livechat-ocr-claim-jam2-independent
-// @version      1.5.1
-// @description  Ultra Fast Scan + baca Taruhan MINBET 1,60; di bawah 1,60 otomatis TIDAK CAPAI MINBET dan tidak dapat claim/copy.
-// @author       Random
+// @name         LiveChat OCR Claim — WIB/WITA/WIT + Batas 02.00
+// @namespace    linetogel-livechat-ocr-claim-fixed
+// @version      7.8.0
+// @description  Panel OCR Android ringan: ambil gambar dari HP, susun dengan sentuhan, OCR tanggal/jam, maksimum dua worker.
+// @author       OpenAI
 // @match        https://my.livechatinc.com/*
 // @run-at       document-idle
 // @grant        GM_setClipboard
 // @grant        GM_xmlhttpRequest
+// @grant        GM_getValue
+// @grant        GM_setValue
 // @connect      *
 // @require      https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js
 // @noframes
 // ==/UserScript==
 
+(function () {
+  'use strict';
+
+  /**************** LIVECHAT MODULE ****************/
 (function () {
     'use strict';
 
@@ -20,20 +26,23 @@
 
     // Versi terbaru mengambil alih UI lama bila lebih dari satu versi tidak sengaja aktif.
     // Ini mencegah script lama memblokir perbaikan melalui guard boolean yang sama.
-    const LCJ2_BUILD_VERSION = '1.5.1-minbet-160';
-    const lcj2ExistingInstance = window.__LCJ2_OCR_CLAIM_JAM2_INDEPENDENT__;
-    if (lcj2ExistingInstance && typeof lcj2ExistingInstance === 'object' && lcj2ExistingInstance.version === LCJ2_BUILD_VERSION) return;
+    const LCST_BUILD_VERSION = '7.8.0-android-picker-touch-sort';
+    const lcstExistingInstance = window.__LC_BUBBLE_SCREENSHOT_ACTIVE_ONLY__;
+    if (lcstExistingInstance && typeof lcstExistingInstance === 'object' && lcstExistingInstance.version === LCST_BUILD_VERSION) return;
     try {
-        const oldPanel = document.getElementById('lcj2-panel-fixed');
-        const oldBubble = document.getElementById('lcj2-bubble-fixed');
+        const oldPanel = document.getElementById('lcst-panel-fixed');
+        const oldBubble = document.getElementById('lcst-bubble-fixed');
         if (oldPanel) oldPanel.remove();
         if (oldBubble) oldBubble.remove();
     } catch (e) {}
-    window.__LCJ2_OCR_CLAIM_JAM2_INDEPENDENT__ = { version: LCJ2_BUILD_VERSION, startedAt: Date.now() };
+    window.__LC_BUBBLE_SCREENSHOT_ACTIVE_ONLY__ = { version: LCST_BUILD_VERSION, startedAt: Date.now() };
 
-    const POS_KEY = 'lcj2_ocr_claim_jam2_position_v1';
-    const DB_KEY  = 'lcj2_ocr_claim_jam2_account_db_v1';
+    const POS_KEY = 'lc_bubble_screenshot_tool_position_active_only_v46_clean_final';
+    const DB_KEY  = 'screenshot_tool_db_v1';
     const Z_TOP   = 2147483647;
+    const LCST_DASHBOARD_LOGO_URL = 'https://line32762.com/assets/img/ei/logo.png?v=y5h2w2cmxvdvv6zrc0iq';
+    let lcstDashboardLogoDataUrl = '';
+    let lcstDashboardLogoPromise = null;
 
     let lastScan = { userId: 'user', marker: null, markerText: 'Tidak terdeteksi', images: [], allIds: [] };
 
@@ -56,26 +65,26 @@
     }
 
     function injectStyle() {
-        if (document.getElementById('lcj2-style-active-only')) return;
+        if (document.getElementById('lcst-style-active-only')) return;
         const style = document.createElement('style');
-        style.id = 'lcj2-style-active-only';
+        style.id = 'lcst-style-active-only';
         style.textContent = `
             :root{
-                --lcj2-bg:#050816;
-                --lcj2-surface:rgba(13,19,38,.88);
-                --lcj2-surface-2:rgba(18,27,51,.82);
-                --lcj2-line:rgba(148,163,184,.16);
-                --lcj2-text:#eef6ff;
-                --lcj2-muted:#8fa3bf;
-                --lcj2-cyan:#22d3ee;
-                --lcj2-blue:#3b82f6;
-                --lcj2-violet:#8b5cf6;
-                --lcj2-green:#22c55e;
-                --lcj2-red:#fb4f68;
-                --lcj2-orange:#f5a524;
-                --lcj2-radius:18px;
+                --lcst-bg:#050816;
+                --lcst-surface:rgba(13,19,38,.88);
+                --lcst-surface-2:rgba(18,27,51,.82);
+                --lcst-line:rgba(148,163,184,.16);
+                --lcst-text:#eef6ff;
+                --lcst-muted:#8fa3bf;
+                --lcst-cyan:#22d3ee;
+                --lcst-blue:#3b82f6;
+                --lcst-violet:#8b5cf6;
+                --lcst-green:#22c55e;
+                --lcst-red:#fb4f68;
+                --lcst-orange:#f5a524;
+                --lcst-radius:18px;
             }
-            #lcj2-bubble-fixed{
+            #lcst-bubble-fixed{
                 position:fixed;
                 top:84px;
                 right:24px;
@@ -100,7 +109,7 @@
                 overflow:hidden;
                 transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease;
             }
-            #lcj2-bubble-fixed:before{
+            #lcst-bubble-fixed:before{
                 content:"";
                 position:absolute;
                 width:54px;
@@ -108,17 +117,17 @@
                 border-radius:50%;
                 border:1px solid rgba(34,211,238,.28);
                 box-shadow:0 0 25px rgba(34,211,238,.12),inset 0 0 20px rgba(59,130,246,.10);
-                animation:lcj2Pulse 2.2s ease-in-out infinite;
+                animation:lcstPulse 2.2s ease-in-out infinite;
             }
-            #lcj2-bubble-fixed:after{
+            #lcst-bubble-fixed:after{
                 content:"";
                 position:absolute;
                 inset:-45%;
                 background:conic-gradient(from 90deg,transparent 0 26%,rgba(34,211,238,.50) 34%,transparent 42% 65%,rgba(139,92,246,.45) 74%,transparent 83%);
-                animation:lcj2Spin 5.5s linear infinite;
+                animation:lcstSpin 5.5s linear infinite;
                 opacity:.62;
             }
-            #lcj2-bubble-fixed .lcj2-icon{
+            #lcst-bubble-fixed .lcst-icon{
                 position:relative;
                 z-index:2;
                 width:23px;
@@ -127,7 +136,7 @@
                 border-radius:8px;
                 box-shadow:0 0 18px rgba(34,211,238,.42);
             }
-            #lcj2-bubble-fixed .lcj2-icon:before{
+            #lcst-bubble-fixed .lcst-icon:before{
                 content:"";
                 position:absolute;
                 left:4px;
@@ -138,7 +147,7 @@
                 border:2px solid #ffbd59;
                 box-shadow:9px 0 0 -2px #ffbd59;
             }
-            #lcj2-bubble-fixed .lcj2-icon:after{
+            #lcst-bubble-fixed .lcst-icon:after{
                 content:"";
                 position:absolute;
                 left:4px;
@@ -148,7 +157,7 @@
                 border-radius:4px;
                 background:linear-gradient(90deg,#22d3ee,#8b5cf6);
             }
-            #lcj2-bubble-fixed .lcj2-text{
+            #lcst-bubble-fixed .lcst-text{
                 position:relative;
                 z-index:2;
                 font-size:10px;
@@ -157,21 +166,21 @@
                 letter-spacing:1.5px;
                 color:#dffbff;
             }
-            #lcj2-bubble-fixed:hover{
+            #lcst-bubble-fixed:hover{
                 transform:translateY(-3px) scale(1.035);
                 border-color:rgba(34,211,238,.55);
                 box-shadow:0 26px 65px rgba(0,0,0,.65),0 0 30px rgba(34,211,238,.20),inset 0 1px 0 rgba(255,255,255,.22);
             }
-            #lcj2-bubble-fixed.lcj2-dragging{cursor:grabbing;transform:scale(1.04);opacity:.94}
-            @keyframes lcj2Spin{to{transform:rotate(360deg)}}
-            @keyframes lcj2Pulse{0%,100%{transform:scale(.92);opacity:.55}50%{transform:scale(1.08);opacity:1}}
-            @keyframes lcj2Blink{0%,100%{opacity:.45}50%{opacity:1}}
+            #lcst-bubble-fixed.lcst-dragging{cursor:grabbing;transform:scale(1.04);opacity:.94}
+            @keyframes lcstSpin{to{transform:rotate(360deg)}}
+            @keyframes lcstPulse{0%,100%{transform:scale(.92);opacity:.55}50%{transform:scale(1.08);opacity:1}}
+            @keyframes lcstBlink{0%,100%{opacity:.45}50%{opacity:1}}
 
-            #lcj2-panel-fixed{
+            #lcst-panel-fixed{
                 position:fixed;
                 inset:0;
                 z-index:${Z_TOP - 1};
-                color:var(--lcj2-text);
+                color:var(--lcst-text);
                 font:13px/1.45 Inter,Segoe UI,Arial,sans-serif;
                 overflow:auto;
                 padding:20px;
@@ -183,7 +192,7 @@
                     linear-gradient(180deg,#060918 0%,#03050d 100%);
                 backdrop-filter:blur(12px);
             }
-            #lcj2-panel-fixed:before{
+            #lcst-panel-fixed:before{
                 content:"";
                 position:fixed;
                 inset:0;
@@ -192,40 +201,40 @@
                 background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
                 background-size:32px 32px;
             }
-            #lcj2-panel-fixed *{box-sizing:border-box}
-            #lcj2-panel-fixed button,#lcj2-panel-fixed input,#lcj2-panel-fixed textarea{font-family:inherit}
+            #lcst-panel-fixed *{box-sizing:border-box}
+            #lcst-panel-fixed button,#lcst-panel-fixed input,#lcst-panel-fixed textarea{font-family:inherit}
             /* Paksa teks dashboard tetap dapat diseleksi/copy, termasuk saat OCR berjalan. */
-            #lcj2-panel-fixed,#lcj2-panel-fixed .lcj2-wrap,#lcj2-panel-fixed section,#lcj2-panel-fixed div,#lcj2-panel-fixed span,#lcj2-panel-fixed b,#lcj2-panel-fixed textarea,#lcj2-panel-fixed input{
+            #lcst-panel-fixed,#lcst-panel-fixed .lcst-wrap,#lcst-panel-fixed section,#lcst-panel-fixed div,#lcst-panel-fixed span,#lcst-panel-fixed b,#lcst-panel-fixed textarea,#lcst-panel-fixed input{
                 -webkit-user-select:text!important;user-select:text!important
             }
-            #lcj2-panel-fixed button,#lcj2-panel-fixed img,#lcj2-panel-fixed .lcj2-img-card,#lcj2-panel-fixed .lcj2-brand-logo,#lcj2-panel-fixed .lcj2-status-icon,#lcj2-panel-fixed .lcj2-progress{
+            #lcst-panel-fixed button,#lcst-panel-fixed img,#lcst-panel-fixed .lcst-img-card,#lcst-panel-fixed .lcst-brand-logo,#lcst-panel-fixed .lcst-status-icon,#lcst-panel-fixed .lcst-progress{
                 -webkit-user-select:none!important;user-select:none!important
             }
-            .lcj2-wrap{position:relative;max-width:1480px;margin:0 auto}
-            .lcj2-topbar{
+            .lcst-wrap{position:relative;max-width:1480px;margin:0 auto}
+            .lcst-topbar{
                 display:flex;
                 align-items:center;
                 justify-content:space-between;
                 gap:18px;
                 margin-bottom:16px;
                 padding:16px 18px;
-                border:1px solid var(--lcj2-line);
+                border:1px solid var(--lcst-line);
                 border-radius:22px;
                 background:linear-gradient(135deg,rgba(20,30,56,.90),rgba(8,12,27,.84));
                 box-shadow:0 20px 55px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.05);
             }
-            .lcj2-brand{display:flex;align-items:center;gap:13px;min-width:0}
-            .lcj2-brand-logo{
+            .lcst-brand{display:flex;align-items:center;gap:13px;min-width:0}
+            .lcst-brand-logo{
                 width:46px;height:46px;border-radius:15px;display:grid;place-items:center;flex:0 0 auto;
                 background:linear-gradient(145deg,rgba(34,211,238,.24),rgba(139,92,246,.22));
                 border:1px solid rgba(126,238,255,.26);box-shadow:inset 0 1px 0 rgba(255,255,255,.10),0 12px 24px rgba(0,0,0,.25)
             }
-            .lcj2-brand-logo span{font-size:20px;filter:drop-shadow(0 0 10px rgba(34,211,238,.65))}
-            .lcj2-title{margin:0;font-size:18px;font-weight:900;letter-spacing:.2px;color:#f7fbff}
-            .lcj2-subtitle{margin-top:3px;color:var(--lcj2-muted);font-size:11px;letter-spacing:.35px}
-            .lcj2-version{display:inline-flex;margin-left:8px;padding:3px 7px;border-radius:999px;background:rgba(34,211,238,.12);color:#8ff3ff;border:1px solid rgba(34,211,238,.18);font-size:9px;vertical-align:middle}
-            .lcj2-actions{display:flex;gap:9px;flex-wrap:wrap;justify-content:flex-end}
-            .lcj2-btn{
+            .lcst-brand-logo span{font-size:20px;filter:drop-shadow(0 0 10px rgba(34,211,238,.65))}
+            .lcst-title{margin:0;font-size:18px;font-weight:900;letter-spacing:.2px;color:#f7fbff}
+            .lcst-subtitle{margin-top:3px;color:var(--lcst-muted);font-size:11px;letter-spacing:.35px}
+            .lcst-version{display:inline-flex;margin-left:8px;padding:3px 7px;border-radius:999px;background:rgba(34,211,238,.12);color:#8ff3ff;border:1px solid rgba(34,211,238,.18);font-size:9px;vertical-align:middle}
+            .lcst-actions{display:flex;gap:9px;flex-wrap:wrap;justify-content:flex-end}
+            .lcst-btn{
                 border:1px solid rgba(255,255,255,.10);
                 border-radius:12px;
                 padding:10px 14px;
@@ -238,186 +247,186 @@
                 box-shadow:inset 0 1px 0 rgba(255,255,255,.10),0 8px 18px rgba(0,0,0,.18);
                 transition:transform .15s ease,filter .15s ease,border-color .15s ease;
             }
-            .lcj2-btn:hover{filter:brightness(1.12);transform:translateY(-1px);border-color:rgba(255,255,255,.22)}
-            .lcj2-btn:active{transform:translateY(0)}
-            .lcj2-btn:disabled{opacity:.48;cursor:not-allowed;filter:grayscale(.35);transform:none}
-            .lcj2-btn.green{background:linear-gradient(135deg,#14a65a,#08763c);border-color:rgba(74,222,128,.28)}
-            .lcj2-btn.blue{background:linear-gradient(135deg,#2585f4,#3154d8);border-color:rgba(96,165,250,.30)}
-            .lcj2-btn.red{background:linear-gradient(135deg,#ed4662,#b91c42);border-color:rgba(251,113,133,.30)}
-            .lcj2-btn.orange{background:linear-gradient(135deg,#f59e0b,#b45309);border-color:rgba(251,191,36,.32)}
-            .lcj2-btn.primary{padding:12px 18px;background:linear-gradient(135deg,#06b6d4,#2563eb 55%,#7c3aed);border-color:rgba(125,211,252,.35);box-shadow:0 14px 28px rgba(37,99,235,.22),inset 0 1px 0 rgba(255,255,255,.18)}
+            .lcst-btn:hover{filter:brightness(1.12);transform:translateY(-1px);border-color:rgba(255,255,255,.22)}
+            .lcst-btn:active{transform:translateY(0)}
+            .lcst-btn:disabled{opacity:.48;cursor:not-allowed;filter:grayscale(.35);transform:none}
+            .lcst-btn.green{background:linear-gradient(135deg,#14a65a,#08763c);border-color:rgba(74,222,128,.28)}
+            .lcst-btn.blue{background:linear-gradient(135deg,#2585f4,#3154d8);border-color:rgba(96,165,250,.30)}
+            .lcst-btn.red{background:linear-gradient(135deg,#ed4662,#b91c42);border-color:rgba(251,113,133,.30)}
+            .lcst-btn.orange{background:linear-gradient(135deg,#f59e0b,#b45309);border-color:rgba(251,191,36,.32)}
+            .lcst-btn.primary{padding:12px 18px;background:linear-gradient(135deg,#06b6d4,#2563eb 55%,#7c3aed);border-color:rgba(125,211,252,.35);box-shadow:0 14px 28px rgba(37,99,235,.22),inset 0 1px 0 rgba(255,255,255,.18)}
 
-            .lcj2-status-card{
+            .lcst-status-card{
                 position:relative;overflow:hidden;display:flex;align-items:flex-start;gap:12px;padding:13px 15px;margin-bottom:13px;
                 border-radius:17px;border:1px solid rgba(34,211,238,.18);background:linear-gradient(135deg,rgba(7,26,42,.90),rgba(12,16,34,.86));
                 box-shadow:0 14px 32px rgba(0,0,0,.20)
             }
-            .lcj2-status-icon{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;flex:0 0 auto;background:rgba(34,211,238,.10);border:1px solid rgba(34,211,238,.18)}
-            .lcj2-status-dot{width:9px;height:9px;border-radius:50%;background:#22d3ee;box-shadow:0 0 14px rgba(34,211,238,.9);animation:lcj2Blink 1.4s ease-in-out infinite}
-            .lcj2-status-content{min-width:0;flex:1}
-            .lcj2-status-title{font-size:10px;font-weight:900;letter-spacing:1px;color:#7eeeff;text-transform:uppercase;margin-bottom:3px}
-            .lcj2-ocr-box{font-size:12px;line-height:1.5;color:#d8ebff}
-            .lcj2-scan-state{
+            .lcst-status-icon{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;flex:0 0 auto;background:rgba(34,211,238,.10);border:1px solid rgba(34,211,238,.18)}
+            .lcst-status-dot{width:9px;height:9px;border-radius:50%;background:#22d3ee;box-shadow:0 0 14px rgba(34,211,238,.9);animation:lcstBlink 1.4s ease-in-out infinite}
+            .lcst-status-content{min-width:0;flex:1}
+            .lcst-status-title{font-size:10px;font-weight:900;letter-spacing:1px;color:#7eeeff;text-transform:uppercase;margin-bottom:3px}
+            .lcst-ocr-box{font-size:12px;line-height:1.5;color:#d8ebff}
+            .lcst-scan-state{
                 min-width:190px;min-height:54px;display:flex;align-items:center;gap:11px;flex:0 0 auto;
                 padding:10px 13px;border-radius:14px;border:1px solid rgba(148,163,184,.18);
                 background:linear-gradient(145deg,rgba(15,23,42,.90),rgba(5,10,24,.88));
                 box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 10px 24px rgba(0,0,0,.16);
                 transition:border-color .18s ease,background .18s ease,box-shadow .18s ease
             }
-            .lcj2-scan-state-dot{
+            .lcst-scan-state-dot{
                 width:12px;height:12px;border-radius:50%;flex:0 0 auto;background:#64748b;
                 box-shadow:0 0 0 5px rgba(100,116,139,.10),0 0 15px rgba(100,116,139,.28)
             }
-            .lcj2-scan-state-copy{min-width:0}
-            .lcj2-scan-state-label{
+            .lcst-scan-state-copy{min-width:0}
+            .lcst-scan-state-label{
                 display:block;margin-bottom:3px;color:#7f91ad;font-size:9px;font-weight:900;
                 letter-spacing:1px;text-transform:uppercase
             }
-            .lcj2-scan-state-text{
+            .lcst-scan-state-text{
                 display:block;color:#c9d4e5;font-size:12px;font-weight:1000;letter-spacing:.25px;white-space:nowrap
             }
-            .lcj2-scan-state-detail{
+            .lcst-scan-state-detail{
                 display:block;margin-top:2px;color:#7387a6;font-size:9px;font-weight:700;white-space:nowrap
             }
-            .lcj2-scan-state.waiting{border-color:rgba(96,165,250,.20)}
-            .lcj2-scan-state.waiting .lcj2-scan-state-dot{
+            .lcst-scan-state.waiting{border-color:rgba(96,165,250,.20)}
+            .lcst-scan-state.waiting .lcst-scan-state-dot{
                 background:#60a5fa;box-shadow:0 0 0 5px rgba(96,165,250,.10),0 0 15px rgba(96,165,250,.42)
             }
-            .lcj2-scan-state.waiting .lcj2-scan-state-text{color:#bfdbfe}
-            .lcj2-scan-state.scanning{
+            .lcst-scan-state.waiting .lcst-scan-state-text{color:#bfdbfe}
+            .lcst-scan-state.scanning{
                 border-color:rgba(34,211,238,.35);
                 background:linear-gradient(145deg,rgba(5,47,64,.72),rgba(6,18,38,.90));
                 box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 0 25px rgba(34,211,238,.10)
             }
-            .lcj2-scan-state.scanning .lcj2-scan-state-dot{
+            .lcst-scan-state.scanning .lcst-scan-state-dot{
                 background:#22d3ee;box-shadow:0 0 0 5px rgba(34,211,238,.11),0 0 18px rgba(34,211,238,.80);
-                animation:lcj2Blink 1s ease-in-out infinite
+                animation:lcstBlink 1s ease-in-out infinite
             }
-            .lcj2-scan-state.scanning .lcj2-scan-state-text{color:#7eeeff}
-            .lcj2-scan-state.success{
+            .lcst-scan-state.scanning .lcst-scan-state-text{color:#7eeeff}
+            .lcst-scan-state.success{
                 border-color:rgba(34,197,94,.34);
                 background:linear-gradient(145deg,rgba(7,67,38,.68),rgba(5,24,27,.90));
                 box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 0 25px rgba(34,197,94,.10)
             }
-            .lcj2-scan-state.success .lcj2-scan-state-dot{
+            .lcst-scan-state.success .lcst-scan-state-dot{
                 background:#22c55e;box-shadow:0 0 0 5px rgba(34,197,94,.11),0 0 18px rgba(34,197,94,.68)
             }
-            .lcj2-scan-state.success .lcj2-scan-state-text{color:#91f5b7}
-            .lcj2-scan-state.partial{
+            .lcst-scan-state.success .lcst-scan-state-text{color:#91f5b7}
+            .lcst-scan-state.partial{
                 border-color:rgba(245,158,11,.34);
                 background:linear-gradient(145deg,rgba(92,51,8,.60),rgba(28,20,16,.90))
             }
-            .lcj2-scan-state.partial .lcj2-scan-state-dot{
+            .lcst-scan-state.partial .lcst-scan-state-dot{
                 background:#f59e0b;box-shadow:0 0 0 5px rgba(245,158,11,.11),0 0 18px rgba(245,158,11,.55)
             }
-            .lcj2-scan-state.partial .lcj2-scan-state-text{color:#ffd58e}
-            .lcj2-scan-state.failed{
+            .lcst-scan-state.partial .lcst-scan-state-text{color:#ffd58e}
+            .lcst-scan-state.failed{
                 border-color:rgba(251,79,104,.34);
                 background:linear-gradient(145deg,rgba(76,15,35,.65),rgba(28,12,25,.90))
             }
-            .lcj2-scan-state.failed .lcj2-scan-state-dot{
+            .lcst-scan-state.failed .lcst-scan-state-dot{
                 background:#fb4f68;box-shadow:0 0 0 5px rgba(251,79,104,.11),0 0 18px rgba(251,79,104,.55)
             }
-            .lcj2-scan-state.failed .lcj2-scan-state-text{color:#ffb7c5}
-            .lcj2-account-scan-state{
+            .lcst-scan-state.failed .lcst-scan-state-text{color:#ffb7c5}
+            .lcst-account-scan-state{
                 width:100%;
                 min-width:0;
                 min-height:58px;
                 margin-top:10px;
                 justify-content:flex-start;
             }
-            .lcj2-progress{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.04)}
-            .lcj2-progress span{display:block;height:100%;width:0;background:linear-gradient(90deg,#22d3ee,#3b82f6,#8b5cf6);box-shadow:0 0 14px rgba(34,211,238,.65);transition:width .25s ease}
+            .lcst-progress{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.04)}
+            .lcst-progress span{display:block;height:100%;width:0;background:linear-gradient(90deg,#22d3ee,#3b82f6,#8b5cf6);box-shadow:0 0 14px rgba(34,211,238,.65);transition:width .25s ease}
 
-            .lcj2-card{
+            .lcst-card{
                 background:linear-gradient(155deg,rgba(17,25,47,.88),rgba(7,11,24,.88));
-                border:1px solid var(--lcj2-line);
-                border-radius:var(--lcj2-radius);
+                border:1px solid var(--lcst-line);
+                border-radius:var(--lcst-radius);
                 padding:15px;
                 margin-bottom:13px;
                 box-shadow:0 15px 38px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.035)
             }
-            .lcj2-grid2{display:grid;grid-template-columns:1fr 1fr;gap:13px}
-            .lcj2-info-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-            .lcj2-info-group{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
-            .lcj2-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:999px;font-size:10px;font-weight:900;border:1px solid rgba(255,255,255,.10);background:rgba(15,23,42,.72);color:#d8e6f8}
-            .lcj2-pill.blue{background:rgba(8,47,73,.62);color:#86efff;border-color:rgba(34,211,238,.20)}
-            .lcj2-pill.red{background:rgba(76,15,35,.62);color:#ffb7c5;border-color:rgba(251,79,104,.25)}
-            .lcj2-pill.green{background:rgba(7,67,38,.58);color:#91f5b7;border-color:rgba(34,197,94,.24)}
-            .lcj2-inline-copy{
+            .lcst-grid2{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+            .lcst-info-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+            .lcst-info-group{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+            .lcst-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:999px;font-size:10px;font-weight:900;border:1px solid rgba(255,255,255,.10);background:rgba(15,23,42,.72);color:#d8e6f8}
+            .lcst-pill.blue{background:rgba(8,47,73,.62);color:#86efff;border-color:rgba(34,211,238,.20)}
+            .lcst-pill.red{background:rgba(76,15,35,.62);color:#ffb7c5;border-color:rgba(251,79,104,.25)}
+            .lcst-pill.green{background:rgba(7,67,38,.58);color:#91f5b7;border-color:rgba(34,197,94,.24)}
+            .lcst-inline-copy{
                 width:24px;height:24px;display:inline-grid;place-items:center;flex:0 0 auto;margin:-3px -4px -3px 1px;
                 padding:0;border-radius:8px;border:1px solid rgba(126,238,255,.18);
                 color:#9af4ff;background:rgba(3,18,31,.46);cursor:pointer;
                 box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
                 transition:background .14s ease,border-color .14s ease,transform .14s ease,color .14s ease
             }
-            .lcj2-inline-copy:hover{background:rgba(34,211,238,.14);border-color:rgba(34,211,238,.42);transform:translateY(-1px)}
-            .lcj2-inline-copy:active{transform:translateY(0)}
-            .lcj2-inline-copy svg{width:13px;height:13px;display:block;pointer-events:none}
-            .lcj2-inline-copy.copied{color:#91f5b7;background:rgba(7,67,38,.58);border-color:rgba(34,197,94,.34)}
-            .lcj2-field-title{display:flex;align-items:center;gap:8px;font-weight:900;margin-bottom:9px;color:#b9f7ff;font-size:10px;letter-spacing:.8px;text-transform:uppercase}
-            .lcj2-field-title:before{content:"";width:7px;height:7px;border-radius:3px;background:linear-gradient(135deg,#22d3ee,#3b82f6)}
-            .lcj2-field-title.orange{color:#ffd58e}
-            .lcj2-field-title.orange:before{background:linear-gradient(135deg,#fbbf24,#f97316)}
-            .lcj2-input{
+            .lcst-inline-copy:hover{background:rgba(34,211,238,.14);border-color:rgba(34,211,238,.42);transform:translateY(-1px)}
+            .lcst-inline-copy:active{transform:translateY(0)}
+            .lcst-inline-copy svg{width:13px;height:13px;display:block;pointer-events:none}
+            .lcst-inline-copy.copied{color:#91f5b7;background:rgba(7,67,38,.58);border-color:rgba(34,197,94,.34)}
+            .lcst-field-title{display:flex;align-items:center;gap:8px;font-weight:900;margin-bottom:9px;color:#b9f7ff;font-size:10px;letter-spacing:.8px;text-transform:uppercase}
+            .lcst-field-title:before{content:"";width:7px;height:7px;border-radius:3px;background:linear-gradient(135deg,#22d3ee,#3b82f6)}
+            .lcst-field-title.orange{color:#ffd58e}
+            .lcst-field-title.orange:before{background:linear-gradient(135deg,#fbbf24,#f97316)}
+            .lcst-input{
                 width:100%;padding:11px 12px;border-radius:12px;border:1px solid rgba(126,238,255,.18);
                 background:rgba(3,7,18,.78);color:#f4f9ff;outline:none;margin-bottom:9px;font-size:12px;
                 box-shadow:inset 0 1px 0 rgba(255,255,255,.025);transition:border-color .15s ease,box-shadow .15s ease,background .15s ease
             }
-            .lcj2-input:focus{border-color:rgba(34,211,238,.62);box-shadow:0 0 0 3px rgba(34,211,238,.08);background:rgba(5,10,24,.92)}
-            .lcj2-note{display:flex;gap:14px;align-items:center;justify-content:space-between}
-            .lcj2-hints{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-            .lcj2-hint{padding:6px 9px;border-radius:9px;background:rgba(15,23,42,.68);border:1px solid rgba(148,163,184,.12);color:#9eb0c7;font-size:10px}
-            .lcj2-hint.strong{color:#8ff3ff;border-color:rgba(34,211,238,.20);background:rgba(8,47,73,.40);font-weight:900}
-            .lcj2-hint.copy-ready{color:#9ff7bd;border-color:rgba(34,197,94,.22);background:rgba(7,67,38,.38);font-weight:900}
-            .lcj2-copy-btn{min-width:112px}
-            .lcj2-copy-btn.copied{background:linear-gradient(135deg,#16a34a,#047857);box-shadow:0 0 0 3px rgba(34,197,94,.10),0 10px 22px rgba(0,0,0,.20)}
+            .lcst-input:focus{border-color:rgba(34,211,238,.62);box-shadow:0 0 0 3px rgba(34,211,238,.08);background:rgba(5,10,24,.92)}
+            .lcst-note{display:flex;gap:14px;align-items:center;justify-content:space-between}
+            .lcst-hints{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+            .lcst-hint{padding:6px 9px;border-radius:9px;background:rgba(15,23,42,.68);border:1px solid rgba(148,163,184,.12);color:#9eb0c7;font-size:10px}
+            .lcst-hint.strong{color:#8ff3ff;border-color:rgba(34,211,238,.20);background:rgba(8,47,73,.40);font-weight:900}
+            .lcst-hint.copy-ready{color:#9ff7bd;border-color:rgba(34,197,94,.22);background:rgba(7,67,38,.38);font-weight:900}
+            .lcst-copy-btn{min-width:112px}
+            .lcst-copy-btn.copied{background:linear-gradient(135deg,#16a34a,#047857);box-shadow:0 0 0 3px rgba(34,197,94,.10),0 10px 22px rgba(0,0,0,.20)}
 
-            #lcj2-image-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin-bottom:14px}
-            .lcj2-img-card{position:relative;background:linear-gradient(160deg,rgba(15,23,42,.94),rgba(4,7,16,.96));border:1px solid rgba(148,163,184,.15);border-radius:17px;overflow:hidden;cursor:grab;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
-            .lcj2-img-card:hover{border-color:rgba(34,211,238,.45);transform:translateY(-2px);box-shadow:0 18px 36px rgba(0,0,0,.28),0 0 0 1px rgba(34,211,238,.05)}
-            .lcj2-img-card.target{border-color:rgba(245,165,36,.30)}
-            .lcj2-img-card.dragging{opacity:.42;border:1px dashed #fb4f68;transform:scale(.98)}
-            .lcj2-img-card.over{border-color:#22c55e;background:#0b2117}
-            .lcj2-img-media{position:relative;background:#02040a;overflow:hidden}
-            .lcj2-img-card img{display:block;width:100%;height:250px;object-fit:contain;background:#02040a;cursor:zoom-in;transition:transform .2s ease}
-            .lcj2-img-card:hover img{transform:scale(1.012)}
-            .lcj2-img-index{position:absolute;top:9px;left:9px;z-index:2;display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:9px;background:rgba(3,7,18,.82);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.12);font-size:9px;font-weight:900;color:#eef7ff}
-            .lcj2-target-tag{color:#ffd58e}
-            .lcj2-del{position:absolute;top:9px;right:9px;width:30px;height:30px;border:1px solid rgba(251,113,133,.28);border-radius:10px;background:rgba(190,24,60,.88);color:#fff;font-weight:900;cursor:pointer;display:none;z-index:4;box-shadow:0 8px 20px rgba(0,0,0,.30)}
-            .lcj2-img-card:hover .lcj2-del{display:block}
-            .lcj2-img-label{padding:9px 10px 7px;color:#7f93af;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid rgba(255,255,255,.04)}
-            .lcj2-ocr-badge{margin:0 9px 9px;padding:8px 9px;border-radius:10px;background:rgba(6,45,65,.66);color:#8ff3ff;border:1px solid rgba(34,211,238,.16);font-size:10px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-            .lcj2-ocr-badge.success{background:rgba(7,68,39,.58);color:#91f5b7;border-color:rgba(34,197,94,.22)}
-            .lcj2-ocr-badge.error{background:rgba(83,17,35,.56);color:#ffb2c0;border-color:rgba(251,79,104,.24)}
-            .lcj2-ocr-badge.empty{background:rgba(31,41,55,.66);color:#8fa3bf;border-color:rgba(148,163,184,.12)}
-            .lcj2-empty{padding:26px;border:1px dashed rgba(251,113,133,.30);border-radius:17px;color:#ffbec9;background:rgba(61,10,27,.38);text-align:center;margin-bottom:14px}
+            #lcst-image-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin-bottom:14px}
+            .lcst-img-card{position:relative;background:linear-gradient(160deg,rgba(15,23,42,.94),rgba(4,7,16,.96));border:1px solid rgba(148,163,184,.15);border-radius:17px;overflow:hidden;cursor:grab;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
+            .lcst-img-card:hover{border-color:rgba(34,211,238,.45);transform:translateY(-2px);box-shadow:0 18px 36px rgba(0,0,0,.28),0 0 0 1px rgba(34,211,238,.05)}
+            .lcst-img-card.target{border-color:rgba(245,165,36,.30)}
+            .lcst-img-card.dragging{opacity:.42;border:1px dashed #fb4f68;transform:scale(.98)}
+            .lcst-img-card.over{border-color:#22c55e;background:#0b2117}
+            .lcst-img-media{position:relative;background:#02040a;overflow:hidden}
+            .lcst-img-card img{display:block;width:100%;height:250px;object-fit:contain;background:#02040a;cursor:zoom-in;transition:transform .2s ease}
+            .lcst-img-card:hover img{transform:scale(1.012)}
+            .lcst-img-index{position:absolute;top:9px;left:9px;z-index:2;display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:9px;background:rgba(3,7,18,.82);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.12);font-size:9px;font-weight:900;color:#eef7ff}
+            .lcst-target-tag{color:#ffd58e}
+            .lcst-del{position:absolute;top:9px;right:9px;width:30px;height:30px;border:1px solid rgba(251,113,133,.28);border-radius:10px;background:rgba(190,24,60,.88);color:#fff;font-weight:900;cursor:pointer;display:none;z-index:4;box-shadow:0 8px 20px rgba(0,0,0,.30)}
+            .lcst-img-card:hover .lcst-del{display:block}
+            .lcst-img-label{padding:9px 10px 7px;color:#7f93af;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid rgba(255,255,255,.04)}
+            .lcst-ocr-badge{margin:0 9px 9px;padding:8px 9px;border-radius:10px;background:rgba(6,45,65,.66);color:#8ff3ff;border:1px solid rgba(34,211,238,.16);font-size:10px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            .lcst-ocr-badge.success{background:rgba(7,68,39,.58);color:#91f5b7;border-color:rgba(34,197,94,.22)}
+            .lcst-ocr-badge.error{background:rgba(83,17,35,.56);color:#ffb2c0;border-color:rgba(251,79,104,.24)}
+            .lcst-ocr-badge.empty{background:rgba(31,41,55,.66);color:#8fa3bf;border-color:rgba(148,163,184,.12)}
+            .lcst-empty{padding:26px;border:1px dashed rgba(251,113,133,.30);border-radius:17px;color:#ffbec9;background:rgba(61,10,27,.38);text-align:center;margin-bottom:14px}
 
-            .lcj2-output-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
-            #lcj2-output{width:100%;height:132px;background:rgba(2,6,15,.86);color:#7ef6a4;border:1px solid rgba(74,222,128,.16);border-radius:13px;padding:12px;font:11px/1.5 Consolas,Monaco,monospace;margin-bottom:10px;resize:vertical;outline:none}
-            #lcj2-output:focus{border-color:rgba(74,222,128,.38);box-shadow:0 0 0 3px rgba(34,197,94,.06)}
-            #lcj2-zoom{position:fixed;inset:0;z-index:${Z_TOP};background:rgba(1,3,8,.97);display:flex;align-items:center;justify-content:center;flex-direction:column;backdrop-filter:blur(10px)}
-            #lcj2-zoom img{max-width:92%;max-height:84%;object-fit:contain;cursor:move;transition:transform .05s;border-radius:12px;box-shadow:0 25px 80px rgba(0,0,0,.68)}
-            .lcj2-zoom-help{position:absolute;bottom:20px;padding:8px 11px;border-radius:10px;background:rgba(15,23,42,.72);border:1px solid rgba(255,255,255,.10);color:#9aacc3;font-size:10px}
+            .lcst-output-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+            #lcst-output{width:100%;height:132px;background:rgba(2,6,15,.86);color:#7ef6a4;border:1px solid rgba(74,222,128,.16);border-radius:13px;padding:12px;font:11px/1.5 Consolas,Monaco,monospace;margin-bottom:10px;resize:vertical;outline:none}
+            #lcst-output:focus{border-color:rgba(74,222,128,.38);box-shadow:0 0 0 3px rgba(34,197,94,.06)}
+            #lcst-zoom{position:fixed;inset:0;z-index:${Z_TOP};background:rgba(1,3,8,.97);display:flex;align-items:center;justify-content:center;flex-direction:column;backdrop-filter:blur(10px)}
+            #lcst-zoom img{max-width:92%;max-height:84%;object-fit:contain;cursor:move;transition:transform .05s;border-radius:12px;box-shadow:0 25px 80px rgba(0,0,0,.68)}
+            .lcst-zoom-help{position:absolute;bottom:20px;padding:8px 11px;border-radius:10px;background:rgba(15,23,42,.72);border:1px solid rgba(255,255,255,.10);color:#9aacc3;font-size:10px}
 
             /* =========================================================
                PATEN TURBO UI — hanya tampilan, tidak menyentuh workflow
                ========================================================= */
-            #lcj2-panel-fixed{
+            #lcst-panel-fixed{
                 background:
                     radial-gradient(circle at 9% 3%,rgba(14,165,233,.22),transparent 30%),
                     radial-gradient(circle at 91% 5%,rgba(124,58,237,.20),transparent 27%),
                     radial-gradient(circle at 50% 105%,rgba(245,158,11,.10),transparent 34%),
                     linear-gradient(145deg,#020617 0%,#071123 48%,#030712 100%);
             }
-            #lcj2-panel-fixed:after{
+            #lcst-panel-fixed:after{
                 content:"";position:fixed;inset:0;pointer-events:none;opacity:.20;
                 background:
                     linear-gradient(115deg,transparent 0 44%,rgba(255,255,255,.025) 50%,transparent 56%),
                     radial-gradient(circle at 50% 0,rgba(255,255,255,.035),transparent 45%);
             }
-            .lcj2-wrap{max-width:1540px}
-            .lcj2-topbar{
+            .lcst-wrap{max-width:1540px}
+            .lcst-topbar{
                 position:sticky;top:0;z-index:20;
                 border-radius:20px;
                 border-color:rgba(125,211,252,.18);
@@ -425,100 +434,100 @@
                 box-shadow:0 22px 60px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.09);
                 backdrop-filter:blur(18px) saturate(145%);
             }
-            .lcj2-brand-logo{
+            .lcst-brand-logo{
                 position:relative;overflow:hidden;width:50px;height:50px;border-radius:16px;
                 background:linear-gradient(145deg,rgba(14,165,233,.30),rgba(79,70,229,.25) 55%,rgba(245,158,11,.16));
                 border-color:rgba(125,211,252,.35);
                 box-shadow:0 13px 30px rgba(2,132,199,.18),inset 0 1px 0 rgba(255,255,255,.18);
             }
-            .lcj2-brand-logo:after{
+            .lcst-brand-logo:after{
                 content:"";position:absolute;inset:-60%;
                 background:conic-gradient(from 0deg,transparent,rgba(125,211,252,.55),transparent 28%);
-                animation:lcj2Spin 5s linear infinite;
+                animation:lcstSpin 5s linear infinite;
             }
-            .lcj2-brand-logo span{position:relative;z-index:2;font-size:23px;color:#c6f7ff}
-            .lcj2-title{font-size:19px;letter-spacing:.35px;text-shadow:0 0 22px rgba(56,189,248,.16)}
-            .lcj2-version{
+            .lcst-brand-logo span{position:relative;z-index:2;font-size:23px;color:#c6f7ff}
+            .lcst-title{font-size:19px;letter-spacing:.35px;text-shadow:0 0 22px rgba(56,189,248,.16)}
+            .lcst-version{
                 margin-left:10px;padding:4px 9px;
                 background:linear-gradient(135deg,rgba(6,182,212,.18),rgba(79,70,229,.22));
                 border-color:rgba(103,232,249,.27);color:#a5f3fc;
                 box-shadow:inset 0 1px 0 rgba(255,255,255,.07);
             }
-            .lcj2-status-card{
+            .lcst-status-card{
                 min-height:78px;border-radius:20px;
                 border-color:rgba(56,189,248,.22);
                 background:linear-gradient(125deg,rgba(4,35,58,.92),rgba(13,18,42,.94) 58%,rgba(34,18,54,.88));
                 box-shadow:0 18px 44px rgba(0,0,0,.30),inset 0 1px 0 rgba(255,255,255,.06);
             }
-            .lcj2-status-card:after{
+            .lcst-status-card:after{
                 content:"";position:absolute;top:0;bottom:0;width:110px;left:-140px;
                 background:linear-gradient(90deg,transparent,rgba(125,211,252,.08),transparent);
-                transform:skewX(-18deg);animation:lcj2StatusSweep 4.8s ease-in-out infinite;
+                transform:skewX(-18deg);animation:lcstStatusSweep 4.8s ease-in-out infinite;
             }
-            @keyframes lcj2StatusSweep{0%,55%{left:-140px}100%{left:calc(100% + 140px)}}
-            .lcj2-status-icon{
+            @keyframes lcstStatusSweep{0%,55%{left:-140px}100%{left:calc(100% + 140px)}}
+            .lcst-status-icon{
                 width:40px;height:40px;border-radius:13px;
                 background:linear-gradient(145deg,rgba(6,182,212,.17),rgba(37,99,235,.12));
                 border-color:rgba(103,232,249,.28);
                 box-shadow:0 10px 22px rgba(2,132,199,.12),inset 0 1px 0 rgba(255,255,255,.08);
             }
-            .lcj2-card{
+            .lcst-card{
                 border-radius:20px;padding:17px;
                 border-color:rgba(148,163,184,.14);
                 background:linear-gradient(145deg,rgba(14,24,48,.91),rgba(5,10,24,.92));
                 box-shadow:0 17px 42px rgba(0,0,0,.27),inset 0 1px 0 rgba(255,255,255,.045);
             }
-            .lcj2-card:hover{border-color:rgba(125,211,252,.20)}
-            .lcj2-pill{
+            .lcst-card:hover{border-color:rgba(125,211,252,.20)}
+            .lcst-pill{
                 padding:7px 11px;border-radius:11px;
                 box-shadow:inset 0 1px 0 rgba(255,255,255,.045);
             }
-            .lcj2-input{
+            .lcst-input{
                 min-height:43px;border-radius:13px;
                 background:linear-gradient(180deg,rgba(2,6,23,.90),rgba(5,12,29,.88));
                 border-color:rgba(125,211,252,.18);
                 box-shadow:inset 0 2px 9px rgba(0,0,0,.24),0 1px 0 rgba(255,255,255,.025);
             }
-            .lcj2-input:focus{
+            .lcst-input:focus{
                 border-color:rgba(34,211,238,.68);
                 box-shadow:0 0 0 3px rgba(34,211,238,.09),0 12px 30px rgba(0,0,0,.18);
             }
-            .lcj2-scan-state{
+            .lcst-scan-state{
                 border-radius:16px;
                 box-shadow:0 13px 28px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.05);
             }
-            .lcj2-btn{
+            .lcst-btn{
                 border-radius:13px;padding:11px 15px;
                 box-shadow:0 11px 24px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.14);
             }
-            .lcj2-btn.primary{
+            .lcst-btn.primary{
                 position:relative;overflow:hidden;min-width:180px;
                 background:linear-gradient(125deg,#0891b2 0%,#2563eb 47%,#6d28d9 100%);
                 box-shadow:0 16px 36px rgba(37,99,235,.29),inset 0 1px 0 rgba(255,255,255,.22);
             }
-            .lcj2-btn.primary:before{
+            .lcst-btn.primary:before{
                 content:"";position:absolute;inset:0;transform:translateX(-115%);
                 background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.22),transparent 70%);
                 transition:transform .42s ease;
             }
-            .lcj2-btn.primary:hover:before{transform:translateX(115%)}
-            #lcj2-image-grid{gap:15px}
-            .lcj2-img-card{
+            .lcst-btn.primary:hover:before{transform:translateX(115%)}
+            #lcst-image-grid{gap:15px}
+            .lcst-img-card{
                 border-radius:20px;
                 background:linear-gradient(155deg,rgba(13,24,48,.96),rgba(2,6,17,.98));
                 box-shadow:0 16px 36px rgba(0,0,0,.26),inset 0 1px 0 rgba(255,255,255,.035);
             }
-            .lcj2-img-card.target{
+            .lcst-img-card.target{
                 border-color:rgba(245,158,11,.48);
                 box-shadow:0 17px 40px rgba(0,0,0,.31),0 0 0 1px rgba(245,158,11,.08),inset 0 1px 0 rgba(255,255,255,.04);
             }
-            .lcj2-img-card.target .lcj2-img-index{
+            .lcst-img-card.target .lcst-img-index{
                 background:linear-gradient(135deg,rgba(120,53,15,.90),rgba(69,26,3,.88));
                 border-color:rgba(251,191,36,.30);color:#fff7d6;
             }
-            .lcj2-img-card img{height:270px}
-            .lcj2-ocr-badge{border-radius:11px;padding:9px 10px}
-            #lcj2-output{
+            .lcst-img-card img{height:270px}
+            .lcst-ocr-badge{border-radius:11px;padding:9px 10px}
+            #lcst-output{
                 min-height:145px;border-radius:15px;
                 background:linear-gradient(180deg,rgba(1,7,16,.94),rgba(2,13,18,.92));
                 box-shadow:inset 0 2px 12px rgba(0,0,0,.30);
@@ -530,23 +539,23 @@
                Hanya visual dashboard + bubble. Workflow tidak disentuh.
                ========================================================= */
             :root{
-                --lcj2-bg:#020611;
-                --lcj2-surface:rgba(8,16,34,.90);
-                --lcj2-surface-2:rgba(13,24,49,.86);
-                --lcj2-line:rgba(125,211,252,.15);
-                --lcj2-text:#f3f8ff;
-                --lcj2-muted:#91a7c5;
-                --lcj2-cyan:#37e6ff;
-                --lcj2-blue:#4f8cff;
-                --lcj2-violet:#9b6cff;
-                --lcj2-green:#36e79a;
-                --lcj2-red:#ff5578;
-                --lcj2-orange:#ffbd59;
-                --lcj2-radius:22px;
+                --lcst-bg:#020611;
+                --lcst-surface:rgba(8,16,34,.90);
+                --lcst-surface-2:rgba(13,24,49,.86);
+                --lcst-line:rgba(125,211,252,.15);
+                --lcst-text:#f3f8ff;
+                --lcst-muted:#91a7c5;
+                --lcst-cyan:#37e6ff;
+                --lcst-blue:#4f8cff;
+                --lcst-violet:#9b6cff;
+                --lcst-green:#36e79a;
+                --lcst-red:#ff5578;
+                --lcst-orange:#ffbd59;
+                --lcst-radius:22px;
             }
 
             /* Bubble scanner baru */
-            #lcj2-bubble-fixed{
+            #lcst-bubble-fixed{
                 width:82px;
                 height:82px;
                 border-radius:27px;
@@ -563,7 +572,7 @@
                     inset 0 -12px 28px rgba(0,0,0,.24);
                 isolation:isolate;
             }
-            #lcj2-bubble-fixed:before{
+            #lcst-bubble-fixed:before{
                 content:"";
                 position:absolute;
                 inset:5px;
@@ -573,10 +582,10 @@
                 border:1px solid rgba(255,255,255,.11);
                 background:linear-gradient(150deg,rgba(255,255,255,.07),transparent 42%);
                 box-shadow:inset 0 0 24px rgba(45,212,255,.06);
-                animation:lcj2BubbleBreathe 2.8s ease-in-out infinite;
+                animation:lcstBubbleBreathe 2.8s ease-in-out infinite;
                 z-index:0;
             }
-            #lcj2-bubble-fixed:after{
+            #lcst-bubble-fixed:after{
                 content:"";
                 position:absolute;
                 inset:-70%;
@@ -589,10 +598,10 @@
                     transparent 71% 100%
                 );
                 opacity:.50;
-                animation:lcj2BubbleOrbit 7s linear infinite;
+                animation:lcstBubbleOrbit 7s linear infinite;
                 z-index:-1;
             }
-            #lcj2-bubble-fixed:hover{
+            #lcst-bubble-fixed:hover{
                 transform:translateY(-4px) scale(1.055);
                 border-color:rgba(105,235,255,.72);
                 box-shadow:
@@ -601,12 +610,12 @@
                     0 0 42px rgba(39,203,255,.28),
                     inset 0 1px 0 rgba(255,255,255,.28);
             }
-            #lcj2-bubble-fixed.lcj2-dragging{
+            #lcst-bubble-fixed.lcst-dragging{
                 cursor:grabbing;
                 transform:scale(1.065);
                 opacity:.96;
             }
-            .lcj2-bubble-aura{
+            .lcst-bubble-aura{
                 position:absolute;
                 inset:13px;
                 border-radius:18px;
@@ -615,7 +624,7 @@
                 pointer-events:none;
                 z-index:1;
             }
-            .lcj2-bubble-core{
+            .lcst-bubble-core{
                 position:relative;
                 z-index:3;
                 width:39px;
@@ -630,7 +639,7 @@
                 overflow:hidden;
                 pointer-events:none;
             }
-            .lcj2-bubble-scan-icon{
+            .lcst-bubble-scan-icon{
                 width:27px;
                 height:27px;
                 stroke:currentColor;
@@ -639,7 +648,7 @@
                 stroke-linejoin:round;
                 filter:drop-shadow(0 0 6px rgba(55,230,255,.52));
             }
-            .lcj2-bubble-laser{
+            .lcst-bubble-laser{
                 position:absolute;
                 left:7px;
                 right:7px;
@@ -648,9 +657,9 @@
                 border-radius:2px;
                 background:linear-gradient(90deg,transparent,#62f4ff 22% 78%,transparent);
                 box-shadow:0 0 7px rgba(98,244,255,.95);
-                animation:lcj2BubbleLaser 1.85s ease-in-out infinite;
+                animation:lcstBubbleLaser 1.85s ease-in-out infinite;
             }
-            .lcj2-bubble-label{
+            .lcst-bubble-label{
                 position:relative;
                 z-index:3;
                 margin-top:2px;
@@ -662,7 +671,7 @@
                 text-shadow:0 0 10px rgba(55,230,255,.48);
                 pointer-events:none;
             }
-            .lcj2-bubble-live{
+            .lcst-bubble-live{
                 position:absolute;
                 z-index:4;
                 right:10px;
@@ -673,16 +682,16 @@
                 background:#42f5a7;
                 border:2px solid #081426;
                 box-shadow:0 0 11px rgba(66,245,167,.88);
-                animation:lcj2BubbleLive 1.8s ease-in-out infinite;
+                animation:lcstBubbleLive 1.8s ease-in-out infinite;
                 pointer-events:none;
             }
-            @keyframes lcj2BubbleOrbit{to{transform:rotate(360deg)}}
-            @keyframes lcj2BubbleBreathe{0%,100%{opacity:.72}50%{opacity:1}}
-            @keyframes lcj2BubbleLaser{0%,100%{transform:translateY(0);opacity:.48}50%{transform:translateY(17px);opacity:1}}
-            @keyframes lcj2BubbleLive{0%,100%{transform:scale(.84);opacity:.68}50%{transform:scale(1.12);opacity:1}}
+            @keyframes lcstBubbleOrbit{to{transform:rotate(360deg)}}
+            @keyframes lcstBubbleBreathe{0%,100%{opacity:.72}50%{opacity:1}}
+            @keyframes lcstBubbleLaser{0%,100%{transform:translateY(0);opacity:.48}50%{transform:translateY(17px);opacity:1}}
+            @keyframes lcstBubbleLive{0%,100%{transform:scale(.84);opacity:.68}50%{transform:scale(1.12);opacity:1}}
 
             /* Latar dashboard */
-            #lcj2-panel-fixed{
+            #lcst-panel-fixed{
                 padding:22px;
                 background:
                     radial-gradient(circle at 8% 0%,rgba(24,156,255,.22),transparent 29%),
@@ -690,7 +699,7 @@
                     radial-gradient(circle at 50% 108%,rgba(43,215,190,.10),transparent 35%),
                     linear-gradient(150deg,#020611 0%,#071226 48%,#030712 100%);
             }
-            #lcj2-panel-fixed:before{
+            #lcst-panel-fixed:before{
                 display:block;
                 opacity:.22;
                 background-image:
@@ -701,7 +710,7 @@
                 background-position:0 0,0 0,0 0;
                 mask-image:linear-gradient(to bottom,rgba(0,0,0,.72),transparent 86%);
             }
-            #lcj2-panel-fixed:after{
+            #lcst-panel-fixed:after{
                 content:"";
                 position:fixed;
                 inset:0;
@@ -711,10 +720,10 @@
                     linear-gradient(115deg,transparent 0 44%,rgba(255,255,255,.028) 50%,transparent 56%),
                     radial-gradient(ellipse at 50% -15%,rgba(104,223,255,.10),transparent 55%);
             }
-            .lcj2-wrap{max-width:1540px}
+            .lcst-wrap{max-width:1540px}
 
             /* Header premium */
-            .lcj2-topbar{
+            .lcst-topbar{
                 position:sticky;
                 top:0;
                 z-index:20;
@@ -731,14 +740,14 @@
                 backdrop-filter:blur(20px) saturate(145%);
                 overflow:hidden;
             }
-            .lcj2-topbar:before{
+            .lcst-topbar:before{
                 content:"";
                 position:absolute;
                 left:4%;right:4%;top:0;height:1px;
                 background:linear-gradient(90deg,transparent,rgba(100,235,255,.72),rgba(166,120,255,.58),transparent);
                 box-shadow:0 0 18px rgba(65,215,255,.36);
             }
-            .lcj2-topbar:after{
+            .lcst-topbar:after{
                 content:"";
                 position:absolute;
                 width:230px;height:230px;
@@ -747,8 +756,8 @@
                 background:radial-gradient(circle,rgba(146,86,255,.18),transparent 68%);
                 pointer-events:none;
             }
-            .lcj2-brand{gap:14px;position:relative;z-index:2}
-            .lcj2-brand-logo{
+            .lcst-brand{gap:14px;position:relative;z-index:2}
+            .lcst-brand-logo{
                 width:51px;
                 height:51px;
                 border-radius:17px;
@@ -759,7 +768,7 @@
                 box-shadow:0 13px 30px rgba(0,105,180,.20),0 0 24px rgba(55,230,255,.10),inset 0 1px 0 rgba(255,255,255,.18);
                 overflow:hidden;
             }
-            .lcj2-brand-logo:before{
+            .lcst-brand-logo:before{
                 content:"";
                 position:absolute;
                 inset:5px;
@@ -767,15 +776,15 @@
                 border:1px solid rgba(255,255,255,.08);
                 background:linear-gradient(150deg,rgba(255,255,255,.08),transparent 48%);
             }
-            .lcj2-brand-logo:after{
+            .lcst-brand-logo:after{
                 content:"";
                 position:absolute;
                 inset:-70%;
                 background:conic-gradient(from 30deg,transparent,rgba(67,225,255,.55),transparent 28%,transparent 72%,rgba(148,91,255,.48),transparent);
-                animation:lcj2Spin 6.5s linear infinite;
+                animation:lcstSpin 6.5s linear infinite;
                 opacity:.62;
             }
-            .lcj2-brand-logo svg{
+            .lcst-brand-logo svg{
                 position:relative;
                 z-index:3;
                 width:34px;
@@ -786,14 +795,14 @@
                 stroke-linejoin:round;
                 filter:drop-shadow(0 0 8px rgba(68,226,255,.55));
             }
-            .lcj2-title{
+            .lcst-title{
                 font-size:19px;
                 font-weight:1000;
                 letter-spacing:.35px;
                 color:#f5fbff;
                 text-shadow:0 0 20px rgba(77,220,255,.15);
             }
-            .lcj2-version{
+            .lcst-version{
                 margin-left:10px;
                 padding:4px 9px;
                 border-radius:999px;
@@ -804,7 +813,7 @@
             }
 
             /* Status dan panel */
-            .lcj2-status-card{
+            .lcst-status-card{
                 min-height:78px;
                 padding:15px 17px;
                 border-radius:21px;
@@ -813,7 +822,7 @@
                     linear-gradient(120deg,rgba(5,42,68,.91),rgba(9,18,40,.94) 52%,rgba(38,17,62,.87));
                 box-shadow:0 18px 46px rgba(0,0,0,.30),inset 0 1px 0 rgba(255,255,255,.065);
             }
-            .lcj2-status-icon{
+            .lcst-status-icon{
                 width:42px;
                 height:42px;
                 border-radius:14px;
@@ -821,14 +830,14 @@
                 border:1px solid rgba(100,230,255,.27);
                 box-shadow:0 11px 24px rgba(0,0,0,.20),inset 0 1px 0 rgba(255,255,255,.10);
             }
-            .lcj2-status-title{font-size:9px;letter-spacing:1.35px;color:#86efff}
-            .lcj2-ocr-box{font-size:12px;color:#e1f1ff}
-            .lcj2-progress{height:3px;background:rgba(255,255,255,.035)}
-            .lcj2-progress span{
+            .lcst-status-title{font-size:9px;letter-spacing:1.35px;color:#86efff}
+            .lcst-ocr-box{font-size:12px;color:#e1f1ff}
+            .lcst-progress{height:3px;background:rgba(255,255,255,.035)}
+            .lcst-progress span{
                 background:linear-gradient(90deg,#35edff,#4f8cff 52%,#9c6cff);
                 box-shadow:0 0 16px rgba(55,230,255,.72);
             }
-            .lcj2-card{
+            .lcst-card{
                 position:relative;
                 border-radius:22px;
                 padding:17px;
@@ -838,74 +847,74 @@
                 box-shadow:0 18px 44px rgba(0,0,0,.27),inset 0 1px 0 rgba(255,255,255,.045);
                 overflow:hidden;
             }
-            .lcj2-card:before{
+            .lcst-card:before{
                 content:"";
                 position:absolute;
                 left:16px;right:16px;top:0;height:1px;
                 background:linear-gradient(90deg,transparent,rgba(118,224,255,.18),transparent);
                 pointer-events:none;
             }
-            .lcj2-card:hover{
+            .lcst-card:hover{
                 border-color:rgba(95,220,255,.22);
                 box-shadow:0 20px 48px rgba(0,0,0,.30),0 0 0 1px rgba(55,230,255,.025),inset 0 1px 0 rgba(255,255,255,.055);
             }
-            .lcj2-field-title{
+            .lcst-field-title{
                 color:#bff8ff;
                 letter-spacing:1px;
             }
-            .lcj2-field-title:before{
+            .lcst-field-title:before{
                 width:8px;height:8px;border-radius:3px;
                 background:linear-gradient(135deg,#45efff,#5d7cff);
                 box-shadow:0 0 10px rgba(69,239,255,.45);
             }
-            .lcj2-field-title.orange:before{
+            .lcst-field-title.orange:before{
                 background:linear-gradient(135deg,#ffd36b,#ff8a4c);
                 box-shadow:0 0 10px rgba(255,177,76,.36);
             }
-            .lcj2-pill{
+            .lcst-pill{
                 padding:7px 10px;
                 border-radius:11px;
                 background:linear-gradient(145deg,rgba(17,31,58,.80),rgba(8,17,35,.80));
                 border:1px solid rgba(148,188,224,.13);
                 box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
             }
-            .lcj2-pill.blue{background:linear-gradient(145deg,rgba(7,55,78,.68),rgba(8,29,54,.72));border-color:rgba(55,230,255,.20)}
-            .lcj2-pill.green{background:linear-gradient(145deg,rgba(7,65,46,.64),rgba(4,35,34,.72));border-color:rgba(54,231,154,.21)}
-            .lcj2-pill.red{background:linear-gradient(145deg,rgba(86,16,40,.62),rgba(48,11,30,.72));border-color:rgba(255,85,120,.22)}
-            .lcj2-input{
+            .lcst-pill.blue{background:linear-gradient(145deg,rgba(7,55,78,.68),rgba(8,29,54,.72));border-color:rgba(55,230,255,.20)}
+            .lcst-pill.green{background:linear-gradient(145deg,rgba(7,65,46,.64),rgba(4,35,34,.72));border-color:rgba(54,231,154,.21)}
+            .lcst-pill.red{background:linear-gradient(145deg,rgba(86,16,40,.62),rgba(48,11,30,.72));border-color:rgba(255,85,120,.22)}
+            .lcst-input{
                 min-height:43px;
                 border-radius:13px;
                 border:1px solid rgba(94,221,255,.17);
                 background:linear-gradient(180deg,rgba(2,7,20,.92),rgba(5,14,32,.90));
                 box-shadow:inset 0 2px 10px rgba(0,0,0,.25),0 1px 0 rgba(255,255,255,.025);
             }
-            .lcj2-input:hover{border-color:rgba(101,222,255,.27)}
-            .lcj2-input:focus{
+            .lcst-input:hover{border-color:rgba(101,222,255,.27)}
+            .lcst-input:focus{
                 border-color:rgba(55,230,255,.66);
                 box-shadow:0 0 0 3px rgba(55,230,255,.08),0 12px 28px rgba(0,0,0,.18),inset 0 2px 8px rgba(0,0,0,.18);
             }
-            .lcj2-hint{border-radius:10px;background:rgba(10,22,43,.70)}
-            .lcj2-hint.strong{background:linear-gradient(145deg,rgba(7,60,82,.55),rgba(8,33,59,.60))}
+            .lcst-hint{border-radius:10px;background:rgba(10,22,43,.70)}
+            .lcst-hint.strong{background:linear-gradient(145deg,rgba(7,60,82,.55),rgba(8,33,59,.60))}
 
             /* Tombol */
-            .lcj2-btn{
+            .lcst-btn{
                 border-radius:13px;
                 padding:11px 15px;
                 border:1px solid rgba(255,255,255,.11);
                 background:linear-gradient(180deg,#293c60,#172641);
                 box-shadow:0 11px 25px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.14);
             }
-            .lcj2-btn:hover{
+            .lcst-btn:hover{
                 filter:brightness(1.10);
                 transform:translateY(-2px);
                 border-color:rgba(255,255,255,.22);
                 box-shadow:0 15px 30px rgba(0,0,0,.29),inset 0 1px 0 rgba(255,255,255,.16);
             }
-            .lcj2-btn.red{background:linear-gradient(135deg,#db365e,#8d173b);border-color:rgba(255,104,137,.30)}
-            .lcj2-btn.green{background:linear-gradient(135deg,#17b76a,#08734a);border-color:rgba(80,244,166,.25)}
-            .lcj2-btn.blue{background:linear-gradient(135deg,#248ff1,#3656dc);border-color:rgba(105,174,255,.30)}
-            .lcj2-btn.orange{background:linear-gradient(135deg,#f5a623,#b85b0d);border-color:rgba(255,197,88,.30)}
-            .lcj2-btn.primary{
+            .lcst-btn.red{background:linear-gradient(135deg,#db365e,#8d173b);border-color:rgba(255,104,137,.30)}
+            .lcst-btn.green{background:linear-gradient(135deg,#17b76a,#08734a);border-color:rgba(80,244,166,.25)}
+            .lcst-btn.blue{background:linear-gradient(135deg,#248ff1,#3656dc);border-color:rgba(105,174,255,.30)}
+            .lcst-btn.orange{background:linear-gradient(135deg,#f5a623,#b85b0d);border-color:rgba(255,197,88,.30)}
+            .lcst-btn.primary{
                 min-width:185px;
                 background:linear-gradient(125deg,#08a4bd 0%,#316fe9 48%,#763bd2 100%);
                 border-color:rgba(119,225,255,.36);
@@ -913,110 +922,110 @@
             }
 
             /* Status OCR */
-            .lcj2-scan-state{
+            .lcst-scan-state{
                 border-radius:17px;
                 background:linear-gradient(145deg,rgba(13,28,53,.91),rgba(5,13,31,.92));
                 box-shadow:0 13px 29px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.05);
             }
-            .lcj2-scan-state.scanning{
+            .lcst-scan-state.scanning{
                 background:linear-gradient(145deg,rgba(4,53,70,.76),rgba(6,20,44,.92));
                 border-color:rgba(55,230,255,.36);
             }
-            .lcj2-scan-state.success{
+            .lcst-scan-state.success{
                 background:linear-gradient(145deg,rgba(6,72,45,.67),rgba(4,29,31,.92));
                 border-color:rgba(54,231,154,.35);
             }
-            .lcj2-scan-state.failed{
+            .lcst-scan-state.failed{
                 background:linear-gradient(145deg,rgba(89,16,41,.68),rgba(34,10,28,.92));
                 border-color:rgba(255,85,120,.35);
             }
 
             /* Kartu gambar */
-            #lcj2-image-grid{gap:15px}
-            .lcj2-img-card{
+            #lcst-image-grid{gap:15px}
+            .lcst-img-card{
                 border-radius:21px;
                 border:1px solid rgba(137,181,221,.14);
                 background:linear-gradient(155deg,rgba(12,27,53,.97),rgba(2,7,18,.98));
                 box-shadow:0 17px 39px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.035);
             }
-            .lcj2-img-card:hover{
+            .lcst-img-card:hover{
                 transform:translateY(-3px);
                 border-color:rgba(55,230,255,.43);
                 box-shadow:0 22px 49px rgba(0,0,0,.34),0 0 24px rgba(55,230,255,.055);
             }
-            .lcj2-img-card.target{
+            .lcst-img-card.target{
                 border-color:rgba(255,189,89,.48);
                 box-shadow:0 19px 44px rgba(0,0,0,.33),0 0 0 1px rgba(255,189,89,.08),0 0 25px rgba(255,165,45,.06),inset 0 1px 0 rgba(255,255,255,.04);
             }
-            .lcj2-img-card.target .lcj2-img-index{
+            .lcst-img-card.target .lcst-img-index{
                 background:linear-gradient(135deg,rgba(126,57,14,.93),rgba(70,28,5,.91));
                 border-color:rgba(255,202,92,.33);
                 color:#fff4cf;
             }
-            .lcj2-img-media{background:linear-gradient(145deg,#01040b,#050b16)}
-            .lcj2-img-card img{height:270px;background:#020611}
-            .lcj2-img-index{
+            .lcst-img-media{background:linear-gradient(145deg,#01040b,#050b16)}
+            .lcst-img-card img{height:270px;background:#020611}
+            .lcst-img-index{
                 border-radius:10px;
                 background:rgba(3,10,23,.84);
                 border-color:rgba(255,255,255,.13);
                 box-shadow:0 7px 17px rgba(0,0,0,.25);
             }
-            .lcj2-del{border-radius:11px;background:linear-gradient(145deg,#df3158,#8f1537)}
-            .lcj2-ocr-badge{border-radius:12px;padding:9px 10px}
-            #lcj2-output{
+            .lcst-del{border-radius:11px;background:linear-gradient(145deg,#df3158,#8f1537)}
+            .lcst-ocr-badge{border-radius:12px;padding:9px 10px}
+            #lcst-output{
                 min-height:147px;
                 border-radius:15px;
                 background:linear-gradient(180deg,rgba(1,7,17,.96),rgba(2,15,21,.94));
                 box-shadow:inset 0 2px 13px rgba(0,0,0,.32);
             }
-            #lcj2-zoom{background:rgba(1,4,12,.975);backdrop-filter:blur(14px)}
-            #lcj2-zoom img{border:1px solid rgba(110,225,255,.16);border-radius:16px;box-shadow:0 28px 90px rgba(0,0,0,.72),0 0 45px rgba(55,230,255,.08)}
+            #lcst-zoom{background:rgba(1,4,12,.975);backdrop-filter:blur(14px)}
+            #lcst-zoom img{border:1px solid rgba(110,225,255,.16);border-radius:16px;box-shadow:0 28px 90px rgba(0,0,0,.72),0 0 45px rgba(55,230,255,.08)}
 
             @media(max-width:760px){
-                #lcj2-bubble-fixed{width:74px;height:74px;border-radius:24px}
-                .lcj2-bubble-core{width:36px;height:36px}
-                .lcj2-bubble-label{font-size:8px}
-                #lcj2-panel-fixed{padding:10px}
-                .lcj2-topbar{border-radius:18px}
-                .lcj2-card,.lcj2-status-card{border-radius:18px}
+                #lcst-bubble-fixed{width:74px;height:74px;border-radius:24px}
+                .lcst-bubble-core{width:36px;height:36px}
+                .lcst-bubble-label{font-size:8px}
+                #lcst-panel-fixed{padding:10px}
+                .lcst-topbar{border-radius:18px}
+                .lcst-card,.lcst-status-card{border-radius:18px}
             }
 
             /* Mode ringan otomatis aktif saat deep scan/OCR agar dashboard tidak berebut CPU/GPU. */
-            #lcj2-panel-fixed.lcj2-performance-mode{
+            #lcst-panel-fixed.lcst-performance-mode{
                 backdrop-filter:none!important;
                 background:#050816!important;
             }
-            #lcj2-panel-fixed.lcj2-performance-mode:before,
-            #lcj2-panel-fixed.lcj2-performance-mode:after{display:none!important}
-            #lcj2-panel-fixed.lcj2-performance-mode *,
-            #lcj2-panel-fixed.lcj2-performance-mode *:before,
-            #lcj2-panel-fixed.lcj2-performance-mode *:after{
+            #lcst-panel-fixed.lcst-performance-mode:before,
+            #lcst-panel-fixed.lcst-performance-mode:after{display:none!important}
+            #lcst-panel-fixed.lcst-performance-mode *,
+            #lcst-panel-fixed.lcst-performance-mode *:before,
+            #lcst-panel-fixed.lcst-performance-mode *:after{
                 animation-play-state:paused!important;
                 transition:none!important;
             }
-            #lcj2-panel-fixed.lcj2-performance-mode .lcj2-card,
-            #lcj2-panel-fixed.lcj2-performance-mode .lcj2-topbar,
-            #lcj2-panel-fixed.lcj2-performance-mode .lcj2-img-card{
+            #lcst-panel-fixed.lcst-performance-mode .lcst-card,
+            #lcst-panel-fixed.lcst-performance-mode .lcst-topbar,
+            #lcst-panel-fixed.lcst-performance-mode .lcst-img-card{
                 box-shadow:none!important;
                 backdrop-filter:none!important;
             }
-            .lcj2-img-card{
+            .lcst-img-card{
                 contain:layout paint style;
                 content-visibility:auto;
                 contain-intrinsic-size:320px 360px;
             }
-            @media(max-width:1050px){#lcj2-image-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+            @media(max-width:1050px){#lcst-image-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
             @media(max-width:760px){
-                #lcj2-panel-fixed{padding:10px}
-                .lcj2-grid2{grid-template-columns:1fr}
-                .lcj2-topbar{align-items:flex-start;flex-direction:column}
-                .lcj2-actions{width:100%;justify-content:stretch}
-                .lcj2-actions .lcj2-btn{flex:1}
-                .lcj2-note{align-items:stretch;flex-direction:column}
-                #lcj2-image-grid{grid-template-columns:1fr}
-                .lcj2-img-card img{height:220px}
-                .lcj2-status-card{flex-wrap:wrap}
-                .lcj2-scan-state{width:100%;min-width:0}
+                #lcst-panel-fixed{padding:10px}
+                .lcst-grid2{grid-template-columns:1fr}
+                .lcst-topbar{align-items:flex-start;flex-direction:column}
+                .lcst-actions{width:100%;justify-content:stretch}
+                .lcst-actions .lcst-btn{flex:1}
+                .lcst-note{align-items:stretch;flex-direction:column}
+                #lcst-image-grid{grid-template-columns:1fr}
+                .lcst-img-card img{height:220px}
+                .lcst-status-card{flex-wrap:wrap}
+                .lcst-scan-state{width:100%;min-width:0}
             }
 
 
@@ -1038,7 +1047,7 @@
                 --nova-text:#2a1711;
                 --nova-muted:#8a5b2b;
             }
-            #lcj2-panel-fixed{
+            #lcst-panel-fixed{
                 padding:18px!important;
                 background:
                     radial-gradient(circle at 12% 2%,rgba(245,205,122,.22),transparent 30%),
@@ -1047,7 +1056,7 @@
                     linear-gradient(180deg,#fffdf9 0%,#fff4ed 100%)!important;
                 color:var(--nova-text)!important;
             }
-            #lcj2-panel-fixed:before{
+            #lcst-panel-fixed:before{
                 display:block!important;
                 opacity:.16!important;
                 background-image:
@@ -1056,10 +1065,10 @@
                 background-size:28px 28px!important;
                 mask-image:linear-gradient(to bottom,#000,transparent 88%);
             }
-            .lcj2-nova-shell{max-width:1540px!important;margin:0 auto!important;position:relative!important}
+            .lcst-nova-shell{max-width:1540px!important;margin:0 auto!important;position:relative!important}
 
             /* Bubble benar-benar baru: lensa OCR bulat */
-            #lcj2-bubble-fixed{
+            #lcst-bubble-fixed{
                 width:86px!important;height:86px!important;border-radius:50%!important;
                 padding:0!important;gap:0!important;isolation:isolate!important;
                 border:1px solid rgba(181,131,56,.34)!important;
@@ -1073,243 +1082,211 @@
                     inset 0 1px 0 rgba(255,255,255,.96)!important;
                 overflow:visible!important;
             }
-            #lcj2-bubble-fixed:before,
-            #lcj2-bubble-fixed:after{display:none!important}
-            .lcj2-nova-ring{
+            #lcst-bubble-fixed:before,
+            #lcst-bubble-fixed:after{display:none!important}
+            .lcst-nova-ring{
                 position:absolute;inset:-6px;border-radius:50%;pointer-events:none;
                 border:1px dashed rgba(181,131,56,.44);
-                animation:lcj2NovaRing 8s linear infinite;
+                animation:lcstNovaRing 8s linear infinite;
                 filter:drop-shadow(0 0 8px rgba(181,131,56,.26));
             }
-            .lcj2-nova-ring:before,.lcj2-nova-ring:after{
+            .lcst-nova-ring:before,.lcst-nova-ring:after{
                 content:"";position:absolute;width:7px;height:7px;border-radius:50%;
                 background:#c79a3f;box-shadow:0 0 13px #c79a3f;
             }
-            .lcj2-nova-ring:before{left:8px;top:10px}.lcj2-nova-ring:after{right:7px;bottom:11px;background:#b91c1c;box-shadow:0 0 13px #b91c1c}
-            .lcj2-nova-lens{
+            .lcst-nova-ring:before{left:8px;top:10px}.lcst-nova-ring:after{right:7px;bottom:11px;background:#b91c1c;box-shadow:0 0 13px #b91c1c}
+            .lcst-nova-lens{
                 position:absolute;left:18px;top:14px;width:48px;height:48px;border-radius:17px;
                 background:linear-gradient(145deg,rgba(255,255,255,.98),rgba(255,243,227,.98));
                 border:1px solid rgba(181,131,56,.26);
                 box-shadow:inset 0 0 22px rgba(199,154,63,.09),0 7px 17px rgba(110,61,20,.16);
                 overflow:hidden;
             }
-            .lcj2-nova-lens:before{
+            .lcst-nova-lens:before{
                 content:"";position:absolute;inset:10px;border-radius:50%;
                 border:1px solid rgba(181,131,56,.45);
                 box-shadow:inset 0 0 11px rgba(199,154,63,.10),0 0 12px rgba(181,131,56,.12);
             }
-            .lcj2-jam2-lens{
-                display:flex!important;
-                flex-direction:column!important;
-                align-items:center!important;
-                justify-content:center!important;
-                gap:0!important;
-                padding-top:1px!important;
-            }
-            .lcj2-jam2-lens:before{
-                inset:6px!important;
-                border-radius:13px!important;
-            }
-            .lcj2-jam2-number{
-                position:relative;
-                z-index:3;
-                display:block;
-                font-size:23px;
-                line-height:21px;
-                font-weight:1000;
-                letter-spacing:-1px;
-                color:#dc2626;
-                text-shadow:0 0 11px rgba(239,68,68,.30);
-            }
-            .lcj2-jam2-wib{
-                position:relative;
-                z-index:3;
-                display:block;
-                margin-top:2px;
-                font-size:7px;
-                line-height:8px;
-                font-weight:1000;
-                letter-spacing:1.4px;
-                color:#a16207;
-            }
-            .lcj2-nova-lens-dot{
+            .lcst-nova-lens-dot{
                 position:absolute;left:50%;top:50%;width:7px;height:7px;border-radius:50%;
                 transform:translate(-50%,-50%);background:#c79a3f;box-shadow:0 0 13px #c79a3f;
             }
-            .lcj2-nova-laser{
+            .lcst-nova-laser{
                 position:absolute;left:6px;right:6px;top:9px;height:2px;border-radius:4px;
                 background:linear-gradient(90deg,transparent,#c79a3f 18%,#fff 50%,#b91c1c 82%,transparent);
                 box-shadow:0 0 12px rgba(181,131,56,.45);
-                animation:lcj2NovaLaser 1.65s ease-in-out infinite;
+                animation:lcstNovaLaser 1.65s ease-in-out infinite;
             }
-            .lcj2-nova-corner{position:absolute;width:8px;height:8px;border-color:#b58338;border-style:solid;opacity:.9}
-            .lcj2-nova-corner.c1{left:5px;top:5px;border-width:1.5px 0 0 1.5px;border-radius:4px 0 0 0}
-            .lcj2-nova-corner.c2{right:5px;top:5px;border-width:1.5px 1.5px 0 0;border-radius:0 4px 0 0}
-            .lcj2-nova-corner.c3{right:5px;bottom:5px;border-width:0 1.5px 1.5px 0;border-radius:0 0 4px 0}
-            .lcj2-nova-corner.c4{left:5px;bottom:5px;border-width:0 0 1.5px 1.5px;border-radius:0 0 0 4px}
-            .lcj2-nova-caption{
+            .lcst-nova-corner{position:absolute;width:8px;height:8px;border-color:#b58338;border-style:solid;opacity:.9}
+            .lcst-nova-corner.c1{left:5px;top:5px;border-width:1.5px 0 0 1.5px;border-radius:4px 0 0 0}
+            .lcst-nova-corner.c2{right:5px;top:5px;border-width:1.5px 1.5px 0 0;border-radius:0 4px 0 0}
+            .lcst-nova-corner.c3{right:5px;bottom:5px;border-width:0 1.5px 1.5px 0;border-radius:0 0 4px 0}
+            .lcst-nova-corner.c4{left:5px;bottom:5px;border-width:0 0 1.5px 1.5px;border-radius:0 0 0 4px}
+            .lcst-nova-caption{
                 position:absolute;left:0;right:0;bottom:7px;z-index:3;
                 font-size:9px;font-weight:1000;letter-spacing:2.3px;color:#8a5b2b;text-align:center;
                 text-shadow:0 0 8px rgba(181,131,56,.26);
             }
-            .lcj2-nova-online{
+            .lcst-nova-online{
                 position:absolute;right:4px;top:7px;width:10px;height:10px;border-radius:50%;z-index:4;
                 background:#22c55e;border:2px solid #fff8f2;box-shadow:0 0 0 3px rgba(34,197,94,.10),0 0 12px #22c55e;
             }
-            #lcj2-bubble-fixed:hover{transform:translateY(-5px) scale(1.07)!important;box-shadow:0 30px 70px rgba(110,61,20,.24),0 0 0 7px rgba(181,131,56,.08),0 0 44px rgba(199,154,63,.18)!important}
-            @keyframes lcj2NovaRing{to{transform:rotate(360deg)}}
-            @keyframes lcj2NovaLaser{0%,100%{transform:translateY(0);opacity:.55}50%{transform:translateY(28px);opacity:1}}
+            #lcst-bubble-fixed:hover{transform:translateY(-5px) scale(1.07)!important;box-shadow:0 30px 70px rgba(110,61,20,.24),0 0 0 7px rgba(181,131,56,.08),0 0 44px rgba(199,154,63,.18)!important}
+            @keyframes lcstNovaRing{to{transform:rotate(360deg)}}
+            @keyframes lcstNovaLaser{0%,100%{transform:translateY(0);opacity:.55}50%{transform:translateY(28px);opacity:1}}
 
             /* Header baru */
-            .lcj2-nova-topbar{
+            .lcst-nova-topbar{
                 min-height:84px!important;margin:0 0 14px!important;padding:15px 17px!important;
                 border-radius:24px!important;border:1px solid rgba(181,131,56,.14)!important;
                 background:linear-gradient(135deg,#ffffff,#fff8f2)!important;
                 box-shadow:0 18px 48px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.05)!important;
                 overflow:hidden!important;
             }
-            .lcj2-nova-topbar:before{
+            .lcst-nova-topbar:before{
                 content:""!important;display:block!important;position:absolute!important;left:0!important;top:0!important;bottom:0!important;width:4px!important;
                 background:linear-gradient(180deg,#b58338,#d4a24c,#b91c1c)!important;
                 box-shadow:0 0 18px rgba(77,232,255,.45)!important;
             }
-            .lcj2-nova-topbar:after{
+            .lcst-nova-topbar:after{
                 content:""!important;display:block!important;position:absolute!important;right:-60px!important;top:-90px!important;width:230px!important;height:230px!important;border-radius:50%!important;
                 background:radial-gradient(circle,rgba(181,131,56,.12),transparent 65%)!important;pointer-events:none!important;
             }
-            .lcj2-nova-logo{
+            .lcst-nova-logo{
                 width:55px!important;height:55px!important;border-radius:19px!important;
                 background:linear-gradient(145deg,rgba(199,154,63,.20),rgba(255,255,255,.98))!important;
                 border:1px solid rgba(181,131,56,.18)!important;
             }
-            .lcj2-nova-logo svg{width:33px;height:33px;stroke:#b91c1c;stroke-width:1.7;filter:drop-shadow(0 0 9px rgba(181,131,56,.18))}
-            .lcj2-nova-brand-copy{min-width:0}
-            .lcj2-nova-eyebrow{font-size:8px;font-weight:1000;letter-spacing:2.2px;color:#8a5b2b;margin-bottom:3px}
-            .lcj2-title{font-size:21px!important;line-height:1.15!important;margin:0!important;color:#7c1d1d!important}
-            .lcj2-subtitle{font-size:10px!important;color:#8a5b2b!important;margin-top:5px!important}
-            .lcj2-version{font-size:8px!important;padding:4px 8px!important;background:rgba(199,154,63,.12)!important;border-color:rgba(181,131,56,.18)!important;color:#8a5b2b!important}
-            .lcj2-nova-top-actions{display:flex;align-items:center;gap:10px;position:relative;z-index:2}
-            .lcj2-nova-live-chip{display:flex;align-items:center;gap:7px;padding:8px 11px;border-radius:12px;background:rgba(199,154,63,.10);border:1px solid rgba(181,131,56,.20);color:#8a5b2b;font-size:8px;font-weight:1000;letter-spacing:1.1px}
-            .lcj2-nova-live-chip span{width:7px;height:7px;border-radius:50%;background:#48e0a4;box-shadow:0 0 10px #48e0a4;animation:lcj2Blink 1.4s ease-in-out infinite}
-            .lcj2-nova-close{padding:9px 12px!important;display:flex!important;align-items:center!important;gap:9px!important;background:rgba(181,131,56,.10)!important;border-color:rgba(181,131,56,.20)!important;color:#8a5b2b!important}
-            .lcj2-nova-close b{font-size:17px;line-height:1}
+            .lcst-nova-logo svg{width:33px;height:33px;stroke:#b91c1c;stroke-width:1.7;filter:drop-shadow(0 0 9px rgba(181,131,56,.18))}
+            .lcst-nova-brand-copy{min-width:0}
+            .lcst-nova-eyebrow{font-size:8px;font-weight:1000;letter-spacing:2.2px;color:#8a5b2b;margin-bottom:3px}
+            .lcst-title{font-size:21px!important;line-height:1.15!important;margin:0!important;color:#7c1d1d!important}
+            .lcst-subtitle{font-size:10px!important;color:#8a5b2b!important;margin-top:5px!important}
+            .lcst-version{font-size:8px!important;padding:4px 8px!important;background:rgba(199,154,63,.12)!important;border-color:rgba(181,131,56,.18)!important;color:#8a5b2b!important}
+            .lcst-nova-top-actions{display:flex;align-items:center;gap:10px;position:relative;z-index:2}
+            .lcst-nova-live-chip{display:flex;align-items:center;gap:7px;padding:8px 11px;border-radius:12px;background:rgba(199,154,63,.10);border:1px solid rgba(181,131,56,.20);color:#8a5b2b;font-size:8px;font-weight:1000;letter-spacing:1.1px}
+            .lcst-nova-live-chip span{width:7px;height:7px;border-radius:50%;background:#48e0a4;box-shadow:0 0 10px #48e0a4;animation:lcstBlink 1.4s ease-in-out infinite}
+            .lcst-nova-close{padding:9px 12px!important;display:flex!important;align-items:center!important;gap:9px!important;background:rgba(181,131,56,.10)!important;border-color:rgba(181,131,56,.20)!important;color:#8a5b2b!important}
+            .lcst-nova-close b{font-size:17px;line-height:1}
 
             /* Status hero */
-            .lcj2-nova-hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(500px,.85fr);gap:14px;margin-bottom:14px}
-            .lcj2-nova-status{
+            .lcst-nova-hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(500px,.85fr);gap:14px;margin-bottom:14px}
+            .lcst-nova-status{
                 min-height:102px!important;margin:0!important;padding:18px!important;border-radius:22px!important;
                 align-items:center!important;background:
                     radial-gradient(circle at 88% 0%,rgba(181,131,56,.10),transparent 40%),
                     linear-gradient(135deg,#ffffff,#fff7ef)!important;
                 border:1px solid rgba(181,131,56,.12)!important;
             }
-            .lcj2-nova-status-icon{width:52px!important;height:52px!important;border-radius:17px!important;background:rgba(199,154,63,.09)!important;border-color:rgba(181,131,56,.16)!important}
-            .lcj2-nova-status-icon svg{width:28px;height:28px;stroke:#8a5b2b;stroke-width:1.6}
-            .lcj2-nova-status .lcj2-status-title{font-size:9px!important;letter-spacing:1.8px!important;color:#8a5b2b!important}
-            .lcj2-nova-status .lcj2-ocr-box{font-size:14px!important;font-weight:750!important;color:#2a1711!important;margin-top:5px!important}
-            .lcj2-nova-status .lcj2-progress{height:4px!important;background:rgba(181,131,56,.08)!important}
-            .lcj2-nova-status .lcj2-progress span{background:linear-gradient(90deg,var(--nova-cyan),var(--nova-blue),var(--nova-purple))!important}
-            .lcj2-nova-identity{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
-            .lcj2-nova-stat{
+            .lcst-nova-status-icon{width:52px!important;height:52px!important;border-radius:17px!important;background:rgba(199,154,63,.09)!important;border-color:rgba(181,131,56,.16)!important}
+            .lcst-nova-status-icon svg{width:28px;height:28px;stroke:#8a5b2b;stroke-width:1.6}
+            .lcst-nova-status .lcst-status-title{font-size:9px!important;letter-spacing:1.8px!important;color:#8a5b2b!important}
+            .lcst-nova-status .lcst-ocr-box{font-size:14px!important;font-weight:750!important;color:#2a1711!important;margin-top:5px!important}
+            .lcst-nova-status .lcst-progress{height:4px!important;background:rgba(181,131,56,.08)!important}
+            .lcst-nova-status .lcst-progress span{background:linear-gradient(90deg,var(--nova-cyan),var(--nova-blue),var(--nova-purple))!important}
+            .lcst-nova-identity{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+            .lcst-nova-stat{
                 min-width:0;padding:13px;border-radius:18px;border:1px solid var(--nova-line);
                 background:linear-gradient(155deg,rgba(15,29,52,.94),rgba(7,14,27,.94));
                 box-shadow:inset 0 1px 0 rgba(255,255,255,.035);
             }
-            .lcj2-nova-stat.ok{border-color:rgba(34,197,94,.18);background:linear-gradient(155deg,rgba(241,253,244,.96),rgba(232,250,236,.98))}
-            .lcj2-nova-stat.bad{border-color:rgba(181,131,56,.16);background:linear-gradient(155deg,rgba(255,248,244,.98),rgba(255,239,226,.98))}
-            .lcj2-nova-stat.user{border-color:rgba(181,131,56,.14)}
-            .lcj2-nova-stat.mode{border-color:rgba(199,154,63,.16)}
-            .lcj2-nova-stat-label{display:block;font-size:7px;font-weight:1000;letter-spacing:1.35px;color:#8a5b2b;margin-bottom:6px}
-            .lcj2-nova-stat strong{display:block;min-width:0;color:#2a1711;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-            .lcj2-nova-stat small{display:block;margin-top:5px;color:#8a5b2b;font-size:7.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-            .lcj2-nova-user-line{display:flex;align-items:center;gap:6px;min-width:0}
-            .lcj2-nova-user-line strong{flex:1}
-            .lcj2-user-edit{
+            .lcst-nova-stat.ok{border-color:rgba(34,197,94,.18);background:linear-gradient(155deg,rgba(241,253,244,.96),rgba(232,250,236,.98))}
+            .lcst-nova-stat.bad{border-color:rgba(181,131,56,.16);background:linear-gradient(155deg,rgba(255,248,244,.98),rgba(255,239,226,.98))}
+            .lcst-nova-stat.user{border-color:rgba(181,131,56,.14)}
+            .lcst-nova-stat.mode{border-color:rgba(199,154,63,.16)}
+            .lcst-nova-stat-label{display:block;font-size:7px;font-weight:1000;letter-spacing:1.35px;color:#8a5b2b;margin-bottom:6px}
+            .lcst-nova-stat strong{display:block;min-width:0;color:#2a1711;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            .lcst-nova-stat small{display:block;margin-top:5px;color:#8a5b2b;font-size:7.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            .lcst-nova-user-line{display:flex;align-items:center;gap:6px;min-width:0}
+            .lcst-nova-user-line strong{flex:1}
+            .lcst-user-edit{
                 flex:1;min-width:0;width:100%;padding:0;border:0;outline:none;background:transparent;
                 color:#2a1711;font:inherit;font-size:10px;font-weight:900;line-height:1.25;
                 white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
             }
-            .lcj2-user-edit:focus{
+            .lcst-user-edit:focus{
                 padding:4px 6px;margin:-4px -6px;border-radius:7px;background:rgba(255,255,255,.78);
                 box-shadow:0 0 0 2px rgba(181,131,56,.13);
             }
 
             /* Workspace dua kolom */
-            .lcj2-nova-workspace{display:grid;grid-template-columns:340px minmax(0,1fr);gap:14px;align-items:start}
-            .lcj2-nova-sidebar{display:flex;flex-direction:column;gap:12px;position:sticky;top:0}
-            .lcj2-nova-main{min-width:0;display:flex;flex-direction:column;gap:14px}
-            .lcj2-card{border-radius:24px!important;border:1px solid var(--nova-line)!important;background:linear-gradient(155deg,#ffffff,#fff8f1)!important;box-shadow:0 18px 42px rgba(110,61,20,.08),inset 0 1px 0 rgba(255,255,255,.95)!important}
-            .lcj2-nova-control-card{margin:0!important;padding:15px!important}
-            .lcj2-nova-section-head{display:flex;align-items:center;gap:10px;margin-bottom:13px}
-            .lcj2-nova-step{width:34px;height:34px;border-radius:12px;display:grid;place-items:center;flex:0 0 auto;background:rgba(199,154,63,.10);border:1px solid rgba(181,131,56,.16);color:#8a5b2b;font-size:9px;font-weight:1000}
-            .lcj2-nova-section-head.orange .lcj2-nova-step{background:rgba(181,131,56,.10);border-color:rgba(181,131,56,.18);color:#8a5b2b}
-            .lcj2-nova-section-head b{display:block;font-size:11px;color:#2a1711}.lcj2-nova-section-head small{display:block;font-size:8px;color:#8a5b2b;margin-top:2px}
-            .lcj2-input{border-radius:14px!important;padding:11px 12px!important;background:#fffdfb!important;border-color:rgba(181,131,56,.16)!important;margin-bottom:8px!important;color:#2a1711!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.95)!important}
-            .lcj2-input:focus{border-color:rgba(181,131,56,.46)!important;box-shadow:0 0 0 3px rgba(181,131,56,.10)!important}
-            .lcj2-account-scan-state{margin:7px 0 0!important;min-height:62px!important;border-radius:15px!important}
-            .lcj2-nova-guide{margin:0!important;padding:15px!important;background:linear-gradient(155deg,#fff8f2,#fff)!important}
-            .lcj2-nova-guide-title{font-size:8px;font-weight:1000;letter-spacing:1.8px;color:#8a5b2b;margin-bottom:10px}
-            .lcj2-nova-guide-row{display:flex;align-items:center;gap:9px;padding:9px 0;border-top:1px solid rgba(181,131,56,.08)}
-            .lcj2-nova-guide-row>span{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:rgba(199,154,63,.10);color:#8a5b2b;font-size:14px}
-            .lcj2-nova-guide-row b{display:block;font-size:9px;color:#2a1711}.lcj2-nova-guide-row small{display:block;font-size:7.5px;color:#8a5b2b;margin-top:2px}
+            .lcst-nova-workspace{display:grid;grid-template-columns:340px minmax(0,1fr);gap:14px;align-items:start}
+            .lcst-nova-sidebar{display:flex;flex-direction:column;gap:12px;position:sticky;top:0}
+            .lcst-nova-main{min-width:0;display:flex;flex-direction:column;gap:14px}
+            .lcst-card{border-radius:24px!important;border:1px solid var(--nova-line)!important;background:linear-gradient(155deg,#ffffff,#fff8f1)!important;box-shadow:0 18px 42px rgba(110,61,20,.08),inset 0 1px 0 rgba(255,255,255,.95)!important}
+            .lcst-nova-control-card{margin:0!important;padding:15px!important}
+            .lcst-nova-section-head{display:flex;align-items:center;gap:10px;margin-bottom:13px}
+            .lcst-nova-step{width:34px;height:34px;border-radius:12px;display:grid;place-items:center;flex:0 0 auto;background:rgba(199,154,63,.10);border:1px solid rgba(181,131,56,.16);color:#8a5b2b;font-size:9px;font-weight:1000}
+            .lcst-nova-section-head.orange .lcst-nova-step{background:rgba(181,131,56,.10);border-color:rgba(181,131,56,.18);color:#8a5b2b}
+            .lcst-nova-section-head b{display:block;font-size:11px;color:#2a1711}.lcst-nova-section-head small{display:block;font-size:8px;color:#8a5b2b;margin-top:2px}
+            .lcst-input{border-radius:14px!important;padding:11px 12px!important;background:#fffdfb!important;border-color:rgba(181,131,56,.16)!important;margin-bottom:8px!important;color:#2a1711!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.95)!important}
+            .lcst-input:focus{border-color:rgba(181,131,56,.46)!important;box-shadow:0 0 0 3px rgba(181,131,56,.10)!important}
+            .lcst-account-scan-state{margin:7px 0 0!important;min-height:62px!important;border-radius:15px!important}
+            .lcst-nova-guide{margin:0!important;padding:15px!important;background:linear-gradient(155deg,#fff8f2,#fff)!important}
+            .lcst-nova-guide-title{font-size:8px;font-weight:1000;letter-spacing:1.8px;color:#8a5b2b;margin-bottom:10px}
+            .lcst-nova-guide-row{display:flex;align-items:center;gap:9px;padding:9px 0;border-top:1px solid rgba(181,131,56,.08)}
+            .lcst-nova-guide-row>span{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:rgba(199,154,63,.10);color:#8a5b2b;font-size:14px}
+            .lcst-nova-guide-row b{display:block;font-size:9px;color:#2a1711}.lcst-nova-guide-row small{display:block;font-size:7.5px;color:#8a5b2b;margin-top:2px}
 
             /* Galeri */
-            .lcj2-nova-gallery-card,.lcj2-nova-output-card{margin:0!important;padding:16px!important}
-            .lcj2-nova-gallery-head,.lcj2-output-head{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:16px!important;margin-bottom:14px!important}
-            .lcj2-nova-kicker{display:block;font-size:7px;font-weight:1000;letter-spacing:1.8px;color:#8a5b2b;margin-bottom:4px}
-            .lcj2-nova-gallery-head h4,.lcj2-output-head h4{font-size:15px;margin:0;color:#7c1d1d}.lcj2-nova-gallery-head p,.lcj2-output-head p{font-size:8.5px;margin:4px 0 0;color:#8a5b2b}
-            .lcj2-nova-scan-btn{min-width:190px!important;padding:10px 14px!important;border-radius:18px!important;display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:10px!important;text-align:left!important;background:linear-gradient(135deg,#c79a3f,#b58338 50%,#991b1b)!important;box-shadow:0 13px 30px rgba(181,131,56,.22),inset 0 1px 0 rgba(255,255,255,.18)!important}
-            .lcj2-nova-btn-icon{width:33px;height:33px;border-radius:11px;display:grid;place-items:center;background:rgba(255,255,255,.18);font-size:19px}.lcj2-nova-scan-btn b{display:block;font-size:9px;letter-spacing:.7px}.lcj2-nova-scan-btn small{display:block;margin-top:2px;font-size:7px;color:rgba(255,255,255,.82)}
-            #lcj2-image-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:11px!important;margin:0!important}
-            .lcj2-img-card{border-radius:18px!important;background:linear-gradient(160deg,#ffffff,#fff8f1)!important;border-color:rgba(181,131,56,.12)!important;box-shadow:0 10px 22px rgba(110,61,20,.05)!important}
-            .lcj2-img-card:hover{transform:translateY(-3px)!important;border-color:rgba(181,131,56,.24)!important;box-shadow:0 18px 34px rgba(110,61,20,.12)!important}
-            .lcj2-img-card.target{border-color:rgba(181,131,56,.44)!important;box-shadow:0 0 0 1px rgba(181,131,56,.07),0 15px 32px rgba(110,61,20,.10)!important}
-            .lcj2-img-card img{height:236px!important;background:#fffaf6!important}
-            .lcj2-img-index{border-radius:9px!important;background:rgba(255,255,255,.98)!important;font-size:8px!important;color:#8a5b2b!important;border:1px solid rgba(181,131,56,.10)!important}
-            .lcj2-target-tag{color:#b58338!important}
-            .lcj2-ocr-badge{font-size:8.5px!important;border-radius:10px!important;margin:0 8px 8px!important}
-            .lcj2-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-height:220px!important;margin:0!important;border-radius:18px!important;background:#fffaf5!important;border-color:rgba(181,131,56,.12)!important;color:#8a5b2b!important}
-            .lcj2-empty b{font-size:11px;color:#7c1d1d}.lcj2-empty span{font-size:8px}.lcj2-nova-empty-icon{font-size:27px;color:#b58338;margin-bottom:4px}
+            .lcst-nova-gallery-card,.lcst-nova-output-card{margin:0!important;padding:16px!important}
+            .lcst-nova-gallery-head,.lcst-output-head{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:16px!important;margin-bottom:14px!important}
+            .lcst-nova-kicker{display:block;font-size:7px;font-weight:1000;letter-spacing:1.8px;color:#8a5b2b;margin-bottom:4px}
+            .lcst-nova-gallery-head h4,.lcst-output-head h4{font-size:15px;margin:0;color:#7c1d1d}.lcst-nova-gallery-head p,.lcst-output-head p{font-size:8.5px;margin:4px 0 0;color:#8a5b2b}
+            .lcst-nova-scan-btn{min-width:190px!important;padding:10px 14px!important;border-radius:18px!important;display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:10px!important;text-align:left!important;background:linear-gradient(135deg,#c79a3f,#b58338 50%,#991b1b)!important;box-shadow:0 13px 30px rgba(181,131,56,.22),inset 0 1px 0 rgba(255,255,255,.18)!important}
+            .lcst-nova-btn-icon{width:33px;height:33px;border-radius:11px;display:grid;place-items:center;background:rgba(255,255,255,.18);font-size:19px}.lcst-nova-scan-btn b{display:block;font-size:9px;letter-spacing:.7px}.lcst-nova-scan-btn small{display:block;margin-top:2px;font-size:7px;color:rgba(255,255,255,.82)}
+            #lcst-image-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:11px!important;margin:0!important}
+            .lcst-img-card{border-radius:18px!important;background:linear-gradient(160deg,#ffffff,#fff8f1)!important;border-color:rgba(181,131,56,.12)!important;box-shadow:0 10px 22px rgba(110,61,20,.05)!important}
+            .lcst-img-card:hover{transform:translateY(-3px)!important;border-color:rgba(181,131,56,.24)!important;box-shadow:0 18px 34px rgba(110,61,20,.12)!important}
+            .lcst-img-card.target{border-color:rgba(181,131,56,.44)!important;box-shadow:0 0 0 1px rgba(181,131,56,.07),0 15px 32px rgba(110,61,20,.10)!important}
+            .lcst-img-card img{height:236px!important;background:#fffaf6!important}
+            .lcst-img-index{border-radius:9px!important;background:rgba(255,255,255,.98)!important;font-size:8px!important;color:#8a5b2b!important;border:1px solid rgba(181,131,56,.10)!important}
+            .lcst-target-tag{color:#b58338!important}
+            .lcst-ocr-badge{font-size:8.5px!important;border-radius:10px!important;margin:0 8px 8px!important}
+            .lcst-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-height:220px!important;margin:0!important;border-radius:18px!important;background:#fffaf5!important;border-color:rgba(181,131,56,.12)!important;color:#8a5b2b!important}
+            .lcst-empty b{font-size:11px;color:#7c1d1d}.lcst-empty span{font-size:8px}.lcst-nova-empty-icon{font-size:27px;color:#b58338;margin-bottom:4px}
 
             /* Output */
-            .lcj2-nova-output-card{background:linear-gradient(155deg,#ffffff,#fff8f1)!important;border-color:rgba(181,131,56,.12)!important}
-            .lcj2-copy-btn{min-width:120px!important;border-radius:13px!important;padding:10px 13px!important}
-            #lcj2-output{height:142px!important;margin:0!important;border-radius:15px!important;background:#fffdfb!important;border-color:rgba(181,131,56,.12)!important;color:#7c1d1d!important;font-size:10px!important}
+            .lcst-nova-output-card{background:linear-gradient(155deg,#ffffff,#fff8f1)!important;border-color:rgba(181,131,56,.12)!important}
+            .lcst-copy-btn{min-width:120px!important;border-radius:13px!important;padding:10px 13px!important}
+            #lcst-output{height:142px!important;margin:0!important;border-radius:15px!important;background:#fffdfb!important;border-color:rgba(181,131,56,.12)!important;color:#7c1d1d!important;font-size:10px!important}
 
             /* Matikan efek berat saat OCR, desain tetap sama */
-            #lcj2-panel-fixed.lcj2-performance-mode{background:#fff8f2!important}
-            #lcj2-panel-fixed.lcj2-performance-mode:before{display:none!important}
-            #lcj2-panel-fixed.lcj2-performance-mode .lcj2-nova-sidebar{position:static!important}
+            #lcst-panel-fixed.lcst-performance-mode{
+                background:linear-gradient(180deg,#081b45 0%,#061534 55%,#040f28 100%)!important
+            }
+            #lcst-panel-fixed.lcst-performance-mode:before{display:none!important}
+            #lcst-panel-fixed.lcst-performance-mode .lcst-nova-sidebar{position:static!important}
 
-            .lcj2-bank-head{justify-content:space-between!important}
-            .lcj2-bank-head-main{display:flex;align-items:center;gap:10px;min-width:0}
-            .lcj2-bank-refresh{
+            .lcst-bank-head{justify-content:space-between!important}
+            .lcst-bank-head-main{display:flex;align-items:center;gap:10px;min-width:0}
+            .lcst-bank-refresh{
                 flex:0 0 auto;padding:7px 9px!important;border-radius:10px!important;
                 background:linear-gradient(135deg,#c79a3f,#8a5b2b)!important;
                 border-color:rgba(181,131,56,.24)!important;color:#fff!important;
                 font-size:7px!important;letter-spacing:.7px!important
             }
-            .lcj2-bank-lookup-state{margin-top:7px!important}
-            .lcj2-bank-lookup-state.success{border-color:rgba(34,197,94,.28)!important}
-            .lcj2-bank-lookup-state.failed{border-color:rgba(185,28,28,.24)!important}
+            .lcst-bank-lookup-state{margin-top:7px!important}
+            .lcst-bank-lookup-state.success{border-color:rgba(34,197,94,.28)!important}
+            .lcst-bank-lookup-state.failed{border-color:rgba(185,28,28,.24)!important}
 
             @media(max-width:1180px){
-                .lcj2-nova-hero{grid-template-columns:1fr!important}
-                .lcj2-nova-workspace{grid-template-columns:300px minmax(0,1fr)!important}
-                .lcj2-nova-identity{grid-template-columns:repeat(3,minmax(0,1fr))!important}
-                #lcj2-image-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+                .lcst-nova-hero{grid-template-columns:1fr!important}
+                .lcst-nova-workspace{grid-template-columns:300px minmax(0,1fr)!important}
+                .lcst-nova-identity{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+                #lcst-image-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
             }
             @media(max-width:820px){
-                #lcj2-panel-fixed{padding:9px!important}
-                .lcj2-nova-topbar{align-items:flex-start!important;flex-direction:column!important}
-                .lcj2-nova-top-actions{width:100%;justify-content:space-between}
-                .lcj2-nova-workspace{grid-template-columns:1fr!important}
-                .lcj2-nova-sidebar{position:static!important}
-                .lcj2-nova-identity{grid-template-columns:1fr!important}
-                .lcj2-nova-gallery-head,.lcj2-output-head{align-items:stretch!important;flex-direction:column!important}
-                .lcj2-nova-scan-btn{width:100%!important}
-                #lcj2-image-grid{grid-template-columns:1fr!important}
-                .lcj2-img-card img{height:220px!important}
+                #lcst-panel-fixed{padding:9px!important}
+                .lcst-nova-topbar{align-items:flex-start!important;flex-direction:column!important}
+                .lcst-nova-top-actions{width:100%;justify-content:space-between}
+                .lcst-nova-workspace{grid-template-columns:1fr!important}
+                .lcst-nova-sidebar{position:static!important}
+                .lcst-nova-identity{grid-template-columns:1fr!important}
+                .lcst-nova-gallery-head,.lcst-output-head{align-items:stretch!important;flex-direction:column!important}
+                .lcst-nova-scan-btn{width:100%!important}
+                #lcst-image-grid{grid-template-columns:1fr!important}
+                .lcst-img-card img{height:220px!important}
             }
 
 
@@ -1331,7 +1308,7 @@
                 --nova-text:#202331!important;
                 --nova-muted:#7b5560!important;
             }
-            #lcj2-panel-fixed{
+            #lcst-panel-fixed{
                 background:
                     radial-gradient(circle at 8% 0%,rgba(255,204,51,.24),transparent 27%),
                     radial-gradient(circle at 94% 4%,rgba(255,59,48,.15),transparent 28%),
@@ -1339,7 +1316,7 @@
                     linear-gradient(180deg,#ffffff 0%,#fff8f6 54%,#fffdf8 100%)!important;
                 color:#202331!important;
             }
-            #lcj2-panel-fixed:before{
+            #lcst-panel-fixed:before{
                 opacity:.22!important;
                 background-image:
                     linear-gradient(rgba(255,99,99,.055) 1px,transparent 1px),
@@ -1347,7 +1324,7 @@
             }
 
             /* Bubble lebih cerah */
-            #lcj2-bubble-fixed{
+            #lcst-bubble-fixed{
                 border:2px solid rgba(255,59,48,.46)!important;
                 background:
                     radial-gradient(circle at 34% 22%,#ffffff 0%,rgba(255,255,255,.96) 23%,transparent 38%),
@@ -1358,167 +1335,167 @@
                     0 0 36px rgba(255,59,48,.23),
                     inset 0 1px 0 #fff!important;
             }
-            .lcj2-nova-ring{border-color:rgba(255,59,48,.60)!important;filter:drop-shadow(0 0 8px rgba(255,59,48,.35))!important}
-            .lcj2-nova-ring:before{background:#ffb020!important;box-shadow:0 0 14px #ffb020!important}
-            .lcj2-nova-ring:after{background:#ff3b30!important;box-shadow:0 0 14px #ff3b30!important}
-            .lcj2-nova-lens{
+            .lcst-nova-ring{border-color:rgba(255,59,48,.60)!important;filter:drop-shadow(0 0 8px rgba(255,59,48,.35))!important}
+            .lcst-nova-ring:before{background:#ffb020!important;box-shadow:0 0 14px #ffb020!important}
+            .lcst-nova-ring:after{background:#ff3b30!important;box-shadow:0 0 14px #ff3b30!important}
+            .lcst-nova-lens{
                 background:linear-gradient(145deg,#ffffff,#ffe9e3)!important;
                 border-color:rgba(255,59,48,.38)!important;
                 box-shadow:inset 0 0 20px rgba(255,99,71,.11),0 8px 18px rgba(225,29,72,.14)!important;
             }
-            .lcj2-nova-lens:before{border-color:rgba(255,59,48,.55)!important;box-shadow:inset 0 0 12px rgba(255,59,48,.10),0 0 13px rgba(255,176,32,.18)!important}
-            .lcj2-nova-lens-dot{background:#ff3b30!important;box-shadow:0 0 14px #ff3b30!important}
-            .lcj2-jam2-number{color:#ef2f3c!important;text-shadow:0 0 12px rgba(255,59,48,.35)!important}
-            .lcj2-jam2-wib{color:#b45309!important}
-            .lcj2-nova-laser{background:linear-gradient(90deg,transparent,#ff3b30 18%,#fff 50%,#ffb020 82%,transparent)!important;box-shadow:0 0 13px rgba(255,59,48,.60)!important}
-            .lcj2-nova-corner{border-color:#ff3b30!important}
-            .lcj2-nova-caption{color:#d61f2c!important;text-shadow:0 0 9px rgba(255,59,48,.30)!important}
-            #lcj2-bubble-fixed:hover{box-shadow:0 28px 65px rgba(225,29,72,.24),0 0 0 8px rgba(255,176,32,.10),0 0 48px rgba(255,59,48,.28)!important}
+            .lcst-nova-lens:before{border-color:rgba(255,59,48,.55)!important;box-shadow:inset 0 0 12px rgba(255,59,48,.10),0 0 13px rgba(255,176,32,.18)!important}
+            .lcst-nova-lens-dot{background:#ff3b30!important;box-shadow:0 0 14px #ff3b30!important}
+            .lcst-nova-laser{background:linear-gradient(90deg,transparent,#ff3b30 18%,#fff 50%,#ffb020 82%,transparent)!important;box-shadow:0 0 13px rgba(255,59,48,.60)!important}
+            .lcst-nova-corner{border-color:#ff3b30!important}
+            .lcst-nova-caption{color:#d61f2c!important;text-shadow:0 0 9px rgba(255,59,48,.30)!important}
+            #lcst-bubble-fixed:hover{box-shadow:0 28px 65px rgba(225,29,72,.24),0 0 0 8px rgba(255,176,32,.10),0 0 48px rgba(255,59,48,.28)!important}
 
             /* Header & hero */
-            .lcj2-nova-topbar{
+            .lcst-nova-topbar{
                 border-color:rgba(255,59,48,.16)!important;
                 background:linear-gradient(135deg,#ffffff 0%,#fff8f5 58%,#fff0e8 100%)!important;
                 box-shadow:0 18px 42px rgba(190,24,93,.08),inset 0 1px 0 #fff!important;
             }
-            .lcj2-nova-topbar:before{background:linear-gradient(180deg,#ff3b30,#ff6b5e,#ffb020)!important;box-shadow:0 0 18px rgba(255,59,48,.30)!important}
-            .lcj2-nova-topbar:after{background:radial-gradient(circle,rgba(255,176,32,.18),transparent 65%)!important}
-            .lcj2-nova-logo{background:linear-gradient(145deg,#ffffff,#ffe4dc)!important;border-color:rgba(255,59,48,.20)!important;box-shadow:0 10px 24px rgba(225,29,72,.10),inset 0 1px 0 #fff!important}
-            .lcj2-nova-logo svg{stroke:#ef2f3c!important;filter:drop-shadow(0 0 8px rgba(255,59,48,.22))!important}
-            .lcj2-nova-eyebrow{color:#ef2f3c!important}
-            .lcj2-title{color:#b3132f!important}
-            .lcj2-subtitle{color:#84515d!important}
-            .lcj2-version{background:#fff1cf!important;border-color:rgba(255,176,32,.28)!important;color:#a35e00!important}
-            .lcj2-nova-live-chip{background:#effdf5!important;border-color:rgba(34,197,94,.22)!important;color:#15803d!important}
-            .lcj2-nova-close{background:#fff0f2!important;border-color:rgba(225,29,72,.20)!important;color:#be123c!important}
-            .lcj2-nova-close:hover{background:#ffe1e6!important}
+            .lcst-nova-topbar:before{background:linear-gradient(180deg,#ff3b30,#ff6b5e,#ffb020)!important;box-shadow:0 0 18px rgba(255,59,48,.30)!important}
+            .lcst-nova-topbar:after{background:radial-gradient(circle,rgba(255,176,32,.18),transparent 65%)!important}
+            .lcst-nova-logo{background:linear-gradient(145deg,#ffffff,#ffe4dc)!important;border-color:rgba(255,59,48,.20)!important;box-shadow:0 10px 24px rgba(225,29,72,.10),inset 0 1px 0 #fff!important}
+            .lcst-nova-logo svg{stroke:#ef2f3c!important;filter:drop-shadow(0 0 8px rgba(255,59,48,.22))!important}
+            .lcst-nova-eyebrow{color:#ef2f3c!important}
+            .lcst-title{color:#b3132f!important}
+            .lcst-subtitle{color:#84515d!important}
+            .lcst-version{background:#fff1cf!important;border-color:rgba(255,176,32,.28)!important;color:#a35e00!important}
+            .lcst-nova-live-chip{background:#effdf5!important;border-color:rgba(34,197,94,.22)!important;color:#15803d!important}
+            .lcst-nova-close{background:#fff0f2!important;border-color:rgba(225,29,72,.20)!important;color:#be123c!important}
+            .lcst-nova-close:hover{background:#ffe1e6!important}
 
-            .lcj2-nova-status{
+            .lcst-nova-status{
                 background:
                     radial-gradient(circle at 92% 0%,rgba(255,176,32,.18),transparent 42%),
                     linear-gradient(135deg,#ffffff,#fff5f1)!important;
                 border-color:rgba(255,59,48,.17)!important;
                 box-shadow:0 15px 34px rgba(190,24,93,.07),inset 0 1px 0 #fff!important;
             }
-            .lcj2-nova-status-icon{background:#fff0ed!important;border-color:rgba(255,59,48,.20)!important}
-            .lcj2-nova-status-icon svg{stroke:#ef2f3c!important}
-            .lcj2-nova-status .lcj2-status-title{color:#e52c39!important}
-            .lcj2-nova-status .lcj2-ocr-box{color:#272534!important}
-            .lcj2-nova-status .lcj2-progress{background:#ffe7e2!important}
-            .lcj2-nova-status .lcj2-progress span{background:linear-gradient(90deg,#ff3b30,#ff6b5e,#ffb020)!important}
+            .lcst-nova-status-icon{background:#fff0ed!important;border-color:rgba(255,59,48,.20)!important}
+            .lcst-nova-status-icon svg{stroke:#ef2f3c!important}
+            .lcst-nova-status .lcst-status-title{color:#e52c39!important}
+            .lcst-nova-status .lcst-ocr-box{color:#272534!important}
+            .lcst-nova-status .lcst-progress{background:#ffe7e2!important}
+            .lcst-nova-status .lcst-progress span{background:linear-gradient(90deg,#ff3b30,#ff6b5e,#ffb020)!important}
 
             /* Semua kartu dalam dibuat putih terang */
-            .lcj2-card,
-            .lcj2-nova-stat,
-            .lcj2-nova-guide,
-            .lcj2-nova-output-card{
+            .lcst-card,
+            .lcst-nova-stat,
+            .lcst-nova-guide,
+            .lcst-nova-output-card{
                 background:linear-gradient(155deg,#ffffff 0%,#fffaf8 100%)!important;
                 border-color:rgba(239,68,68,.13)!important;
                 box-shadow:0 15px 34px rgba(190,24,93,.065),inset 0 1px 0 #fff!important;
             }
-            .lcj2-nova-stat.ok{background:linear-gradient(155deg,#ffffff,#edfff4)!important;border-color:rgba(34,197,94,.20)!important}
-            .lcj2-nova-stat.bad{background:linear-gradient(155deg,#ffffff,#fff0f2)!important;border-color:rgba(225,29,72,.18)!important}
-            .lcj2-nova-stat.user{background:linear-gradient(155deg,#ffffff,#fff6ed)!important;border-color:rgba(255,159,67,.20)!important}
-            .lcj2-nova-stat.mode{background:linear-gradient(155deg,#ffffff,#fff9df)!important;border-color:rgba(255,176,32,.22)!important}
-            .lcj2-nova-stat-label{color:#d12a38!important}
-            .lcj2-nova-stat strong{color:#252331!important}
-            .lcj2-user-edit{color:#252331!important}
-            .lcj2-user-edit:focus{background:#fff!important;box-shadow:0 0 0 3px rgba(255,59,48,.10)!important}
-            .lcj2-nova-stat small{color:#88616a!important}
-            .lcj2-nova-section-head b,.lcj2-nova-guide-row b{color:#252331!important}
-            .lcj2-nova-section-head small,.lcj2-nova-guide-row small,.lcj2-nova-guide-title{color:#88616a!important}
-            .lcj2-nova-step{background:#fff0ed!important;border-color:rgba(255,59,48,.18)!important;color:#e52c39!important}
-            .lcj2-nova-section-head.orange .lcj2-nova-step{background:#fff5cf!important;border-color:rgba(255,176,32,.24)!important;color:#a75e00!important}
-            .lcj2-nova-guide-row{border-color:rgba(239,68,68,.08)!important}
-            .lcj2-nova-guide-row>span{background:#fff1ec!important;color:#ef2f3c!important}
+            .lcst-nova-stat.ok{background:linear-gradient(155deg,#ffffff,#edfff4)!important;border-color:rgba(34,197,94,.20)!important}
+            .lcst-nova-stat.bad{background:linear-gradient(155deg,#ffffff,#fff0f2)!important;border-color:rgba(225,29,72,.18)!important}
+            .lcst-nova-stat.user{background:linear-gradient(155deg,#ffffff,#fff6ed)!important;border-color:rgba(255,159,67,.20)!important}
+            .lcst-nova-stat.mode{background:linear-gradient(155deg,#ffffff,#fff9df)!important;border-color:rgba(255,176,32,.22)!important}
+            .lcst-nova-stat-label{color:#d12a38!important}
+            .lcst-nova-stat strong{color:#252331!important}
+            .lcst-user-edit{color:#252331!important}
+            .lcst-user-edit:focus{background:#fff!important;box-shadow:0 0 0 3px rgba(255,59,48,.10)!important}
+            .lcst-nova-stat small{color:#88616a!important}
+            .lcst-nova-section-head b,.lcst-nova-guide-row b{color:#252331!important}
+            .lcst-nova-section-head small,.lcst-nova-guide-row small,.lcst-nova-guide-title{color:#88616a!important}
+            .lcst-nova-step{background:#fff0ed!important;border-color:rgba(255,59,48,.18)!important;color:#e52c39!important}
+            .lcst-nova-section-head.orange .lcst-nova-step{background:#fff5cf!important;border-color:rgba(255,176,32,.24)!important;color:#a75e00!important}
+            .lcst-nova-guide-row{border-color:rgba(239,68,68,.08)!important}
+            .lcst-nova-guide-row>span{background:#fff1ec!important;color:#ef2f3c!important}
 
             /* Input & tombol */
-            .lcj2-input{
+            .lcst-input{
                 background:#ffffff!important;
                 border-color:rgba(239,68,68,.16)!important;
                 color:#252331!important;
                 box-shadow:0 4px 12px rgba(190,24,93,.035),inset 0 1px 0 #fff!important;
             }
-            .lcj2-input::placeholder{color:#b18b94!important}
-            .lcj2-input:focus{border-color:rgba(255,59,48,.48)!important;box-shadow:0 0 0 4px rgba(255,59,48,.09),0 6px 16px rgba(190,24,93,.06)!important}
-            .lcj2-btn{background:linear-gradient(180deg,#ffffff,#fff4f0)!important;border-color:rgba(239,68,68,.16)!important;color:#b3132f!important;box-shadow:0 7px 16px rgba(190,24,93,.07),inset 0 1px 0 #fff!important}
-            .lcj2-btn:hover{background:linear-gradient(180deg,#fff8f5,#ffe7e1)!important;border-color:rgba(255,59,48,.30)!important}
-            .lcj2-btn.primary,.lcj2-nova-scan-btn{
+            .lcst-input::placeholder{color:#b18b94!important}
+            .lcst-input:focus{border-color:rgba(255,59,48,.48)!important;box-shadow:0 0 0 4px rgba(255,59,48,.09),0 6px 16px rgba(190,24,93,.06)!important}
+            .lcst-btn{background:linear-gradient(180deg,#ffffff,#fff4f0)!important;border-color:rgba(239,68,68,.16)!important;color:#b3132f!important;box-shadow:0 7px 16px rgba(190,24,93,.07),inset 0 1px 0 #fff!important}
+            .lcst-btn:hover{background:linear-gradient(180deg,#fff8f5,#ffe7e1)!important;border-color:rgba(255,59,48,.30)!important}
+            .lcst-btn.primary,.lcst-nova-scan-btn{
                 color:#fff!important;
                 background:linear-gradient(135deg,#ff3b30 0%,#ef2f3c 50%,#ff9f43 100%)!important;
                 border-color:rgba(255,59,48,.32)!important;
                 box-shadow:0 14px 30px rgba(225,29,72,.22),inset 0 1px 0 rgba(255,255,255,.28)!important;
             }
-            .lcj2-btn.green{color:#fff!important;background:linear-gradient(135deg,#2dd66f,#16a34a)!important;border-color:rgba(34,197,94,.26)!important}
-            .lcj2-btn.blue{color:#fff!important;background:linear-gradient(135deg,#38bdf8,#2563eb)!important;border-color:rgba(37,99,235,.25)!important}
-            .lcj2-btn.red{color:#fff!important;background:linear-gradient(135deg,#fb7185,#e11d48)!important;border-color:rgba(225,29,72,.26)!important}
-            .lcj2-btn.orange{color:#fff!important;background:linear-gradient(135deg,#ffc62f,#f59e0b)!important;border-color:rgba(245,158,11,.28)!important}
-            .lcj2-bank-refresh{background:linear-gradient(135deg,#ff9f43,#ef2f3c)!important;border-color:rgba(239,68,68,.24)!important;box-shadow:0 8px 17px rgba(225,29,72,.16)!important}
-            .lcj2-inline-copy{background:#fff4f0!important;border-color:rgba(239,68,68,.16)!important;color:#e52c39!important}
+            .lcst-btn.green{color:#fff!important;background:linear-gradient(135deg,#2dd66f,#16a34a)!important;border-color:rgba(34,197,94,.26)!important}
+            .lcst-btn.blue{color:#fff!important;background:linear-gradient(135deg,#38bdf8,#2563eb)!important;border-color:rgba(37,99,235,.25)!important}
+            .lcst-btn.red{color:#fff!important;background:linear-gradient(135deg,#fb7185,#e11d48)!important;border-color:rgba(225,29,72,.26)!important}
+            .lcst-btn.orange{color:#fff!important;background:linear-gradient(135deg,#ffc62f,#f59e0b)!important;border-color:rgba(245,158,11,.28)!important}
+            .lcst-bank-refresh{background:linear-gradient(135deg,#ff9f43,#ef2f3c)!important;border-color:rgba(239,68,68,.24)!important;box-shadow:0 8px 17px rgba(225,29,72,.16)!important}
+            .lcst-inline-copy{background:#fff4f0!important;border-color:rgba(239,68,68,.16)!important;color:#e52c39!important}
 
             /* Status scan dibuat terang */
-            .lcj2-scan-state{background:#ffffff!important;border-color:rgba(148,163,184,.22)!important;box-shadow:0 8px 20px rgba(71,85,105,.07),inset 0 1px 0 #fff!important}
-            .lcj2-scan-state-label{color:#98636e!important}
-            .lcj2-scan-state-text{color:#30303d!important}
-            .lcj2-scan-state-detail{color:#96737b!important}
-            .lcj2-scan-state.waiting{background:linear-gradient(145deg,#ffffff,#eff8ff)!important;border-color:rgba(59,130,246,.20)!important}
-            .lcj2-scan-state.scanning{background:linear-gradient(145deg,#ffffff,#eafcff)!important;border-color:rgba(6,182,212,.24)!important}
-            .lcj2-scan-state.success{background:linear-gradient(145deg,#ffffff,#edfff3)!important;border-color:rgba(34,197,94,.24)!important}
-            .lcj2-scan-state.partial{background:linear-gradient(145deg,#ffffff,#fff8db)!important;border-color:rgba(245,158,11,.25)!important}
-            .lcj2-scan-state.failed{background:linear-gradient(145deg,#ffffff,#fff0f3)!important;border-color:rgba(225,29,72,.24)!important}
-            .lcj2-scan-state.waiting .lcj2-scan-state-text{color:#2563eb!important}
-            .lcj2-scan-state.scanning .lcj2-scan-state-text{color:#0891b2!important}
-            .lcj2-scan-state.success .lcj2-scan-state-text{color:#15803d!important}
-            .lcj2-scan-state.partial .lcj2-scan-state-text{color:#b45309!important}
-            .lcj2-scan-state.failed .lcj2-scan-state-text{color:#be123c!important}
+            .lcst-scan-state{background:#ffffff!important;border-color:rgba(148,163,184,.22)!important;box-shadow:0 8px 20px rgba(71,85,105,.07),inset 0 1px 0 #fff!important}
+            .lcst-scan-state-label{color:#98636e!important}
+            .lcst-scan-state-text{color:#30303d!important}
+            .lcst-scan-state-detail{color:#96737b!important}
+            .lcst-scan-state.waiting{background:linear-gradient(145deg,#ffffff,#eff8ff)!important;border-color:rgba(59,130,246,.20)!important}
+            .lcst-scan-state.scanning{background:linear-gradient(145deg,#ffffff,#eafcff)!important;border-color:rgba(6,182,212,.24)!important}
+            .lcst-scan-state.success{background:linear-gradient(145deg,#ffffff,#edfff3)!important;border-color:rgba(34,197,94,.24)!important}
+            .lcst-scan-state.partial{background:linear-gradient(145deg,#ffffff,#fff8db)!important;border-color:rgba(245,158,11,.25)!important}
+            .lcst-scan-state.failed{background:linear-gradient(145deg,#ffffff,#fff0f3)!important;border-color:rgba(225,29,72,.24)!important}
+            .lcst-scan-state.waiting .lcst-scan-state-text{color:#2563eb!important}
+            .lcst-scan-state.scanning .lcst-scan-state-text{color:#0891b2!important}
+            .lcst-scan-state.success .lcst-scan-state-text{color:#15803d!important}
+            .lcst-scan-state.partial .lcst-scan-state-text{color:#b45309!important}
+            .lcst-scan-state.failed .lcst-scan-state-text{color:#be123c!important}
 
             /* Galeri dan hasil */
-            .lcj2-nova-kicker{color:#e52c39!important}
-            .lcj2-nova-gallery-head h4,.lcj2-output-head h4{color:#b3132f!important}
-            .lcj2-nova-gallery-head p,.lcj2-output-head p{color:#88616a!important}
-            .lcj2-img-card{background:#ffffff!important;border-color:rgba(239,68,68,.12)!important;box-shadow:0 10px 23px rgba(190,24,93,.06)!important}
-            .lcj2-img-card:hover{border-color:rgba(255,59,48,.30)!important;box-shadow:0 18px 36px rgba(190,24,93,.11)!important}
-            .lcj2-img-card.target{border-color:rgba(255,176,32,.55)!important;box-shadow:0 0 0 2px rgba(255,176,32,.08),0 16px 34px rgba(190,24,93,.08)!important}
-            .lcj2-img-card img,.lcj2-img-media{background:#fffaf8!important}
-            .lcj2-img-index{background:rgba(255,255,255,.96)!important;color:#b3132f!important;border-color:rgba(239,68,68,.12)!important}
-            .lcj2-target-tag{color:#d97706!important}
-            .lcj2-img-label{color:#8f6871!important;border-color:rgba(239,68,68,.07)!important}
-            .lcj2-ocr-badge{background:#eefcff!important;color:#087f9a!important;border-color:rgba(6,182,212,.16)!important}
-            .lcj2-ocr-badge.success{background:#edfff4!important;color:#15803d!important;border-color:rgba(34,197,94,.20)!important}
-            .lcj2-ocr-badge.error{background:#fff0f3!important;color:#be123c!important;border-color:rgba(225,29,72,.20)!important}
-            .lcj2-ocr-badge.empty{background:#f8fafc!important;color:#64748b!important;border-color:rgba(100,116,139,.14)!important}
-            .lcj2-empty{background:linear-gradient(145deg,#ffffff,#fff7f3)!important;border-color:rgba(239,68,68,.14)!important;color:#98636e!important}
-            .lcj2-empty b{color:#b3132f!important}.lcj2-nova-empty-icon{color:#ff3b30!important}
-            #lcj2-output{background:#ffffff!important;border-color:rgba(239,68,68,.15)!important;color:#b3132f!important;box-shadow:inset 0 1px 0 #fff!important}
-            #lcj2-output:focus{border-color:rgba(255,59,48,.34)!important;box-shadow:0 0 0 4px rgba(255,59,48,.07)!important}
-            .lcj2-pill{background:#ffffff!important;color:#38323c!important;border-color:rgba(239,68,68,.12)!important}
-            .lcj2-pill.blue{background:#eefaff!important;color:#087f9a!important;border-color:rgba(6,182,212,.16)!important}
-            .lcj2-pill.green{background:#effdf5!important;color:#15803d!important;border-color:rgba(34,197,94,.18)!important}
-            .lcj2-pill.red{background:#fff0f3!important;color:#be123c!important;border-color:rgba(225,29,72,.18)!important}
+            .lcst-nova-kicker{color:#e52c39!important}
+            .lcst-nova-gallery-head h4,.lcst-output-head h4{color:#b3132f!important}
+            .lcst-nova-gallery-head p,.lcst-output-head p{color:#88616a!important}
+            .lcst-img-card{background:#ffffff!important;border-color:rgba(239,68,68,.12)!important;box-shadow:0 10px 23px rgba(190,24,93,.06)!important}
+            .lcst-img-card:hover{border-color:rgba(255,59,48,.30)!important;box-shadow:0 18px 36px rgba(190,24,93,.11)!important}
+            .lcst-img-card.target{border-color:rgba(255,176,32,.55)!important;box-shadow:0 0 0 2px rgba(255,176,32,.08),0 16px 34px rgba(190,24,93,.08)!important}
+            .lcst-img-card img,.lcst-img-media{background:#fffaf8!important}
+            .lcst-img-index{background:rgba(255,255,255,.96)!important;color:#b3132f!important;border-color:rgba(239,68,68,.12)!important}
+            .lcst-target-tag{color:#d97706!important}
+            .lcst-img-label{color:#8f6871!important;border-color:rgba(239,68,68,.07)!important}
+            .lcst-ocr-badge{background:#eefcff!important;color:#087f9a!important;border-color:rgba(6,182,212,.16)!important}
+            .lcst-ocr-badge.success{background:#edfff4!important;color:#15803d!important;border-color:rgba(34,197,94,.20)!important}
+            .lcst-ocr-badge.error{background:#fff0f3!important;color:#be123c!important;border-color:rgba(225,29,72,.20)!important}
+            .lcst-ocr-badge.empty{background:#f8fafc!important;color:#64748b!important;border-color:rgba(100,116,139,.14)!important}
+            .lcst-empty{background:linear-gradient(145deg,#ffffff,#fff7f3)!important;border-color:rgba(239,68,68,.14)!important;color:#98636e!important}
+            .lcst-empty b{color:#b3132f!important}.lcst-nova-empty-icon{color:#ff3b30!important}
+            #lcst-output{background:#ffffff!important;border-color:rgba(239,68,68,.15)!important;color:#b3132f!important;box-shadow:inset 0 1px 0 #fff!important}
+            #lcst-output:focus{border-color:rgba(255,59,48,.34)!important;box-shadow:0 0 0 4px rgba(255,59,48,.07)!important}
+            .lcst-pill{background:#ffffff!important;color:#38323c!important;border-color:rgba(239,68,68,.12)!important}
+            .lcst-pill.blue{background:#eefaff!important;color:#087f9a!important;border-color:rgba(6,182,212,.16)!important}
+            .lcst-pill.green{background:#effdf5!important;color:#15803d!important;border-color:rgba(34,197,94,.18)!important}
+            .lcst-pill.red{background:#fff0f3!important;color:#be123c!important;border-color:rgba(225,29,72,.18)!important}
 
-            #lcj2-panel-fixed.lcj2-performance-mode{background:#fffaf8!important}
+            #lcst-panel-fixed.lcst-performance-mode{
+                background:linear-gradient(180deg,#081b45 0%,#061534 55%,#040f28 100%)!important
+            }
 
             /* V5.6.1: mode pemindahan gambar super ringan.
                Efek berat dimatikan hanya selama drag agar kartu mengikuti pointer tanpa patah-patah. */
-            #lcj2-panel-fixed.lcj2-reorder-mode .lcj2-img-card,
-            #lcj2-panel-fixed.lcj2-reorder-mode .lcj2-img-card:hover,
-            #lcj2-panel-fixed.lcj2-reorder-mode .lcj2-img-card.target{
+            #lcst-panel-fixed.lcst-reorder-mode .lcst-img-card,
+            #lcst-panel-fixed.lcst-reorder-mode .lcst-img-card:hover,
+            #lcst-panel-fixed.lcst-reorder-mode .lcst-img-card.target{
                 transition:none!important;
                 transform:none!important;
                 box-shadow:none!important;
                 will-change:auto!important;
             }
-            #lcj2-panel-fixed.lcj2-reorder-mode .lcj2-img-card img{
+            #lcst-panel-fixed.lcst-reorder-mode .lcst-img-card img{
                 transition:none!important;
                 transform:none!important;
                 pointer-events:none!important;
             }
-            #lcj2-panel-fixed.lcj2-reorder-mode .lcj2-img-card *{pointer-events:none!important}
-            #lcj2-panel-fixed.lcj2-reorder-mode .lcj2-img-card.dragging{
+            #lcst-panel-fixed.lcst-reorder-mode .lcst-img-card *{pointer-events:none!important}
+            #lcst-panel-fixed.lcst-reorder-mode .lcst-img-card.dragging{
                 opacity:.32!important;
                 border-style:dashed!important;
             }
-            #lcj2-panel-fixed.lcj2-reorder-mode .lcj2-img-card.over{
+            #lcst-panel-fixed.lcst-reorder-mode .lcst-img-card.over{
                 opacity:1!important;
                 border-color:#22c55e!important;
                 background:#f0fff5!important;
@@ -1526,1069 +1503,1252 @@
             }
 
             /* =========================================================
-               LAMPU AKSES HARIAN 23.50–02.00 WIB
+               BUBBLE GAMBAR CUSTOM
+               Bubble memakai gambar Postimg; dashboard memakai logo LINE TOGEL.
+               Fungsi klik, drag, dan pembuka panel tetap aktif.
                ========================================================= */
-            #lcj2-bubble-fixed{
-                width:92px!important;
-                height:108px!important;
-                padding:0!important;
-                border:0!important;
-                border-radius:28px!important;
-                background:linear-gradient(160deg,#171b24,#080a0f)!important;
-                box-shadow:0 22px 52px rgba(0,0,0,.58),inset 0 1px 0 rgba(255,255,255,.10)!important;
+            #lcst-bubble-fixed{
+                width:94px!important;
+                height:94px!important;
+                border-radius:50%!important;
+                border:2px solid rgba(255,255,255,.96)!important;
+                background-color:#fffaf3!important;
+                background-image:
+                    linear-gradient(145deg,rgba(255,255,255,.34) 0%,transparent 34%,rgba(122,15,26,.07) 100%),
+                    url("https://i.postimg.cc/jSc32qYs/85c5a789-2ae2-4b4f-897d-9aab6a0c6b4f.png"),
+                    radial-gradient(circle at 32% 20%,#ffffff 0%,#fffdf8 30%,#fff1dc 66%,#e8bd74 100%)!important;
+                background-repeat:no-repeat,no-repeat,no-repeat!important;
+                background-position:center center,center center,center center!important;
+                background-size:100% 100%,78% auto,100% 100%!important;
                 overflow:visible!important;
                 isolation:isolate!important;
-                transition:transform .2s ease,filter .25s ease,box-shadow .25s ease!important;
+                box-shadow:
+                    0 8px 13px rgba(91,32,22,.20),
+                    0 22px 42px rgba(91,32,22,.30),
+                    0 0 0 5px rgba(255,255,255,.46),
+                    0 0 0 8px rgba(218,165,70,.15),
+                    0 0 30px rgba(221,45,54,.25),
+                    inset 0 2px 3px rgba(255,255,255,1),
+                    inset 0 -10px 19px rgba(126,31,27,.12)!important;
             }
-            #lcj2-bubble-fixed:before{
+            #lcst-bubble-fixed:before{
                 content:""!important;
                 display:block!important;
                 position:absolute!important;
-                left:11px!important;
-                right:11px!important;
-                top:9px!important;
-                height:72px!important;
-                border-radius:23px!important;
-                background:linear-gradient(145deg,#242a35,#0c0f16)!important;
-                border:1px solid rgba(255,255,255,.10)!important;
-                box-shadow:inset 0 0 22px rgba(0,0,0,.58)!important;
-                z-index:0!important;
+                inset:4px!important;
+                width:auto!important;
+                height:auto!important;
+                border-radius:50%!important;
+                border:1px solid rgba(255,255,255,.82)!important;
+                background:
+                    radial-gradient(ellipse at 35% 15%,rgba(255,255,255,.88) 0%,rgba(255,255,255,.20) 27%,transparent 44%),
+                    linear-gradient(155deg,transparent 48%,rgba(108,14,25,.10) 100%)!important;
+                box-shadow:inset 0 0 16px rgba(255,255,255,.32)!important;
+                pointer-events:none!important;
+                z-index:2!important;
+                animation:lcstLogoGlass 3.2s ease-in-out infinite!important;
             }
-            #lcj2-bubble-fixed:after{
+            #lcst-bubble-fixed:after{
                 content:""!important;
                 display:block!important;
                 position:absolute!important;
-                left:29px!important;
-                bottom:-7px!important;
-                width:34px!important;
-                height:12px!important;
-                border-radius:0 0 9px 9px!important;
-                background:linear-gradient(#151922,#05070b)!important;
-                border:1px solid rgba(255,255,255,.08)!important;
+                inset:-9px!important;
+                border-radius:50%!important;
+                background:conic-gradient(
+                    from 0deg,
+                    transparent 0 12%,
+                    rgba(255,198,72,.92) 18%,
+                    transparent 27% 48%,
+                    rgba(224,30,49,.86) 56%,
+                    transparent 65% 82%,
+                    rgba(255,228,145,.86) 90%,
+                    transparent 100%
+                )!important;
+                opacity:.78!important;
+                filter:blur(1px) drop-shadow(0 0 7px rgba(224,30,49,.30))!important;
+                pointer-events:none!important;
                 z-index:-1!important;
+                animation:lcstLogoOrbit 7s linear infinite!important;
             }
-            #lcj2-bubble-fixed .lcj2-nova-ring{display:none!important}
-            .lcj2-lamp-face{
-                position:absolute;
-                left:20px;
-                top:17px;
-                width:52px;
-                height:52px;
-                border-radius:50%;
-                display:flex;
-                flex-direction:column;
-                align-items:center;
-                justify-content:center;
-                z-index:3;
-                background:radial-gradient(circle at 36% 28%,#4b5563,#111827 58%,#030712);
-                border:2px solid #475569;
-                box-shadow:inset 0 0 18px rgba(0,0,0,.72),0 0 0 6px rgba(71,85,105,.13);
-                transition:background .3s ease,border-color .3s ease,box-shadow .3s ease;
-            }
-            .lcj2-lamp-number{
-                font-size:23px;
-                line-height:21px;
-                font-weight:1000;
-                letter-spacing:-1px;
-                color:#94a3b8;
-                text-shadow:none;
-                transition:color .3s ease,text-shadow .3s ease;
-            }
-            .lcj2-lamp-unit{
-                margin-top:2px;
-                font-size:7px;
-                line-height:8px;
-                font-weight:1000;
-                letter-spacing:1.5px;
-                color:#64748b;
-                transition:color .3s ease;
-            }
-            .lcj2-lamp-caption{
-                position:absolute;
-                left:5px;
-                right:5px;
-                bottom:13px;
-                z-index:3;
-                font-size:9px;
-                line-height:11px;
-                font-weight:1000;
-                letter-spacing:1.3px;
-                text-align:center;
-                color:#64748b;
-            }
-            .lcj2-lamp-led{
-                position:absolute;
-                right:13px;
-                top:12px;
-                z-index:5;
-                width:10px;
-                height:10px;
-                border-radius:50%;
-                background:#475569;
-                border:2px solid #111827;
-                box-shadow:none;
-                transition:background .25s ease,box-shadow .25s ease;
-            }
-            .lcj2-lamp-message{
-                position:absolute;
-                right:102px;
-                top:28px;
-                width:max-content;
-                max-width:190px;
-                padding:9px 12px;
-                border-radius:12px;
-                color:#e2e8f0;
-                background:rgba(8,10,15,.96);
-                border:1px solid rgba(148,163,184,.20);
-                box-shadow:0 14px 32px rgba(0,0,0,.36);
-                font-size:10px;
-                line-height:1.35;
-                font-weight:900;
-                letter-spacing:.35px;
-                text-align:left;
-                pointer-events:none;
-                opacity:0;
-                transform:translateX(8px);
-                transition:opacity .18s ease,transform .18s ease;
-            }
-            #lcj2-bubble-fixed.lcj2-show-message .lcj2-lamp-message{
-                opacity:1;
-                transform:translateX(0);
-            }
-            #lcj2-bubble-fixed.lcj2-access-active{
-                cursor:grab!important;
-                box-shadow:0 24px 58px rgba(0,0,0,.62),0 0 26px rgba(34,197,94,.23),inset 0 1px 0 rgba(255,255,255,.12)!important;
-            }
-            #lcj2-bubble-fixed.lcj2-access-active .lcj2-lamp-face{
-                background:radial-gradient(circle at 36% 28%,#ecfdf5,#22c55e 38%,#047857 72%,#022c22);
-                border-color:#86efac;
-                box-shadow:inset 0 0 16px rgba(255,255,255,.28),0 0 0 6px rgba(34,197,94,.12),0 0 30px rgba(34,197,94,.72);
-                animation:lcj2LampAlive 1.65s ease-in-out infinite;
-            }
-            #lcj2-bubble-fixed.lcj2-access-active .lcj2-lamp-number{
-                color:#ffffff;
-                text-shadow:0 0 12px rgba(255,255,255,.92),0 0 18px rgba(187,247,208,.72);
-            }
-            #lcj2-bubble-fixed.lcj2-access-active .lcj2-lamp-unit{color:#dcfce7}
-            #lcj2-bubble-fixed.lcj2-access-active .lcj2-lamp-caption{color:#86efac}
-            #lcj2-bubble-fixed.lcj2-access-active .lcj2-lamp-led{
-                background:#4ade80;
-                box-shadow:0 0 0 4px rgba(74,222,128,.12),0 0 14px #4ade80;
-                animation:lcj2LampLed 1s ease-in-out infinite;
-            }
-            #lcj2-bubble-fixed.lcj2-access-inactive{
-                cursor:not-allowed!important;
-                filter:saturate(.28) brightness(.80);
-            }
-            #lcj2-bubble-fixed.lcj2-access-inactive:hover{
-                transform:translateY(-2px) scale(1.02)!important;
-                filter:saturate(.35) brightness(.88);
-            }
-            #lcj2-bubble-fixed.lcj2-access-inactive .lcj2-lamp-caption{
-                color:#94a3b8;
-                letter-spacing:.7px;
-            }
-            @keyframes lcj2LampAlive{
-                0%,100%{transform:scale(.96);box-shadow:inset 0 0 16px rgba(255,255,255,.24),0 0 0 6px rgba(34,197,94,.10),0 0 22px rgba(34,197,94,.50)}
-                50%{transform:scale(1.035);box-shadow:inset 0 0 18px rgba(255,255,255,.34),0 0 0 8px rgba(34,197,94,.15),0 0 38px rgba(34,197,94,.88)}
-            }
-            @keyframes lcj2LampLed{0%,100%{opacity:.55}50%{opacity:1}}
-
-            /* =========================================================
-               FINAL UI V1.4 — panel dalam hijau hitam
-               ========================================================= */
-            :root{
-                --lcj2-v14-bg:#06110b!important;
-                --lcj2-v14-panel:#0a1810!important;
-                --lcj2-v14-panel2:#102219!important;
-                --lcj2-v14-soft:#163124!important;
-                --lcj2-v14-line:rgba(74,222,128,.14)!important;
-                --lcj2-v14-green:#4ade80!important;
-                --lcj2-v14-green2:#22c55e!important;
-                --lcj2-v14-mint:#86efac!important;
-                --lcj2-v14-lime:#bef264!important;
-                --lcj2-v14-gold:#facc15!important;
-                --lcj2-v14-red:#fb7185!important;
-                --lcj2-v14-text:#eefcf3!important;
-                --lcj2-v14-muted:#9db8a6!important;
-            }
-
-            #lcj2-panel-fixed{
-                background:
-                    radial-gradient(circle at 10% 0%,rgba(34,197,94,.16),transparent 28%),
-                    radial-gradient(circle at 100% 8%,rgba(74,222,128,.12),transparent 24%),
-                    radial-gradient(circle at 50% 100%,rgba(190,242,100,.06),transparent 33%),
-                    linear-gradient(180deg,#040c07 0%,#07110b 48%,#030905 100%)!important;
-                color:var(--lcj2-v14-text)!important;
-            }
-            #lcj2-panel-fixed:before{
-                opacity:.14!important;
-                background-image:
-                    linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),
-                    linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px)!important;
-            }
-            #lcj2-panel-fixed:after{
-                opacity:.18!important;
-                background:
-                    linear-gradient(115deg,transparent 0 42%,rgba(255,255,255,.03) 50%,transparent 58%),
-                    radial-gradient(circle at 50% -10%,rgba(74,222,128,.08),transparent 50%)!important;
-            }
-
-            .lcj2-nova-topbar{
-                background:linear-gradient(145deg,rgba(10,24,16,.96),rgba(7,18,12,.96),rgba(12,29,19,.95))!important;
-                border-color:rgba(74,222,128,.12)!important;
-                box-shadow:0 20px 52px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.04)!important;
-            }
-            .lcj2-nova-topbar:before{
-                background:linear-gradient(90deg,transparent,#4ade80,#86efac,#bef264,transparent)!important;
-                box-shadow:0 0 18px rgba(74,222,128,.18)!important;
-            }
-            .lcj2-nova-topbar:after{background:radial-gradient(circle,rgba(74,222,128,.14),transparent 66%)!important}
-            .lcj2-nova-logo{
-                background:linear-gradient(145deg,rgba(15,34,22,.95),rgba(8,18,12,.95))!important;
-                border-color:rgba(74,222,128,.15)!important;
-                box-shadow:0 10px 24px rgba(0,0,0,.28),0 0 24px rgba(34,197,94,.07)!important;
-            }
-            .lcj2-nova-logo svg{stroke:#86efac!important}
-            .lcj2-nova-eyebrow{color:#a7f3c5!important}
-            .lcj2-title{color:#f3fff7!important}
-            .lcj2-subtitle,.lcj2-version,.lcj2-nova-gallery-head p,.lcj2-output-head p,.lcj2-nova-guide-title,.lcj2-nova-section-head small,.lcj2-nova-guide-row small{
-                color:var(--lcj2-v14-muted)!important;
-            }
-            .lcj2-version{
-                background:rgba(74,222,128,.08)!important;
-                border-color:rgba(74,222,128,.15)!important;
-            }
-            .lcj2-nova-live-chip{
-                background:rgba(74,222,128,.10)!important;
-                border-color:rgba(74,222,128,.16)!important;
-                color:#d8ffe6!important;
-            }
-            .lcj2-nova-close{
-                background:rgba(15,27,19,.94)!important;
-                border-color:rgba(148,163,184,.10)!important;
-                color:#d0e3d6!important;
-            }
-            .lcj2-nova-close:hover{background:rgba(23,41,28,.98)!important;color:#fff!important}
-
-            .lcj2-nova-status,
-            .lcj2-card,
-            .lcj2-nova-stat,
-            .lcj2-nova-guide,
-            .lcj2-nova-output-card,
-            .lcj2-img-card{
-                background:linear-gradient(155deg,rgba(10,24,16,.97),rgba(6,14,9,.99))!important;
-                border-color:var(--lcj2-v14-line)!important;
-                box-shadow:0 18px 38px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.03)!important;
-            }
-            .lcj2-nova-status{
-                background:
-                    radial-gradient(circle at 92% 0%,rgba(74,222,128,.08),transparent 40%),
-                    linear-gradient(145deg,rgba(10,24,16,.97),rgba(6,14,9,.99))!important;
-            }
-            .lcj2-nova-status-icon{
-                background:linear-gradient(145deg,rgba(18,42,26,.94),rgba(8,17,11,.96))!important;
-                border-color:rgba(74,222,128,.16)!important;
-            }
-            .lcj2-nova-status-icon svg{stroke:#86efac!important}
-            .lcj2-status-title,.lcj2-nova-kicker,.lcj2-nova-gallery-head h4,.lcj2-output-head h4{color:#ecfff2!important}
-            .lcj2-ocr-box,.lcj2-nova-section-head b,.lcj2-nova-guide-row b,.lcj2-nova-stat strong,.lcj2-user-edit{color:#f4fff8!important}
-            .lcj2-user-edit:focus{background:rgba(10,24,16,.96)!important;box-shadow:0 0 0 3px rgba(74,222,128,.14)!important}
-
-            .lcj2-nova-stat.ok{
-                background:linear-gradient(155deg,rgba(8,38,22,.97),rgba(5,22,12,.99))!important;
-                border-color:rgba(74,222,128,.18)!important;
-            }
-            .lcj2-nova-stat.bad{
-                background:linear-gradient(155deg,rgba(34,14,22,.97),rgba(18,8,12,.99))!important;
-                border-color:rgba(251,113,133,.14)!important;
-            }
-            .lcj2-nova-stat.user{
-                background:linear-gradient(155deg,rgba(31,29,8,.97),rgba(16,15,5,.99))!important;
-                border-color:rgba(250,204,21,.15)!important;
-            }
-            .lcj2-nova-stat.mode{
-                background:linear-gradient(155deg,rgba(12,34,20,.97),rgba(7,18,10,.99))!important;
-                border-color:rgba(134,239,172,.15)!important;
-            }
-            .lcj2-nova-stat-label{color:#bde9cb!important}
-            .lcj2-nova-stat small{color:#96b1a0!important}
-
-            .lcj2-nova-step,
-            .lcj2-nova-guide-row>span{
-                background:rgba(74,222,128,.08)!important;
-                border-color:rgba(74,222,128,.14)!important;
-                color:#b9ffd1!important;
-            }
-            .lcj2-nova-section-head.orange .lcj2-nova-step{
-                background:rgba(250,204,21,.09)!important;
-                border-color:rgba(250,204,21,.14)!important;
-                color:#ffe58c!important;
-            }
-            .lcj2-nova-guide-row{border-color:rgba(148,163,184,.07)!important}
-
-            .lcj2-input,
-            #lcj2-output{
-                background:linear-gradient(180deg,rgba(4,10,6,.97),rgba(6,14,9,.97))!important;
-                border-color:rgba(74,222,128,.14)!important;
-                color:#eefcf3!important;
-                box-shadow:inset 0 2px 10px rgba(0,0,0,.34),0 1px 0 rgba(255,255,255,.015)!important;
-            }
-            .lcj2-input::placeholder{color:#6d8a76!important}
-            .lcj2-input:focus,
-            #lcj2-output:focus{
-                border-color:rgba(74,222,128,.30)!important;
-                box-shadow:0 0 0 4px rgba(74,222,128,.08),0 10px 24px rgba(0,0,0,.22)!important;
-            }
-
-            .lcj2-btn{
-                background:linear-gradient(180deg,#173224,#112519)!important;
-                border-color:rgba(148,163,184,.12)!important;
-                color:#edfdf2!important;
-                box-shadow:0 10px 24px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.04)!important;
-            }
-            .lcj2-btn:hover{
-                background:linear-gradient(180deg,#1c3d2b,#143020)!important;
-                border-color:rgba(74,222,128,.20)!important;
-            }
-            .lcj2-btn.primary,.lcj2-nova-scan-btn{
-                background:linear-gradient(135deg,#16a34a 0%,#22c55e 56%,#84cc16 100%)!important;
-                border-color:rgba(74,222,128,.26)!important;
-                color:#fff!important;
-                box-shadow:0 16px 34px rgba(34,197,94,.22),inset 0 1px 0 rgba(255,255,255,.14)!important;
-            }
-            .lcj2-btn.green{background:linear-gradient(135deg,#22c55e,#16a34a)!important;color:#fff!important;border-color:rgba(74,222,128,.24)!important}
-            .lcj2-btn.blue{background:linear-gradient(135deg,#34d399,#059669)!important;color:#fff!important;border-color:rgba(52,211,153,.24)!important}
-            .lcj2-btn.red{background:linear-gradient(135deg,#fb7185,#e11d48)!important;color:#fff!important;border-color:rgba(251,113,133,.20)!important}
-            .lcj2-btn.orange{background:linear-gradient(135deg,#facc15,#eab308)!important;color:#fff!important;border-color:rgba(250,204,21,.22)!important}
-            .lcj2-bank-refresh{background:linear-gradient(135deg,#16a34a,#65a30d)!important;border-color:rgba(74,222,128,.22)!important}
-            .lcj2-inline-copy{
-                background:rgba(74,222,128,.08)!important;
-                border-color:rgba(74,222,128,.14)!important;
-                color:#bbffd1!important;
-            }
-
-            .lcj2-scan-state{
-                background:linear-gradient(145deg,rgba(10,22,15,.97),rgba(6,14,9,.99))!important;
-                border-color:rgba(148,163,184,.10)!important;
-                box-shadow:0 10px 24px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.03)!important;
-            }
-            .lcj2-scan-state-label{color:#9ab5a2!important}
-            .lcj2-scan-state-text{color:#edfdf2!important}
-            .lcj2-scan-state-detail{color:#90aa99!important}
-            .lcj2-scan-state.waiting{background:linear-gradient(145deg,rgba(14,27,18,.97),rgba(8,16,10,.99))!important;border-color:rgba(134,239,172,.12)!important}
-            .lcj2-scan-state.scanning{background:linear-gradient(145deg,rgba(8,38,20,.97),rgba(6,18,10,.99))!important;border-color:rgba(74,222,128,.16)!important}
-            .lcj2-scan-state.success{background:linear-gradient(145deg,rgba(7,43,20,.97),rgba(5,22,12,.99))!important;border-color:rgba(74,222,128,.18)!important}
-            .lcj2-scan-state.partial{background:linear-gradient(145deg,rgba(39,36,8,.97),rgba(20,18,5,.99))!important;border-color:rgba(250,204,21,.16)!important}
-            .lcj2-scan-state.failed{background:linear-gradient(145deg,rgba(43,15,22,.97),rgba(21,8,11,.99))!important;border-color:rgba(251,113,133,.16)!important}
-            .lcj2-scan-state.waiting .lcj2-scan-state-text{color:#ccffe0!important}
-            .lcj2-scan-state.scanning .lcj2-scan-state-text{color:#b9ffd1!important}
-            .lcj2-scan-state.success .lcj2-scan-state-text{color:#d6ffe4!important}
-            .lcj2-scan-state.partial .lcj2-scan-state-text{color:#ffe58c!important}
-            .lcj2-scan-state.failed .lcj2-scan-state-text{color:#fecdd3!important}
-
-            .lcj2-img-card:hover{border-color:rgba(74,222,128,.22)!important;box-shadow:0 18px 38px rgba(0,0,0,.32),0 0 0 1px rgba(74,222,128,.05)!important}
-            .lcj2-img-card.target{border-color:rgba(250,204,21,.34)!important;box-shadow:0 0 0 1px rgba(250,204,21,.06),0 16px 34px rgba(0,0,0,.30)!important}
-            .lcj2-img-card img,.lcj2-img-media{background:#07110b!important}
-            .lcj2-img-index{
-                background:rgba(7,17,11,.95)!important;
-                border-color:rgba(148,163,184,.10)!important;
-                color:#effcf3!important;
-            }
-            .lcj2-target-tag{color:#ffe58c!important}
-            .lcj2-img-label{color:#92ad9b!important;border-color:rgba(148,163,184,.06)!important}
-            .lcj2-ocr-badge{background:rgba(21,128,61,.16)!important;color:#bbffd1!important;border-color:rgba(74,222,128,.14)!important}
-            .lcj2-ocr-badge.success{background:rgba(22,163,74,.14)!important;color:#d7ffe5!important;border-color:rgba(74,222,128,.15)!important}
-            .lcj2-ocr-badge.error{background:rgba(190,24,93,.12)!important;color:#fecdd3!important;border-color:rgba(251,113,133,.14)!important}
-            .lcj2-ocr-badge.empty{background:rgba(23,33,28,.48)!important;color:#a5b8ab!important;border-color:rgba(148,163,184,.10)!important}
-            .lcj2-empty{
-                background:linear-gradient(145deg,rgba(10,22,15,.97),rgba(6,14,9,.99))!important;
-                border-color:rgba(148,163,184,.10)!important;
-                color:#9db8a6!important;
-            }
-            .lcj2-empty b{color:#effcf3!important}
-            .lcj2-nova-empty-icon{color:#86efac!important}
-
-            .lcj2-pill{
-                background:rgba(10,22,15,.92)!important;
-                border-color:rgba(148,163,184,.10)!important;
-                color:#edfdf2!important;
-            }
-            .lcj2-pill.blue{background:rgba(8,56,34,.82)!important;color:#bbffd1!important;border-color:rgba(74,222,128,.14)!important}
-            .lcj2-pill.green{background:rgba(7,43,20,.82)!important;color:#d6ffe4!important;border-color:rgba(74,222,128,.14)!important}
-            .lcj2-pill.red{background:rgba(62,15,34,.82)!important;color:#fecdd3!important;border-color:rgba(251,113,133,.14)!important}
-
-            #lcj2-panel-fixed.lcj2-performance-mode{background:#07110b!important}
-
-            /* =========================================================
-               V1.4.2 — RED BLACK READABLE UI
-               Hanya tampilan panel; workflow OCR tidak berubah.
-               ========================================================= */
-            #lcj2-panel-fixed{
-                background:
-                    radial-gradient(circle at 8% 0%,rgba(239,68,68,.18),transparent 28%),
-                    radial-gradient(circle at 96% 3%,rgba(127,29,29,.20),transparent 27%),
-                    radial-gradient(circle at 50% 108%,rgba(248,113,113,.07),transparent 34%),
-                    linear-gradient(180deg,#050505 0%,#0b0505 48%,#030303 100%)!important;
-                color:#fff7f7!important;
-            }
-            #lcj2-panel-fixed:before{
-                opacity:.14!important;
-                background-image:
-                    linear-gradient(rgba(248,113,113,.035) 1px,transparent 1px),
-                    linear-gradient(90deg,rgba(248,113,113,.035) 1px,transparent 1px)!important;
-            }
-            #lcj2-panel-fixed:after{
-                opacity:.20!important;
-                background:
-                    linear-gradient(115deg,transparent 0 43%,rgba(255,255,255,.025) 50%,transparent 57%),
-                    radial-gradient(circle at 50% -10%,rgba(239,68,68,.09),transparent 52%)!important;
-            }
-
-            #lcj2-panel-fixed .lcj2-nova-topbar{
-                background:linear-gradient(145deg,rgba(24,7,7,.97),rgba(8,4,4,.98),rgba(33,8,8,.95))!important;
-                border-color:rgba(248,113,113,.18)!important;
-                box-shadow:0 20px 52px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.04)!important;
-            }
-            #lcj2-panel-fixed .lcj2-nova-topbar:before{
-                background:linear-gradient(90deg,transparent,#ef4444,#f87171,#b91c1c,transparent)!important;
-                box-shadow:0 0 20px rgba(239,68,68,.28)!important;
-            }
-            #lcj2-panel-fixed .lcj2-nova-topbar:after{
-                background:radial-gradient(circle,rgba(239,68,68,.17),transparent 68%)!important;
-            }
-            #lcj2-panel-fixed .lcj2-nova-logo{
-                background:linear-gradient(145deg,#2b0b0b,#100505)!important;
-                border-color:rgba(248,113,113,.22)!important;
-                box-shadow:0 10px 26px rgba(0,0,0,.34),0 0 22px rgba(239,68,68,.11)!important;
-            }
-            #lcj2-panel-fixed .lcj2-nova-logo svg{stroke:#f87171!important}
-            #lcj2-panel-fixed .lcj2-nova-eyebrow{
-                color:#ff9c9c!important;
-                opacity:1!important;
-                text-shadow:0 0 10px rgba(239,68,68,.24)!important;
-            }
-            #lcj2-panel-fixed .lcj2-title{
-                color:#ffffff!important;
-                opacity:1!important;
-                text-shadow:0 0 14px rgba(239,68,68,.18)!important;
-            }
-            #lcj2-panel-fixed .lcj2-subtitle{
-                color:#f4c7c7!important;
-                opacity:1!important;
-                font-weight:750!important;
-            }
-            #lcj2-panel-fixed .lcj2-version{
-                color:#ffe4e6!important;
-                background:rgba(239,68,68,.14)!important;
-                border-color:rgba(248,113,113,.22)!important;
-            }
-            #lcj2-panel-fixed .lcj2-nova-live-chip{
-                color:#ffe4e6!important;
-                background:rgba(185,28,28,.18)!important;
-                border-color:rgba(248,113,113,.22)!important;
-            }
-            #lcj2-panel-fixed .lcj2-nova-close{
-                color:#fff1f2!important;
-                background:#250909!important;
-                border-color:rgba(248,113,113,.22)!important;
-            }
-            #lcj2-panel-fixed .lcj2-nova-close:hover{background:#3b0c0c!important}
-
-            #lcj2-panel-fixed .lcj2-nova-status,
-            #lcj2-panel-fixed .lcj2-card,
-            #lcj2-panel-fixed .lcj2-nova-stat,
-            #lcj2-panel-fixed .lcj2-nova-guide,
-            #lcj2-panel-fixed .lcj2-nova-output-card,
-            #lcj2-panel-fixed .lcj2-img-card{
-                background:linear-gradient(155deg,rgba(22,7,7,.98),rgba(7,4,4,.99))!important;
-                border-color:rgba(248,113,113,.15)!important;
-                box-shadow:0 18px 40px rgba(0,0,0,.36),inset 0 1px 0 rgba(255,255,255,.025)!important;
-            }
-            #lcj2-panel-fixed .lcj2-nova-status{
-                background:
-                    radial-gradient(circle at 94% 0%,rgba(239,68,68,.12),transparent 42%),
-                    linear-gradient(145deg,rgba(24,7,7,.98),rgba(7,4,4,.99))!important;
-                border-color:rgba(248,113,113,.22)!important;
-            }
-            #lcj2-panel-fixed .lcj2-nova-status-icon{
-                background:linear-gradient(145deg,#370d0d,#120505)!important;
-                border-color:rgba(248,113,113,.26)!important;
-                box-shadow:0 10px 24px rgba(0,0,0,.32),0 0 18px rgba(239,68,68,.10)!important;
-            }
-            #lcj2-panel-fixed .lcj2-nova-status-icon svg{
-                stroke:#ff8a8a!important;
-                filter:drop-shadow(0 0 6px rgba(239,68,68,.36))!important;
-            }
-
-            /* Perbaikan utama: judul aktivitas harus jelas terlihat. */
-            #lcj2-panel-fixed .lcj2-nova-status .lcj2-status-title,
-            #lcj2-panel-fixed .lcj2-status-title{
+            #lcst-bubble-fixed .lcst-nova-ring{
                 display:block!important;
-                visibility:visible!important;
-                opacity:1!important;
-                color:#ff8a8a!important;
-                font-size:12px!important;
-                line-height:1.35!important;
-                font-weight:1000!important;
-                letter-spacing:1.35px!important;
-                text-shadow:0 0 12px rgba(239,68,68,.38)!important;
-                margin-bottom:6px!important;
+                inset:-7px!important;
+                border:1px solid rgba(255,220,133,.72)!important;
+                filter:drop-shadow(0 0 7px rgba(208,36,49,.34))!important;
+                z-index:3!important;
+                animation:lcstLogoRing 10s linear infinite!important;
             }
-            #lcj2-panel-fixed .lcj2-nova-status .lcj2-ocr-box,
-            #lcj2-panel-fixed .lcj2-ocr-box{
-                color:#ffffff!important;
-                opacity:1!important;
-                font-size:14px!important;
-                line-height:1.55!important;
-                font-weight:750!important;
-                text-shadow:0 1px 1px rgba(0,0,0,.55)!important;
+            #lcst-bubble-fixed .lcst-nova-ring:before{
+                background:#ffd166!important;
+                box-shadow:0 0 12px #ffbe32,0 0 22px rgba(255,190,50,.62)!important;
             }
-            #lcj2-panel-fixed .lcj2-progress{background:#270909!important}
-            #lcj2-panel-fixed .lcj2-progress span{
-                background:linear-gradient(90deg,#991b1b,#ef4444,#f87171)!important;
-                box-shadow:0 0 15px rgba(239,68,68,.58)!important;
+            #lcst-bubble-fixed .lcst-nova-ring:after{
+                background:#e11d3f!important;
+                box-shadow:0 0 12px #e11d3f,0 0 22px rgba(225,29,63,.62)!important;
             }
-
-            #lcj2-panel-fixed .lcj2-nova-stat-label,
-            #lcj2-panel-fixed .lcj2-field-title,
-            #lcj2-panel-fixed .lcj2-nova-kicker,
-            #lcj2-panel-fixed .lcj2-nova-guide-title{
-                color:#ff9c9c!important;
-                opacity:1!important;
-                font-weight:1000!important;
+            #lcst-bubble-fixed .lcst-nova-lens,
+            #lcst-bubble-fixed .lcst-nova-caption{
+                display:none!important;
             }
-            #lcj2-panel-fixed .lcj2-nova-stat strong,
-            #lcj2-panel-fixed .lcj2-user-edit,
-            #lcj2-panel-fixed .lcj2-nova-section-head b,
-            #lcj2-panel-fixed .lcj2-nova-guide-row b,
-            #lcj2-panel-fixed .lcj2-nova-gallery-head h4,
-            #lcj2-panel-fixed .lcj2-output-head h4{
-                color:#ffffff!important;
-                opacity:1!important;
+            #lcst-bubble-fixed .lcst-nova-online{
+                display:block!important;
+                right:2px!important;
+                top:7px!important;
+                width:11px!important;
+                height:11px!important;
+                background:#22d36f!important;
+                border:2px solid #ffffff!important;
+                box-shadow:0 0 0 3px rgba(34,211,111,.16),0 0 15px #22d36f!important;
+                animation:lcstLogoOnline 1.8s ease-in-out infinite!important;
             }
-            #lcj2-panel-fixed .lcj2-nova-stat small,
-            #lcj2-panel-fixed .lcj2-nova-section-head small,
-            #lcj2-panel-fixed .lcj2-nova-guide-row small,
-            #lcj2-panel-fixed .lcj2-nova-gallery-head p,
-            #lcj2-panel-fixed .lcj2-output-head p,
-            #lcj2-panel-fixed .lcj2-hint,
-            #lcj2-panel-fixed .lcj2-img-label{
-                color:#e6bcbc!important;
-                opacity:1!important;
-                font-weight:700!important;
+            #lcst-bubble-fixed:hover{
+                transform:translateY(-6px) scale(1.075)!important;
+                border-color:#ffffff!important;
+                box-shadow:
+                    0 12px 17px rgba(91,32,22,.18),
+                    0 30px 58px rgba(91,32,22,.34),
+                    0 0 0 6px rgba(255,255,255,.54),
+                    0 0 0 10px rgba(218,165,70,.18),
+                    0 0 46px rgba(224,30,49,.34),
+                    inset 0 2px 3px #ffffff,
+                    inset 0 -11px 20px rgba(126,31,27,.13)!important;
             }
-            #lcj2-panel-fixed .lcj2-nova-step,
-            #lcj2-panel-fixed .lcj2-nova-guide-row>span{
-                color:#ffe4e6!important;
-                background:rgba(185,28,28,.22)!important;
-                border-color:rgba(248,113,113,.20)!important;
+            #lcst-bubble-fixed.lcst-dragging{
+                transform:scale(1.085)!important;
+                cursor:grabbing!important;
+                opacity:.96!important;
             }
-
-            #lcj2-panel-fixed .lcj2-input,
-            #lcj2-panel-fixed #lcj2-output{
-                color:#ffffff!important;
-                background:linear-gradient(180deg,#080404,#0e0505)!important;
-                border-color:rgba(248,113,113,.22)!important;
-                caret-color:#f87171!important;
-                box-shadow:inset 0 2px 11px rgba(0,0,0,.48)!important;
+            @keyframes lcstLogoOrbit{to{transform:rotate(360deg)}}
+            @keyframes lcstLogoRing{to{transform:rotate(-360deg)}}
+            @keyframes lcstLogoGlass{
+                0%,100%{opacity:.70;transform:translateY(0)}
+                50%{opacity:1;transform:translateY(1px)}
             }
-            #lcj2-panel-fixed .lcj2-input::placeholder{color:#c98f8f!important;opacity:1!important}
-            #lcj2-panel-fixed .lcj2-input:focus,
-            #lcj2-panel-fixed #lcj2-output:focus{
-                border-color:rgba(248,113,113,.55)!important;
-                box-shadow:0 0 0 4px rgba(239,68,68,.12),inset 0 2px 10px rgba(0,0,0,.42)!important;
+            @keyframes lcstLogoOnline{
+                0%,100%{transform:scale(.86);opacity:.76}
+                50%{transform:scale(1.13);opacity:1}
             }
-
-            #lcj2-panel-fixed .lcj2-btn,
-            #lcj2-panel-fixed .lcj2-btn.green,
-            #lcj2-panel-fixed .lcj2-btn.blue,
-            #lcj2-panel-fixed .lcj2-btn.orange,
-            #lcj2-panel-fixed .lcj2-bank-refresh{
-                color:#ffffff!important;
-                background:linear-gradient(180deg,#611313,#310909)!important;
-                border-color:rgba(248,113,113,.25)!important;
-                box-shadow:0 10px 24px rgba(0,0,0,.30),inset 0 1px 0 rgba(255,255,255,.06)!important;
-            }
-            #lcj2-panel-fixed .lcj2-btn:hover{
-                background:linear-gradient(180deg,#7f1d1d,#450a0a)!important;
-                border-color:rgba(248,113,113,.40)!important;
-            }
-            #lcj2-panel-fixed .lcj2-btn.primary,
-            #lcj2-panel-fixed .lcj2-nova-scan-btn{
-                color:#ffffff!important;
-                background:linear-gradient(135deg,#7f1d1d 0%,#dc2626 55%,#ef4444 100%)!important;
-                border-color:rgba(248,113,113,.38)!important;
-                box-shadow:0 16px 36px rgba(185,28,28,.28),inset 0 1px 0 rgba(255,255,255,.16)!important;
-            }
-            #lcj2-panel-fixed .lcj2-btn.red{
-                color:#ffffff!important;
-                background:linear-gradient(135deg,#be123c,#7f1d1d)!important;
-            }
-            #lcj2-panel-fixed .lcj2-inline-copy{
-                color:#ffe4e6!important;
-                background:rgba(185,28,28,.20)!important;
-                border-color:rgba(248,113,113,.22)!important;
-            }
-
-            #lcj2-panel-fixed .lcj2-scan-state{
-                background:linear-gradient(145deg,#180707,#080404)!important;
-                border-color:rgba(248,113,113,.18)!important;
-                box-shadow:0 10px 25px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.025)!important;
-            }
-            #lcj2-panel-fixed .lcj2-scan-state-label{
-                color:#ff9c9c!important;
-                opacity:1!important;
-            }
-            #lcj2-panel-fixed .lcj2-scan-state-text{
-                color:#ffffff!important;
-                opacity:1!important;
-                font-weight:1000!important;
-            }
-            #lcj2-panel-fixed .lcj2-scan-state-detail{
-                color:#e6bcbc!important;
-                opacity:1!important;
-                font-weight:700!important;
-            }
-            #lcj2-panel-fixed .lcj2-scan-state-dot{
-                background:#ef4444!important;
-                box-shadow:0 0 0 5px rgba(239,68,68,.12),0 0 18px rgba(239,68,68,.70)!important;
-            }
-            #lcj2-panel-fixed .lcj2-scan-state.success,
-            #lcj2-panel-fixed .lcj2-scan-state.partial,
-            #lcj2-panel-fixed .lcj2-scan-state.failed,
-            #lcj2-panel-fixed .lcj2-scan-state.scanning,
-            #lcj2-panel-fixed .lcj2-scan-state.waiting{
-                background:linear-gradient(145deg,#1c0808,#080404)!important;
-                border-color:rgba(248,113,113,.20)!important;
-            }
-            #lcj2-panel-fixed .lcj2-scan-state.success .lcj2-scan-state-text,
-            #lcj2-panel-fixed .lcj2-scan-state.partial .lcj2-scan-state-text,
-            #lcj2-panel-fixed .lcj2-scan-state.failed .lcj2-scan-state-text,
-            #lcj2-panel-fixed .lcj2-scan-state.scanning .lcj2-scan-state-text,
-            #lcj2-panel-fixed .lcj2-scan-state.waiting .lcj2-scan-state-text{
-                color:#ffffff!important;
-            }
-
-            #lcj2-panel-fixed .lcj2-img-card img,
-            #lcj2-panel-fixed .lcj2-img-media{background:#050202!important}
-            #lcj2-panel-fixed .lcj2-img-card:hover{
-                border-color:rgba(248,113,113,.38)!important;
-                box-shadow:0 18px 40px rgba(0,0,0,.40),0 0 0 1px rgba(239,68,68,.08)!important;
-            }
-            #lcj2-panel-fixed .lcj2-img-card.target{
-                border-color:rgba(248,113,113,.50)!important;
-                box-shadow:0 0 0 2px rgba(239,68,68,.08),0 18px 40px rgba(0,0,0,.38)!important;
-            }
-            #lcj2-panel-fixed .lcj2-img-index{
-                color:#ffffff!important;
-                background:rgba(18,5,5,.96)!important;
-                border-color:rgba(248,113,113,.20)!important;
-            }
-            #lcj2-panel-fixed .lcj2-target-tag{color:#ff9c9c!important}
-            #lcj2-panel-fixed .lcj2-ocr-badge{
-                color:#ffe4e6!important;
-                background:rgba(127,29,29,.30)!important;
-                border-color:rgba(248,113,113,.20)!important;
-            }
-            #lcj2-panel-fixed .lcj2-ocr-badge.success{
-                color:#ffffff!important;
-                background:rgba(153,27,27,.30)!important;
-            }
-            #lcj2-panel-fixed .lcj2-ocr-badge.error{
-                color:#ffffff!important;
-                background:rgba(190,24,93,.25)!important;
-            }
-            #lcj2-panel-fixed .lcj2-ocr-badge.empty{
-                color:#e6bcbc!important;
-                background:rgba(39,13,13,.72)!important;
-            }
-            #lcj2-panel-fixed .lcj2-empty{
-                color:#e6bcbc!important;
-                background:linear-gradient(145deg,#170707,#080404)!important;
-                border-color:rgba(248,113,113,.18)!important;
-            }
-            #lcj2-panel-fixed .lcj2-empty b{color:#ffffff!important}
-            #lcj2-panel-fixed .lcj2-nova-empty-icon{color:#f87171!important}
-
-            #lcj2-panel-fixed .lcj2-pill,
-            #lcj2-panel-fixed .lcj2-pill.blue,
-            #lcj2-panel-fixed .lcj2-pill.green,
-            #lcj2-panel-fixed .lcj2-pill.red{
-                color:#fff1f2!important;
-                background:rgba(41,10,10,.90)!important;
-                border-color:rgba(248,113,113,.18)!important;
-            }
-            #lcj2-panel-fixed.lcj2-performance-mode{background:#070303!important}
 
             /* =========================================================
-               V1.4.3 — STATUS TERANG DAN MUDAH DIBEDAKAN
+               DASHBOARD RUBY PREMIUM V6.5.0
+               - Logo LINE TOGEL menjadi background dashboard.
+               - Bubble kembali memakai gambar Postimg sebelumnya.
+               - Seluruh workflow dan fungsi scanner tidak disentuh.
                ========================================================= */
 
-            /* Tulisan umum status dibuat lebih jelas. */
-            #lcj2-panel-fixed .lcj2-scan-state{
-                min-height:64px!important;
-                border-width:2px!important;
+            /* Background dashboard saat bubble dibuka */
+            #lcst-panel-fixed{
+                background-color:#26030d!important;
+                background-image:
+                    linear-gradient(145deg,rgba(37,2,12,.52) 0%,rgba(78,5,20,.40) 48%,rgba(38,3,13,.50) 100%),
+                    url("https://line32762.com/assets/img/ei/logo.png?v=y5h2w2cmxvdvv6zrc0iq"),
+                    radial-gradient(circle at 7% 2%,rgba(255,197,61,.34),transparent 31%),
+                    radial-gradient(circle at 94% 5%,rgba(255,45,68,.32),transparent 30%),
+                    radial-gradient(circle at 50% 105%,rgba(255,165,49,.18),transparent 38%),
+                    linear-gradient(145deg,#24030d 0%,#5c071d 47%,#1d020a 100%)!important;
+                background-repeat:no-repeat,no-repeat,no-repeat,no-repeat,no-repeat,no-repeat!important;
+                background-position:center center,center 48%,left top,right top,center bottom,center center!important;
+                background-size:100% 100%,72vw auto,100% 100%,100% 100%,100% 100%,100% 100%!important;
+                background-attachment:fixed,fixed,fixed,fixed,fixed,fixed!important;
+                color:#202331!important;
             }
-            #lcj2-panel-fixed .lcj2-scan-state-label{
-                font-size:10px!important;
-                line-height:1.25!important;
-                font-weight:1000!important;
-                letter-spacing:1.25px!important;
-                opacity:1!important;
+            #lcst-panel-fixed:before{
+                content:""!important;
+                display:block!important;
+                position:fixed!important;
+                inset:0!important;
+                z-index:0!important;
+                pointer-events:none!important;
+                opacity:.34!important;
+                background-image:
+                    linear-gradient(rgba(255,221,139,.075) 1px,transparent 1px),
+                    linear-gradient(90deg,rgba(255,116,93,.07) 1px,transparent 1px)!important;
+                background-size:34px 34px!important;
+                mask-image:linear-gradient(to bottom,#000,transparent 92%)!important;
             }
-            #lcj2-panel-fixed .lcj2-scan-state-text{
-                font-size:14px!important;
-                line-height:1.3!important;
-                font-weight:1000!important;
-                letter-spacing:.25px!important;
-                opacity:1!important;
-            }
-            #lcj2-panel-fixed .lcj2-scan-state-detail{
-                margin-top:4px!important;
-                font-size:11px!important;
-                line-height:1.4!important;
-                font-weight:850!important;
-                opacity:1!important;
-            }
-            #lcj2-panel-fixed .lcj2-scan-state-dot{
-                width:14px!important;
-                height:14px!important;
-                border:2px solid rgba(255,255,255,.88)!important;
-            }
-
-            /* Menunggu: netral terang. */
-            #lcj2-panel-fixed .lcj2-scan-state.waiting{
-                background:linear-gradient(145deg,#191919,#070707)!important;
-                border-color:rgba(226,232,240,.28)!important;
-                box-shadow:0 13px 30px rgba(0,0,0,.36),inset 0 1px 0 rgba(255,255,255,.04)!important;
-            }
-            #lcj2-panel-fixed .lcj2-scan-state.waiting .lcj2-scan-state-dot{
-                background:#cbd5e1!important;
-                box-shadow:0 0 0 5px rgba(203,213,225,.12),0 0 18px rgba(203,213,225,.44)!important;
-            }
-            #lcj2-panel-fixed .lcj2-scan-state.waiting .lcj2-scan-state-label{color:#cbd5e1!important}
-            #lcj2-panel-fixed .lcj2-scan-state.waiting .lcj2-scan-state-text{color:#ffffff!important}
-            #lcj2-panel-fixed .lcj2-scan-state.waiting .lcj2-scan-state-detail{color:#d1d5db!important}
-
-            /* Sedang mencari / scanning: oranye terang. */
-            #lcj2-panel-fixed .lcj2-scan-state.scanning{
-                background:linear-gradient(145deg,#3a2003,#110900)!important;
-                border-color:#f59e0b!important;
-                box-shadow:
-                    0 13px 30px rgba(0,0,0,.38),
-                    0 0 0 1px rgba(245,158,11,.18),
-                    0 0 28px rgba(245,158,11,.18),
-                    inset 0 1px 0 rgba(255,255,255,.05)!important;
-            }
-            #lcj2-panel-fixed .lcj2-scan-state.scanning .lcj2-scan-state-dot{
-                background:#fbbf24!important;
-                box-shadow:0 0 0 6px rgba(251,191,36,.15),0 0 22px rgba(251,191,36,.92)!important;
-                animation:lcj2BrightStatusBlink .9s ease-in-out infinite!important;
-            }
-            #lcj2-panel-fixed .lcj2-scan-state.scanning .lcj2-scan-state-label{color:#fde68a!important}
-            #lcj2-panel-fixed .lcj2-scan-state.scanning .lcj2-scan-state-text{
-                color:#fff7d6!important;
-                text-shadow:0 0 10px rgba(251,191,36,.35)!important;
-            }
-            #lcj2-panel-fixed .lcj2-scan-state.scanning .lcj2-scan-state-detail{color:#fef3c7!important}
-
-            /* SCAN CODE selesai: success maupun partial dibuat hijau terang. */
-            #lcj2-panel-fixed .lcj2-scan-state.success:not(.lcj2-bank-lookup-state),
-            #lcj2-panel-fixed .lcj2-scan-state.partial:not(.lcj2-bank-lookup-state){
+            #lcst-panel-fixed:after{
+                content:""!important;
+                display:block!important;
+                position:fixed!important;
+                inset:0!important;
+                z-index:0!important;
+                pointer-events:none!important;
+                opacity:.30!important;
                 background:
-                    radial-gradient(circle at 94% 0%,rgba(134,239,172,.18),transparent 38%),
-                    linear-gradient(145deg,#063d20,#02170c)!important;
-                border-color:#22c55e!important;
-                box-shadow:
-                    0 14px 32px rgba(0,0,0,.40),
-                    0 0 0 1px rgba(74,222,128,.22),
-                    0 0 34px rgba(34,197,94,.28),
-                    inset 0 1px 0 rgba(255,255,255,.07)!important;
+                    linear-gradient(118deg,transparent 0 37%,rgba(255,229,176,.24) 46%,transparent 55%),
+                    radial-gradient(ellipse at 50% -12%,rgba(255,214,126,.35),transparent 58%)!important;
             }
-            #lcj2-panel-fixed .lcj2-scan-state.success:not(.lcj2-bank-lookup-state) .lcj2-scan-state-dot,
-            #lcj2-panel-fixed .lcj2-scan-state.partial:not(.lcj2-bank-lookup-state) .lcj2-scan-state-dot{
-                background:#4ade80!important;
-                box-shadow:
-                    0 0 0 6px rgba(74,222,128,.18),
-                    0 0 24px rgba(74,222,128,1)!important;
+            #lcst-panel-fixed .lcst-nova-shell{
+                position:relative!important;
+                z-index:2!important;
             }
-            #lcj2-panel-fixed .lcj2-scan-state.success:not(.lcj2-bank-lookup-state) .lcj2-scan-state-label,
-            #lcj2-panel-fixed .lcj2-scan-state.partial:not(.lcj2-bank-lookup-state) .lcj2-scan-state-label{
-                color:#bbf7d0!important;
-            }
-            #lcj2-panel-fixed .lcj2-scan-state.success:not(.lcj2-bank-lookup-state) .lcj2-scan-state-text,
-            #lcj2-panel-fixed .lcj2-scan-state.partial:not(.lcj2-bank-lookup-state) .lcj2-scan-state-text{
-                color:#ffffff!important;
-                font-size:15px!important;
-                text-shadow:0 0 12px rgba(74,222,128,.50)!important;
-            }
-            #lcj2-panel-fixed .lcj2-scan-state.success:not(.lcj2-bank-lookup-state) .lcj2-scan-state-detail,
-            #lcj2-panel-fixed .lcj2-scan-state.partial:not(.lcj2-bank-lookup-state) .lcj2-scan-state-detail{
-                color:#dcfce7!important;
-            }
-
-            /* Scan gagal: merah terang. */
-            #lcj2-panel-fixed .lcj2-scan-state.failed:not(.lcj2-bank-lookup-state){
-                background:
-                    radial-gradient(circle at 94% 0%,rgba(254,202,202,.13),transparent 38%),
-                    linear-gradient(145deg,#500b13,#1b0307)!important;
-                border-color:#ef4444!important;
-                box-shadow:
-                    0 14px 32px rgba(0,0,0,.40),
-                    0 0 0 1px rgba(248,113,113,.22),
-                    0 0 34px rgba(239,68,68,.26),
-                    inset 0 1px 0 rgba(255,255,255,.06)!important;
-            }
-            #lcj2-panel-fixed .lcj2-scan-state.failed:not(.lcj2-bank-lookup-state) .lcj2-scan-state-dot{
-                background:#fb7185!important;
-                box-shadow:0 0 0 6px rgba(251,113,133,.18),0 0 24px rgba(251,113,133,.95)!important;
-            }
-            #lcj2-panel-fixed .lcj2-scan-state.failed:not(.lcj2-bank-lookup-state) .lcj2-scan-state-label{color:#fecdd3!important}
-            #lcj2-panel-fixed .lcj2-scan-state.failed:not(.lcj2-bank-lookup-state) .lcj2-scan-state-text{
-                color:#ffffff!important;
-                text-shadow:0 0 12px rgba(251,113,133,.42)!important;
-            }
-            #lcj2-panel-fixed .lcj2-scan-state.failed:not(.lcj2-bank-lookup-state) .lcj2-scan-state-detail{color:#ffe4e6!important}
-
-            /* DATA REKENING ditemukan: hijau neon terang. */
-            #lcj2-panel-fixed .lcj2-bank-lookup-state.success{
-                background:
-                    radial-gradient(circle at 94% 0%,rgba(187,247,208,.22),transparent 40%),
-                    linear-gradient(145deg,#07592d,#022512)!important;
-                border-color:#4ade80!important;
-                box-shadow:
-                    0 15px 34px rgba(0,0,0,.42),
-                    0 0 0 2px rgba(74,222,128,.18),
-                    0 0 40px rgba(34,197,94,.34),
-                    inset 0 1px 0 rgba(255,255,255,.08)!important;
-            }
-            #lcj2-panel-fixed .lcj2-bank-lookup-state.success .lcj2-scan-state-dot{
-                background:#86efac!important;
-                box-shadow:
-                    0 0 0 6px rgba(134,239,172,.20),
-                    0 0 26px rgba(134,239,172,1)!important;
-            }
-            #lcj2-panel-fixed .lcj2-bank-lookup-state.success .lcj2-scan-state-label{
-                color:#d1fae5!important;
-            }
-            #lcj2-panel-fixed .lcj2-bank-lookup-state.success .lcj2-scan-state-text{
-                color:#ffffff!important;
-                font-size:15px!important;
-                text-shadow:0 0 13px rgba(134,239,172,.58)!important;
-            }
-            #lcj2-panel-fixed .lcj2-bank-lookup-state.success .lcj2-scan-state-detail{
-                color:#dcfce7!important;
-                font-size:12px!important;
-            }
-
-            /* DATA REKENING tidak ditemukan atau gagal: merah neon terang. */
-            #lcj2-panel-fixed .lcj2-bank-lookup-state.partial,
-            #lcj2-panel-fixed .lcj2-bank-lookup-state.failed{
-                background:
-                    radial-gradient(circle at 94% 0%,rgba(254,202,202,.16),transparent 40%),
-                    linear-gradient(145deg,#650d18,#210307)!important;
-                border-color:#f43f5e!important;
-                box-shadow:
-                    0 15px 34px rgba(0,0,0,.42),
-                    0 0 0 2px rgba(244,63,94,.18),
-                    0 0 40px rgba(244,63,94,.30),
-                    inset 0 1px 0 rgba(255,255,255,.07)!important;
-            }
-            #lcj2-panel-fixed .lcj2-bank-lookup-state.partial .lcj2-scan-state-dot,
-            #lcj2-panel-fixed .lcj2-bank-lookup-state.failed .lcj2-scan-state-dot{
-                background:#fb7185!important;
-                box-shadow:
-                    0 0 0 6px rgba(251,113,133,.20),
-                    0 0 26px rgba(251,113,133,1)!important;
-            }
-            #lcj2-panel-fixed .lcj2-bank-lookup-state.partial .lcj2-scan-state-label,
-            #lcj2-panel-fixed .lcj2-bank-lookup-state.failed .lcj2-scan-state-label{
-                color:#fecdd3!important;
-            }
-            #lcj2-panel-fixed .lcj2-bank-lookup-state.partial .lcj2-scan-state-text,
-            #lcj2-panel-fixed .lcj2-bank-lookup-state.failed .lcj2-scan-state-text{
-                color:#ffffff!important;
-                font-size:15px!important;
-                text-shadow:0 0 13px rgba(251,113,133,.55)!important;
-            }
-            #lcj2-panel-fixed .lcj2-bank-lookup-state.partial .lcj2-scan-state-detail,
-            #lcj2-panel-fixed .lcj2-bank-lookup-state.failed .lcj2-scan-state-detail{
-                color:#ffe4e6!important;
-                font-size:12px!important;
-            }
-
-            @keyframes lcj2BrightStatusBlink{
-                0%,100%{opacity:.55;transform:scale(.90)}
-                50%{opacity:1;transform:scale(1.10)}
-            }
-
-            /* V1.4.4 — DRAG TURBO: matikan seluruh efek berat selama pemindahan. */
-            #lcj2-panel-fixed.lcj2-reorder-mode,
-            #lcj2-panel-fixed.lcj2-reorder-mode:before,
-            #lcj2-panel-fixed.lcj2-reorder-mode:after{
-                backdrop-filter:none!important;
-            }
-            #lcj2-panel-fixed.lcj2-reorder-mode #lcj2-image-grid{
-                contain:layout paint!important;
-                isolation:isolate!important;
-            }
-            #lcj2-panel-fixed.lcj2-reorder-mode .lcj2-img-card,
-            #lcj2-panel-fixed.lcj2-reorder-mode .lcj2-img-card:hover,
-            #lcj2-panel-fixed.lcj2-reorder-mode .lcj2-img-card.target,
-            #lcj2-panel-fixed.lcj2-reorder-mode .lcj2-img-card.over{
-                animation:none!important;
-                transition:none!important;
-                transform:none!important;
-                filter:none!important;
-                backdrop-filter:none!important;
+            #lcst-dashboard-brand-bg{
+                position:fixed!important;
+                left:50%!important;
+                top:52%!important;
+                width:min(1120px,84vw)!important;
+                height:min(730px,76vh)!important;
+                transform:translate(-50%,-50%)!important;
+                display:flex!important;
+                align-items:center!important;
+                justify-content:center!important;
+                overflow:visible!important;
+                border-radius:0!important;
+                border:0!important;
+                background:transparent!important;
                 box-shadow:none!important;
-                text-shadow:none!important;
-            }
-            #lcj2-panel-fixed.lcj2-reorder-mode .lcj2-img-card img{
-                animation:none!important;
-                transition:none!important;
-                transform:none!important;
+                pointer-events:none!important;
+                user-select:none!important;
+                z-index:1!important;
+                opacity:1!important;
                 filter:none!important;
+                animation:none!important;
             }
-            #lcj2-panel-fixed.lcj2-reorder-mode .lcj2-img-label,
-            #lcj2-panel-fixed.lcj2-reorder-mode .lcj2-ocr-badge,
-            #lcj2-panel-fixed.lcj2-reorder-mode .lcj2-del{
-                visibility:hidden!important;
+            #lcst-dashboard-logo-bg{
+                display:block!important;
+                position:relative!important;
+                width:88%!important;
+                height:62%!important;
+                margin:0!important;
+                padding:0!important;
+                border:0!important;
+                object-fit:contain!important;
+                object-position:center!important;
+                transform:none!important;
+                image-rendering:auto!important;
+                opacity:1!important;
+                filter:
+                    saturate(1.34)
+                    contrast(1.18)
+                    brightness(1.06)
+                    drop-shadow(0 12px 16px rgba(22,0,5,.34))
+                    drop-shadow(0 0 16px rgba(255,204,85,.24))!important;
+                pointer-events:none!important;
+                user-select:none!important;
+                z-index:2!important;
+                animation:lcstDashboardLogoFloat 5.8s ease-in-out infinite!important;
             }
-            #lcj2-panel-fixed.lcj2-reorder-mode .lcj2-img-card.over{
-                border:2px solid #4ade80!important;
-                background:#07170d!important;
-                outline:3px solid rgba(74,222,128,.16)!important;
+            #lcst-dashboard-logo-fallback{
+                position:absolute!important;
+                left:50%!important;
+                top:50%!important;
+                transform:translate(-50%,-50%)!important;
+                width:100%!important;
+                text-align:center!important;
+                color:#ffedbd!important;
+                font:1000 clamp(54px,8.5vw,142px)/.88 Inter,Segoe UI,Arial,sans-serif!important;
+                letter-spacing:clamp(5px,1.15vw,18px)!important;
+                text-shadow:
+                    0 3px 0 rgba(255,255,255,.12),
+                    0 12px 34px rgba(0,0,0,.42),
+                    0 0 45px rgba(255,179,55,.30)!important;
+                white-space:nowrap!important;
+                opacity:1!important;
+                z-index:1!important;
+            }
+            #lcst-dashboard-logo-fallback small{
+                display:block!important;
+                margin-top:18px!important;
+                color:rgba(255,218,143,.74)!important;
+                font:900 clamp(9px,1vw,15px)/1.2 Inter,Segoe UI,Arial,sans-serif!important;
+                letter-spacing:clamp(4px,.8vw,11px)!important;
+            }
+            #lcst-panel-fixed.lcst-dashboard-logo-loaded #lcst-dashboard-logo-fallback{
+                opacity:0!important;
+            }
+            #lcst-panel-fixed.lcst-dashboard-logo-error #lcst-dashboard-logo-bg{
+                display:none!important;
+            }
+            @keyframes lcstDashboardLogoFloat{
+                0%,100%{transform:translateY(0) scale(1);opacity:1}
+                50%{transform:translateY(-8px) scale(1.018);opacity:1}
             }
 
+            /* Efek glass agar logo background tetap terlihat lembut */
+            #lcst-panel-fixed .lcst-nova-topbar{
+                background:
+                    radial-gradient(circle at 50% -38%,rgba(216,180,254,.34),transparent 47%),
+                    radial-gradient(circle at 4% 50%,rgba(236,72,153,.15),transparent 30%),
+                    radial-gradient(circle at 96% 45%,rgba(99,102,241,.24),transparent 31%),
+                    linear-gradient(135deg,#1d0a35 0%,#3b1766 31%,#5b21b6 62%,#341257 100%)!important;
+                backdrop-filter:blur(18px) saturate(145%)!important;
+                border-color:rgba(216,180,254,.34)!important;
+                box-shadow:
+                    0 20px 52px rgba(48,13,82,.32),
+                    0 0 0 1px rgba(255,255,255,.035),
+                    inset 0 1px 0 rgba(255,255,255,.22),
+                    inset 0 -1px 0 rgba(126,34,206,.28)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-topbar:before{
+                background:linear-gradient(180deg,#f0abfc,#c084fc 46%,#818cf8 78%,#fbbf24)!important;
+                box-shadow:0 0 22px rgba(216,180,254,.56)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-topbar:after{
+                background:radial-gradient(circle,rgba(233,213,255,.19),transparent 67%)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-eyebrow{
+                color:#f0abfc!important;
+                text-shadow:0 0 13px rgba(240,171,252,.30)!important;
+            }
+            #lcst-panel-fixed .lcst-title{
+                color:#ffffff!important;
+                text-shadow:0 3px 15px rgba(18,3,31,.45),0 0 20px rgba(216,180,254,.16)!important;
+            }
+            #lcst-panel-fixed .lcst-subtitle{
+                color:rgba(233,213,255,.84)!important;
+            }
+            #lcst-panel-fixed .lcst-version{
+                background:rgba(251,191,36,.17)!important;
+                border-color:rgba(253,224,71,.34)!important;
+                color:#fde68a!important;
+                box-shadow:0 0 13px rgba(251,191,36,.10)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-live-chip{
+                background:rgba(16,185,129,.16)!important;
+                border-color:rgba(110,231,183,.34)!important;
+                color:#a7f3d0!important;
+                box-shadow:inset 0 1px 0 rgba(255,255,255,.10)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-close{
+                background:linear-gradient(135deg,#f43f5e,#e11d48)!important;
+                border-color:rgba(255,228,230,.34)!important;
+                color:#ffffff!important;
+                box-shadow:0 10px 23px rgba(190,24,93,.26),inset 0 1px 0 rgba(255,255,255,.20)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-close:hover{
+                background:linear-gradient(135deg,#fb7185,#e11d48)!important;
+            }
+
+            /* Logo resmi LINE TOGEL menggantikan ikon scanner pada header */
+            #lcst-panel-fixed .lcst-nova-logo{
+                position:relative!important;
+                width:200px!important;
+                min-width:200px!important;
+                height:76px!important;
+                flex:0 0 200px!important;
+                display:flex!important;
+                align-items:center!important;
+                justify-content:center!important;
+                padding:0!important;
+                overflow:visible!important;
+                border-radius:0!important;
+                border:0!important;
+                background:none!important;
+                box-shadow:none!important;
+            }
+            #lcst-panel-fixed .lcst-nova-logo:before,
+            #lcst-panel-fixed .lcst-nova-logo:after{
+                display:none!important;
+            }
+            #lcst-header-logo-img{
+                position:relative!important;
+                display:block!important;
+                width:100%!important;
+                height:100%!important;
+                max-width:100%!important;
+                max-height:100%!important;
+                object-fit:contain!important;
+                object-position:center!important;
+                margin:0!important;
+                padding:0!important;
+                border:0!important;
+                opacity:0!important;
+                filter:
+                    saturate(1.20)
+                    contrast(1.08)
+                    drop-shadow(0 8px 10px rgba(47,0,12,.34))
+                    drop-shadow(0 15px 22px rgba(122,7,34,.24))
+                    drop-shadow(0 0 15px rgba(255,194,67,.30))!important;
+                transition:opacity .25s ease!important;
+                z-index:2!important;
+            }
+            #lcst-panel-fixed .lcst-header-logo-fallback{
+                position:absolute!important;
+                inset:0!important;
+                display:grid!important;
+                place-items:center!important;
+                color:#ffe4a6!important;
+                font:1000 24px/1 Inter,Segoe UI,Arial,sans-serif!important;
+                letter-spacing:3px!important;
+                text-shadow:0 3px 10px rgba(0,0,0,.38),0 0 15px rgba(255,191,61,.32)!important;
+                z-index:1!important;
+                transition:opacity .2s ease!important;
+            }
+            #lcst-panel-fixed.lcst-header-logo-loaded #lcst-header-logo-img{
+                opacity:1!important;
+            }
+            #lcst-panel-fixed.lcst-header-logo-loaded .lcst-header-logo-fallback{
+                opacity:0!important;
+            }
+            #lcst-panel-fixed.lcst-header-logo-error #lcst-header-logo-img{
+                display:none!important;
+            }
+
+            /* Logo header berada tepat di tengah dan mengambang */
+            #lcst-panel-fixed .lcst-nova-topbar{
+                position:sticky!important;
+                overflow:visible!important;
+                min-height:100px!important;
+            }
+            #lcst-panel-fixed .lcst-nova-topbar .lcst-brand{
+                position:static!important;
+            }
+            #lcst-panel-fixed .lcst-nova-brand-copy,
+            #lcst-panel-fixed .lcst-nova-top-actions{
+                position:relative!important;
+                z-index:6!important;
+            }
+            #lcst-panel-fixed .lcst-nova-logo{
+                position:absolute!important;
+                left:50%!important;
+                top:50%!important;
+                margin:0!important;
+                transform:translate(-50%,-50%)!important;
+                z-index:8!important;
+                isolation:isolate!important;
+                overflow:visible!important;
+                pointer-events:none!important;
+                animation:lcstHeaderLogoCenterFloat 3.4s ease-in-out infinite!important;
+                background:none!important;
+                border:0!important;
+                box-shadow:none!important;
+            }
+            #lcst-panel-fixed .lcst-nova-logo:before,
+            #lcst-panel-fixed .lcst-nova-logo:after{
+                display:none!important;
+            }
+            @keyframes lcstHeaderLogoCenterFloat{
+                0%,100%{transform:translate(-50%,-50%) translateY(-2px) scale(1)}
+                50%{transform:translate(-50%,-50%) translateY(-8px) scale(1.035)}
+            }
+            @keyframes lcstHeaderLogoMobileFloat{
+                0%,100%{transform:translateY(0) scale(1)}
+                50%{transform:translateY(-6px) scale(1.035)}
+            }
+            #lcst-panel-fixed .lcst-card,
+            #lcst-panel-fixed .lcst-nova-status,
+            #lcst-panel-fixed .lcst-nova-stat,
+            #lcst-panel-fixed .lcst-nova-stat.ok,
+            #lcst-panel-fixed .lcst-nova-stat.bad,
+            #lcst-panel-fixed .lcst-nova-stat.user,
+            #lcst-panel-fixed .lcst-nova-stat.mode,
+            #lcst-panel-fixed .lcst-nova-stat.live{
+                background:
+                    radial-gradient(circle at 10% 0%,rgba(216,180,254,.16),transparent 34%),
+                    radial-gradient(circle at 95% 100%,rgba(129,140,248,.14),transparent 38%),
+                    linear-gradient(145deg,rgba(29,10,53,.82),rgba(59,23,102,.78) 52%,rgba(76,29,149,.74))!important;
+                backdrop-filter:none!important;
+                border-color:rgba(216,180,254,.28)!important;
+                color:#f8f2ff!important;
+                box-shadow:
+                    0 18px 42px rgba(30,7,54,.30),
+                    inset 0 1px 0 rgba(255,255,255,.13),
+                    inset 0 -1px 0 rgba(126,34,206,.18)!important;
+            }
+
+            /* Hero dan kartu informasi */
+            #lcst-panel-fixed .lcst-nova-status-icon{
+                background:rgba(192,132,252,.16)!important;
+                border-color:rgba(216,180,254,.30)!important;
+                box-shadow:0 0 20px rgba(168,85,247,.14)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-status-icon svg{
+                stroke:#e9d5ff!important;
+                filter:drop-shadow(0 0 7px rgba(216,180,254,.30))!important;
+            }
+            #lcst-panel-fixed .lcst-nova-status .lcst-status-title{
+                color:#f0abfc!important;
+            }
+            #lcst-panel-fixed .lcst-nova-status .lcst-ocr-box{
+                color:#ffffff!important;
+                text-shadow:0 2px 11px rgba(10,0,25,.35)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-status .lcst-progress{
+                background:rgba(17,5,35,.56)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-status .lcst-progress span{
+                background:linear-gradient(90deg,#c084fc,#8b5cf6,#6366f1,#f0abfc)!important;
+                box-shadow:0 0 15px rgba(192,132,252,.55)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-stat-label{
+                color:#f0abfc!important;
+            }
+            #lcst-panel-fixed .lcst-nova-stat strong,
+            #lcst-panel-fixed .lcst-nova-stat .lcst-user-edit{
+                color:#ffffff!important;
+            }
+            #lcst-panel-fixed .lcst-nova-stat small{
+                color:rgba(233,213,255,.76)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-stat .lcst-inline-copy{
+                color:#e9d5ff!important;
+                background:rgba(192,132,252,.12)!important;
+                border-color:rgba(216,180,254,.26)!important;
+            }
+
+            /* Sidebar, periode, dan panduan cepat */
+            #lcst-panel-fixed .lcst-nova-section-head b,
+            #lcst-panel-fixed .lcst-nova-guide-row b{
+                color:#ffffff!important;
+            }
+            #lcst-panel-fixed .lcst-nova-section-head small,
+            #lcst-panel-fixed .lcst-nova-guide-row small,
+            #lcst-panel-fixed .lcst-nova-guide-title{
+                color:rgba(233,213,255,.76)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-step,
+            #lcst-panel-fixed .lcst-nova-section-head.orange .lcst-nova-step,
+            #lcst-panel-fixed .lcst-nova-guide-row>span{
+                background:rgba(192,132,252,.16)!important;
+                border-color:rgba(216,180,254,.30)!important;
+                color:#f5d0fe!important;
+                box-shadow:inset 0 1px 0 rgba(255,255,255,.10)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-guide-row{
+                border-color:rgba(216,180,254,.14)!important;
+            }
+
+            /* Semua input dibuat ungu gelap, tidak ada kotak putih */
+            #lcst-panel-fixed .lcst-input,
+            #lcst-panel-fixed #lcst-output{
+                background:linear-gradient(145deg,rgba(18,5,37,.90),rgba(43,13,76,.88))!important;
+                border-color:rgba(216,180,254,.28)!important;
+                color:#f8f2ff!important;
+                box-shadow:inset 0 2px 10px rgba(5,0,14,.30),inset 0 1px 0 rgba(255,255,255,.06)!important;
+            }
+            #lcst-panel-fixed .lcst-input::placeholder,
+            #lcst-panel-fixed #lcst-output::placeholder{
+                color:rgba(221,214,254,.52)!important;
+            }
+            #lcst-panel-fixed .lcst-input:focus,
+            #lcst-panel-fixed #lcst-output:focus{
+                background:linear-gradient(145deg,rgba(24,7,48,.96),rgba(55,18,94,.94))!important;
+                border-color:rgba(216,180,254,.66)!important;
+                box-shadow:0 0 0 4px rgba(168,85,247,.14),0 0 22px rgba(139,92,246,.13)!important;
+            }
+
+            /* Status rekening dan status scan */
+            #lcst-panel-fixed .lcst-scan-state,
+            #lcst-panel-fixed .lcst-scan-state.waiting,
+            #lcst-panel-fixed .lcst-scan-state.scanning,
+            #lcst-panel-fixed .lcst-scan-state.success,
+            #lcst-panel-fixed .lcst-scan-state.partial,
+            #lcst-panel-fixed .lcst-scan-state.failed{
+                background:linear-gradient(145deg,rgba(32,10,61,.90),rgba(61,22,103,.84))!important;
+                border-color:rgba(216,180,254,.24)!important;
+                box-shadow:0 10px 24px rgba(20,3,39,.24),inset 0 1px 0 rgba(255,255,255,.09)!important;
+            }
+            #lcst-panel-fixed .lcst-scan-state-label{
+                color:#d8b4fe!important;
+            }
+            #lcst-panel-fixed .lcst-scan-state-detail{
+                color:rgba(233,213,255,.68)!important;
+            }
+            #lcst-panel-fixed .lcst-scan-state.waiting .lcst-scan-state-text{color:#c4b5fd!important}
+            #lcst-panel-fixed .lcst-scan-state.scanning .lcst-scan-state-text{color:#67e8f9!important}
+            #lcst-panel-fixed .lcst-scan-state.success .lcst-scan-state-text{color:#6ee7b7!important}
+            #lcst-panel-fixed .lcst-scan-state.partial .lcst-scan-state-text{color:#fde68a!important}
+            #lcst-panel-fixed .lcst-scan-state.failed .lcst-scan-state-text{color:#fda4af!important}
+
+            /* Output Excel ikut ungu */
+            #lcst-panel-fixed .lcst-nova-output-card .lcst-nova-kicker{
+                color:#f0abfc!important;
+            }
+            #lcst-panel-fixed .lcst-nova-output-card h4{
+                color:#ffffff!important;
+                text-shadow:0 2px 12px rgba(10,0,25,.36)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-output-card p{
+                color:rgba(233,213,255,.74)!important;
+            }
+            #lcst-panel-fixed #lcst-output{
+                color:#f5e9ff!important;
+                caret-color:#f0abfc!important;
+            }
+
+            /* WORKSPACE transparan: logo terlihat di belakang galeri */
+            #lcst-panel-fixed .lcst-nova-main,
+            #lcst-panel-fixed .lcst-nova-gallery-card,
+            #lcst-panel-fixed #lcst-image-grid{
+                background:transparent!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card{
+                border:1px solid rgba(255,218,137,.34)!important;
+                backdrop-filter:none!important;
+                box-shadow:
+                    0 22px 48px rgba(18,0,5,.24),
+                    inset 0 1px 0 rgba(255,245,219,.18)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-head{
+                padding:14px 15px!important;
+                border:1px solid rgba(255,218,137,.24)!important;
+                border-radius:18px!important;
+                background:linear-gradient(135deg,rgba(52,2,15,.62),rgba(112,8,31,.43))!important;
+                backdrop-filter:blur(8px) saturate(118%)!important;
+                box-shadow:0 13px 30px rgba(18,0,5,.18),inset 0 1px 0 rgba(255,236,190,.15)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-head .lcst-nova-kicker{
+                color:#ffd57c!important;
+                text-shadow:0 0 12px rgba(255,184,56,.26)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-head h4{
+                color:#fff4df!important;
+                text-shadow:0 2px 13px rgba(0,0,0,.34)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-head p{
+                color:rgba(255,231,210,.82)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-img-card{
+                background:rgba(255,255,255,.08)!important;
+                border-color:rgba(255,218,137,.26)!important;
+                backdrop-filter:none!important;
+                box-shadow:
+                    0 15px 28px rgba(20,0,5,.23),
+                    inset 0 1px 0 rgba(255,245,219,.15)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-img-card:hover{
+                border-color:rgba(255,218,137,.55)!important;
+                box-shadow:
+                    0 20px 38px rgba(20,0,5,.30),
+                    0 0 24px rgba(255,180,53,.14)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-img-media,
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-img-card img{
+                background:transparent!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-img-label{
+                color:rgba(255,232,215,.82)!important;
+                background:rgba(47,2,14,.48)!important;
+                border-top-color:rgba(255,218,137,.16)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-empty{
+                background:rgba(54,3,17,.30)!important;
+                border-color:rgba(255,218,137,.28)!important;
+                color:#ffe1ba!important;
+                backdrop-filter:blur(5px)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-empty b{
+                color:#fff3dd!important;
+            }
+
+            /* Bubble memakai kembali background gambar sebelumnya */
+            #lcst-bubble-fixed{
+                width:86px!important;
+                height:86px!important;
+                border-radius:50%!important;
+                border:2px solid rgba(255,255,255,.94)!important;
+                background-color:#171717!important;
+                background-image:url("https://i.postimg.cc/jSc32qYs/85c5a789-2ae2-4b4f-897d-9aab6a0c6b4f.png")!important;
+                background-repeat:no-repeat!important;
+                background-position:center center!important;
+                background-size:cover!important;
+                overflow:hidden!important;
+                isolation:isolate!important;
+                box-shadow:
+                    0 10px 16px rgba(69,26,18,.22),
+                    0 23px 48px rgba(69,26,18,.34),
+                    0 0 0 5px rgba(255,255,255,.38),
+                    0 0 0 8px rgba(255,176,32,.13),
+                    0 0 30px rgba(239,45,57,.22)!important;
+            }
+            #lcst-bubble-fixed:before,
+            #lcst-bubble-fixed:after,
+            #lcst-bubble-fixed .lcst-nova-ring,
+            #lcst-bubble-fixed .lcst-nova-lens,
+            #lcst-bubble-fixed .lcst-nova-caption,
+            #lcst-bubble-fixed .lcst-nova-online{
+                display:none!important;
+            }
+            #lcst-bubble-fixed:hover{
+                transform:translateY(-5px) scale(1.07)!important;
+                border-color:#ffffff!important;
+                box-shadow:
+                    0 13px 19px rgba(69,26,18,.20),
+                    0 29px 58px rgba(69,26,18,.38),
+                    0 0 0 6px rgba(255,255,255,.44),
+                    0 0 0 9px rgba(255,176,32,.16),
+                    0 0 42px rgba(239,45,57,.30)!important;
+            }
+            #lcst-bubble-fixed.lcst-dragging{
+                transform:scale(1.075)!important;
+                cursor:grabbing!important;
+                opacity:.96!important;
+            }
+
+            @media(max-width:820px){
+                #lcst-panel-fixed{
+                    background-position:center center,center 34%,left top,right top,center bottom,center center!important;
+                    background-size:100% 100%,88vw auto,100% 100%,100% 100%,100% 100%,100% 100%!important;
+                }
+                #lcst-dashboard-brand-bg{
+                    width:88vw!important;
+                    height:52vh!important;
+                    top:43%!important;
+                }
+                #lcst-dashboard-logo-bg{width:88%!important;height:45%!important}
+                #lcst-panel-fixed .lcst-nova-logo{
+                    width:160px!important;
+                    min-width:160px!important;
+                    height:66px!important;
+                    flex-basis:160px!important;
+                    position:relative!important;
+                    left:auto!important;
+                    top:auto!important;
+                    margin:0 auto 10px!important;
+                    transform:none!important;
+                    animation:lcstHeaderLogoMobileFloat 3.4s ease-in-out infinite!important;
+                }
+                #lcst-panel-fixed .lcst-nova-topbar .lcst-brand{
+                    width:100%!important;
+                    display:flex!important;
+                    flex-direction:column!important;
+                    align-items:center!important;
+                    text-align:center!important;
+                }
+            }
+
+            /* =========================================================
+               AURORA PERFORMANCE UI V7
+               Modern, konsisten, dan lebih ringan saat scanner bekerja.
+               ========================================================= */
+            #lcst-panel-fixed{
+                --aurora-bg:#060817;
+                --aurora-card:#10142b;
+                --aurora-card-2:#151a38;
+                --aurora-line:rgba(148,163,255,.22);
+                --aurora-purple:#8b5cf6;
+                --aurora-cyan:#22d3ee;
+                --aurora-mint:#5eead4;
+                --aurora-text:#f8fafc;
+                --aurora-muted:#a8b2d1;
+                background:
+                    radial-gradient(circle at 8% 0%,rgba(124,58,237,.25),transparent 34%),
+                    radial-gradient(circle at 92% 4%,rgba(34,211,238,.17),transparent 31%),
+                    radial-gradient(circle at 50% 110%,rgba(14,165,233,.12),transparent 42%),
+                    linear-gradient(145deg,#050713 0%,#0a0d20 48%,#070a18 100%)!important;
+                color:var(--aurora-text)!important;
+            }
+            #lcst-panel-fixed:before{
+                display:block!important;
+                opacity:.22!important;
+                background-image:
+                    linear-gradient(rgba(129,140,248,.08) 1px,transparent 1px),
+                    linear-gradient(90deg,rgba(34,211,238,.06) 1px,transparent 1px)!important;
+                background-size:42px 42px!important;
+            }
+            #lcst-panel-fixed:after{
+                display:block!important;
+                opacity:.42!important;
+                background:
+                    radial-gradient(circle at 18% 22%,rgba(139,92,246,.16),transparent 25%),
+                    radial-gradient(circle at 83% 72%,rgba(34,211,238,.10),transparent 27%)!important;
+            }
+            #lcst-dashboard-brand-bg{display:none!important}
+
+            #lcst-panel-fixed .lcst-nova-topbar{
+                min-height:96px!important;
+                background:
+                    radial-gradient(circle at 50% -42%,rgba(34,211,238,.21),transparent 48%),
+                    linear-gradient(135deg,#11152f 0%,#211344 48%,#101b3a 100%)!important;
+                border:1px solid rgba(165,180,252,.28)!important;
+                backdrop-filter:none!important;
+                box-shadow:0 18px 45px rgba(1,4,16,.38),inset 0 1px 0 rgba(255,255,255,.10)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-topbar:before{
+                background:linear-gradient(180deg,#67e8f9,#8b5cf6 55%,#f472b6)!important;
+                box-shadow:0 0 20px rgba(34,211,238,.35)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-topbar:after{opacity:.45!important}
+            #lcst-panel-fixed .lcst-nova-logo{animation:none!important}
+            #lcst-header-logo-img{
+                filter:saturate(1.08) contrast(1.05) drop-shadow(0 8px 16px rgba(2,6,23,.42))!important;
+            }
+            #lcst-panel-fixed .lcst-nova-eyebrow{color:#67e8f9!important;text-shadow:none!important}
+            #lcst-panel-fixed .lcst-title{color:#fff!important;text-shadow:0 3px 14px rgba(2,6,23,.45)!important}
+            #lcst-panel-fixed .lcst-subtitle{color:#bdc7e6!important}
+            #lcst-panel-fixed .lcst-version{
+                color:#cffafe!important;
+                background:rgba(34,211,238,.12)!important;
+                border-color:rgba(103,232,249,.28)!important;
+                box-shadow:none!important;
+            }
+            #lcst-panel-fixed .lcst-nova-live-chip{
+                color:#a7f3d0!important;
+                background:rgba(16,185,129,.12)!important;
+                border-color:rgba(110,231,183,.27)!important;
+            }
+
+            #lcst-panel-fixed .lcst-card,
+            #lcst-panel-fixed .lcst-nova-status,
+            #lcst-panel-fixed .lcst-nova-stat,
+            #lcst-panel-fixed .lcst-nova-stat.ok,
+            #lcst-panel-fixed .lcst-nova-stat.bad,
+            #lcst-panel-fixed .lcst-nova-stat.user,
+            #lcst-panel-fixed .lcst-nova-stat.mode,
+            #lcst-panel-fixed .lcst-nova-stat.live{
+                background:
+                    linear-gradient(145deg,rgba(17,21,47,.96),rgba(13,17,39,.98))!important;
+                border-color:var(--aurora-line)!important;
+                color:var(--aurora-text)!important;
+                backdrop-filter:none!important;
+                box-shadow:0 15px 36px rgba(1,4,16,.28),inset 0 1px 0 rgba(255,255,255,.055)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-status-icon,
+            #lcst-panel-fixed .lcst-nova-step,
+            #lcst-panel-fixed .lcst-nova-section-head.orange .lcst-nova-step,
+            #lcst-panel-fixed .lcst-nova-guide-row>span{
+                color:#cffafe!important;
+                background:linear-gradient(145deg,rgba(34,211,238,.13),rgba(139,92,246,.14))!important;
+                border-color:rgba(103,232,249,.25)!important;
+                box-shadow:inset 0 1px 0 rgba(255,255,255,.07)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-status-icon svg{stroke:#67e8f9!important;filter:none!important}
+            #lcst-panel-fixed .lcst-nova-status .lcst-status-title,
+            #lcst-panel-fixed .lcst-nova-stat-label,
+            #lcst-panel-fixed .lcst-nova-kicker{color:#67e8f9!important}
+            #lcst-panel-fixed .lcst-nova-status .lcst-progress{background:rgba(2,6,23,.72)!important}
+            #lcst-panel-fixed .lcst-nova-status .lcst-progress span{
+                background:linear-gradient(90deg,#22d3ee,#6366f1,#a855f7)!important;
+                box-shadow:0 0 14px rgba(34,211,238,.34)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-stat strong,
+            #lcst-panel-fixed .lcst-nova-section-head b,
+            #lcst-panel-fixed .lcst-nova-guide-row b,
+            #lcst-panel-fixed .lcst-nova-gallery-head h4,
+            #lcst-panel-fixed .lcst-nova-output-card h4{color:#f8fafc!important}
+            #lcst-panel-fixed .lcst-nova-stat small,
+            #lcst-panel-fixed .lcst-nova-section-head small,
+            #lcst-panel-fixed .lcst-nova-guide-row small,
+            #lcst-panel-fixed .lcst-nova-gallery-head p,
+            #lcst-panel-fixed .lcst-nova-output-card p{color:var(--aurora-muted)!important}
+
+            #lcst-panel-fixed .lcst-input,
+            #lcst-panel-fixed #lcst-output{
+                color:#eef2ff!important;
+                background:linear-gradient(145deg,rgba(5,9,25,.96),rgba(12,18,42,.96))!important;
+                border-color:rgba(129,140,248,.28)!important;
+                box-shadow:inset 0 2px 10px rgba(0,0,0,.24)!important;
+            }
+            #lcst-panel-fixed .lcst-input:focus,
+            #lcst-panel-fixed #lcst-output:focus{
+                border-color:rgba(34,211,238,.66)!important;
+                box-shadow:0 0 0 4px rgba(34,211,238,.10)!important;
+            }
+            #lcst-panel-fixed .lcst-scan-state,
+            #lcst-panel-fixed .lcst-scan-state.waiting,
+            #lcst-panel-fixed .lcst-scan-state.scanning,
+            #lcst-panel-fixed .lcst-scan-state.success,
+            #lcst-panel-fixed .lcst-scan-state.partial,
+            #lcst-panel-fixed .lcst-scan-state.failed{
+                background:linear-gradient(145deg,rgba(8,13,33,.94),rgba(18,23,52,.92))!important;
+                border-color:rgba(129,140,248,.22)!important;
+                box-shadow:inset 0 1px 0 rgba(255,255,255,.045)!important;
+            }
+
+            #lcst-panel-fixed .lcst-nova-gallery-card,
+            #lcst-panel-fixed .lcst-nova-main,
+            #lcst-panel-fixed #lcst-image-grid{background:transparent!important}
+            #lcst-panel-fixed .lcst-nova-gallery-card{
+                border-color:rgba(129,140,248,.25)!important;
+                box-shadow:0 18px 42px rgba(1,4,16,.30)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-head{
+                background:linear-gradient(135deg,rgba(17,24,55,.96),rgba(31,18,65,.94))!important;
+                border-color:rgba(129,140,248,.25)!important;
+                backdrop-filter:none!important;
+                box-shadow:inset 0 1px 0 rgba(255,255,255,.055)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-img-card{
+                background:#0a0f26!important;
+                border-color:rgba(129,140,248,.24)!important;
+                box-shadow:0 12px 26px rgba(1,4,16,.28)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-img-card:hover{
+                border-color:rgba(34,211,238,.54)!important;
+                box-shadow:0 16px 33px rgba(1,4,16,.34),0 0 20px rgba(34,211,238,.08)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-img-label{
+                color:#cbd5e1!important;
+                background:#0b1027!important;
+                border-top-color:rgba(129,140,248,.18)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-empty{
+                color:#cbd5e1!important;
+                background:rgba(8,13,33,.86)!important;
+                border-color:rgba(129,140,248,.25)!important;
+                backdrop-filter:none!important;
+            }
+            #lcst-panel-fixed .lcst-nova-gallery-card .lcst-empty b{color:#f8fafc!important}
+
+            #lcst-panel-fixed .lcst-nova-scan-btn{
+                background:linear-gradient(135deg,#06b6d4 0%,#6366f1 48%,#8b5cf6 100%)!important;
+                border:1px solid rgba(207,250,254,.25)!important;
+                color:#fff!important;
+                box-shadow:0 13px 30px rgba(79,70,229,.28),inset 0 1px 0 rgba(255,255,255,.20)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-scan-btn:hover{
+                transform:translateY(-2px)!important;
+                box-shadow:0 17px 36px rgba(34,211,238,.20),0 8px 25px rgba(124,58,237,.24)!important;
+            }
+            #lcst-panel-fixed .lcst-nova-btn-icon{background:rgba(255,255,255,.15)!important}
+
+            #lcst-bubble-fixed{
+                width:82px!important;
+                height:82px!important;
+                border:2px solid rgba(207,250,254,.82)!important;
+                box-shadow:0 18px 42px rgba(2,6,23,.38),0 0 0 5px rgba(99,102,241,.14),0 0 26px rgba(34,211,238,.22)!important;
+            }
+            #lcst-bubble-fixed:hover{
+                transform:translateY(-4px) scale(1.055)!important;
+                box-shadow:0 23px 48px rgba(2,6,23,.42),0 0 0 6px rgba(139,92,246,.18),0 0 34px rgba(34,211,238,.28)!important;
+            }
+
+            @media(max-width:820px){
+                #lcst-panel-fixed .lcst-nova-topbar{min-height:auto!important}
+                #lcst-panel-fixed .lcst-nova-logo{animation:none!important}
+                #lcst-bubble-fixed{width:72px!important;height:72px!important}
+            }
+
+
+            /* MIDNIGHT GOLD — one scoped finish, no external fonts or animated backgrounds. */
+            #lcst-panel-fixed{
+                --aurora-text:#edf1f8;--aurora-muted:#a8b5c8;--aurora-line:#2c384b;
+                --nova-text:#edf1f8;--nova-muted:#a8b5c8;
+                padding:24px!important;color:#edf1f8!important;
+                background:radial-gradient(ellipse at 90% 0%,#202738 0%,transparent 44%),#0c1220!important;
+                backdrop-filter:none!important;scrollbar-color:#46536a #111a29;
+            }
+            #lcst-panel-fixed:before,#lcst-panel-fixed:after{display:none!important}
+            #lcst-panel-fixed .lcst-wrap{max-width:1540px!important;margin:auto!important}
+            #lcst-panel-fixed *,#lcst-panel-fixed *:before,#lcst-panel-fixed *:after{
+                animation:none!important;backdrop-filter:none!important;text-shadow:none!important;
+            }
+            #lcst-panel-fixed button{transition:background-color .15s,border-color .15s,transform .15s!important}
+            #lcst-panel-fixed .lcst-nova-topbar{
+                position:relative!important;display:flex!important;flex-wrap:wrap!important;gap:18px!important;
+                min-height:96px!important;padding:20px 24px!important;border-radius:20px!important;
+                border:1px solid #384254!important;background:linear-gradient(115deg,#1e293a,#121c2c)!important;
+                box-shadow:0 10px 26px #00000025,inset 0 1px #ffffff0a!important;
+            }
+            #lcst-panel-fixed .lcst-nova-topbar:before{width:3px!important;background:#d4b67d!important;box-shadow:none!important}
+            #lcst-panel-fixed .lcst-nova-topbar:after{display:none!important}
+            #lcst-panel-fixed .lcst-nova-logo{transform:none!important;filter:none!important}
+            #lcst-panel-fixed .lcst-nova-eyebrow,#lcst-panel-fixed .lcst-nova-kicker{
+                color:#d7bc8a!important;letter-spacing:1.6px!important;font-size:10px!important;font-weight:700!important;
+            }
+            #lcst-panel-fixed .lcst-title{color:#f7f3eb!important;font-weight:750!important;letter-spacing:.2px!important}
+            #lcst-panel-fixed .lcst-subtitle{color:#a8b5c8!important;font-size:12px!important;line-height:1.6!important}
+            #lcst-panel-fixed .lcst-version{color:#e3cd9e!important;background:#d4b67d12!important;border:1px solid #d4b67d36!important}
+            #lcst-panel-fixed .lcst-card,#lcst-panel-fixed .lcst-nova-status,#lcst-panel-fixed .lcst-nova-stat{
+                background:#151f30!important;border:1px solid #2c384b!important;border-radius:18px!important;
+                box-shadow:0 6px 18px #0000001a,inset 0 1px #ffffff05!important;color:#edf1f8!important;
+            }
+            #lcst-panel-fixed .lcst-card{padding:20px!important;margin-bottom:16px!important}
+            #lcst-panel-fixed .lcst-card:before,#lcst-panel-fixed .lcst-card:after{display:none!important}
+            #lcst-panel-fixed .lcst-card:hover{border-color:#40506a!important;transform:none!important}
+            #lcst-panel-fixed .lcst-nova-stat{padding:15px 17px!important;min-width:0!important}
+            #lcst-panel-fixed .lcst-nova-stat-label{color:#a8b5c8!important;font-size:10px!important;letter-spacing:1.1px!important}
+            #lcst-panel-fixed .lcst-nova-stat strong{color:#f4f6fa!important;font-size:15px!important;line-height:1.5!important;overflow-wrap:anywhere}
+            #lcst-panel-fixed .lcst-nova-stat small{color:#9aaac2!important;line-height:1.6!important}
+            #lcst-panel-fixed #lcst-live-time{font-variant-numeric:tabular-nums;font-size:14px!important}
+            #lcst-panel-fixed .lcst-nova-workspace{display:grid!important;grid-template-columns:320px minmax(0,1fr)!important;gap:20px!important;align-items:start!important}
+            #lcst-panel-fixed .lcst-nova-sidebar{position:static!important;min-width:0!important}
+            #lcst-panel-fixed .lcst-nova-main{min-width:0!important}
+            #lcst-panel-fixed .lcst-nova-section-head{gap:12px!important;padding-bottom:14px!important;margin-bottom:15px!important;border-bottom:1px solid #2c384b!important}
+            #lcst-panel-fixed .lcst-nova-step{background:#d4b67d14!important;border:1px solid #d4b67d30!important;color:#e0c591!important;border-radius:11px!important;box-shadow:none!important}
+            #lcst-panel-fixed .lcst-nova-section-head b{font-size:15px!important;font-weight:700!important;color:#f2f4f9!important;line-height:1.4!important}
+            #lcst-panel-fixed .lcst-nova-section-head small,#lcst-panel-fixed .lcst-nova-guide-row small{color:#a8b5c8!important;line-height:1.6!important}
+            #lcst-panel-fixed .lcst-nova-gallery-head,#lcst-panel-fixed .lcst-output-head{gap:16px!important;align-items:center!important;flex-wrap:wrap!important;margin-bottom:18px!important}
+            #lcst-panel-fixed .lcst-nova-gallery-head h4,#lcst-panel-fixed .lcst-nova-output-card h4{margin:7px 0!important;font-size:21px!important;letter-spacing:-.3px!important;color:#f3f5fa!important;font-weight:750!important}
+            #lcst-panel-fixed .lcst-nova-gallery-head p,#lcst-panel-fixed .lcst-nova-output-card p{color:#a8b5c8!important;font-size:12px!important;line-height:1.7!important}
+            #lcst-panel-fixed .lcst-input,#lcst-panel-fixed #lcst-output{
+                background:#0e1726!important;border:1px solid #344259!important;color:#edf1f8!important;
+                border-radius:12px!important;box-shadow:inset 0 1px 4px #00000026!important;
+            }
+            #lcst-panel-fixed .lcst-input{min-height:44px!important;font-size:13px!important}
+            #lcst-panel-fixed .lcst-input:focus,#lcst-panel-fixed #lcst-output:focus{border-color:#d4b67d!important;outline:2px solid #d4b67d25!important;outline-offset:2px!important}
+            #lcst-panel-fixed #lcst-output{min-height:150px!important;line-height:1.8!important;padding:16px!important;font:12px/1.8 Consolas,monospace!important}
+            #lcst-panel-fixed .lcst-btn{background:#25344a!important;border:1px solid #40536d!important;color:#eaf0f8!important;border-radius:11px!important;box-shadow:inset 0 1px #ffffff08!important;min-height:38px!important;letter-spacing:.2px!important}
+            #lcst-panel-fixed .lcst-btn:hover{background:#30435c!important;filter:none!important;transform:translateY(-1px)!important}
+            #lcst-panel-fixed .lcst-btn:disabled{transform:none!important;opacity:.55!important;cursor:wait!important}
+            #lcst-panel-fixed .lcst-nova-scan-btn{background:linear-gradient(120deg,#e1c897,#c4a36a)!important;color:#211c14!important;border-color:#e7d1a6!important;padding:13px 20px!important;box-shadow:0 4px 12px #00000020!important;min-width:174px!important}
+            #lcst-panel-fixed .lcst-nova-scan-btn b,#lcst-panel-fixed .lcst-nova-scan-btn small{color:#211c14!important}
+            #lcst-panel-fixed .lcst-nova-scan-btn:before,#lcst-panel-fixed .lcst-nova-scan-btn:after{display:none!important}
+            #lcst-panel-fixed .lcst-nova-btn-icon{background:#0000000c!important;color:#211c14!important;box-shadow:none!important}
+            #lcst-panel-fixed #lcst-copy{background:#263c53!important;border-color:#547392!important;color:#e7f0fa!important;padding:12px 19px!important;min-width:150px!important}
+            #lcst-panel-fixed .lcst-btn.red{background:#432735!important;color:#f8c6cf!important;border-color:#73414f!important}
+            #lcst-panel-fixed button:focus-visible{outline:2px solid #e1c897!important;outline-offset:3px!important}
+            #lcst-panel-fixed #lcst-image-grid{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:14px!important;align-items:start!important}
+            #lcst-panel-fixed .lcst-img-card{background:#101929!important;border:1px solid #35435a!important;border-radius:14px!important;box-shadow:0 4px 12px #00000020!important;overflow:hidden!important;min-width:0!important}
+            #lcst-panel-fixed .lcst-img-card.target{border-color:#c6a76e!important;box-shadow:0 0 0 1px #c6a76e26!important}
+            #lcst-panel-fixed .lcst-img-card:hover{transform:none!important;border-color:#778ca8!important}
+            #lcst-panel-fixed .lcst-img-media{background:#080f1b!important;height:290px!important;overflow:hidden!important}
+            #lcst-panel-fixed .lcst-img-media img{width:100%!important;height:100%!important;object-fit:contain!important;filter:none!important}
+            #lcst-panel-fixed .lcst-img-index{background:#121c2ef2!important;border:1px solid #455570!important;border-radius:8px!important;color:#eef2f8!important;font-size:10px!important;padding:6px 8px!important}
+            #lcst-panel-fixed .lcst-target-tag{color:#e8cd98!important}
+            #lcst-panel-fixed .lcst-img-label{padding:10px 12px!important;color:#a8b5c8!important;background:#151f30!important;font-size:10px!important}
+            #lcst-panel-fixed .lcst-ocr-badge{font-size:10px!important;line-height:1.65!important;padding:10px 12px!important;white-space:normal!important;overflow-wrap:anywhere}
+            #lcst-panel-fixed .lcst-ocr-badge.success{background:#15352f!important;color:#b3ead2!important;border-color:#356454!important}
+            #lcst-panel-fixed .lcst-ocr-badge.error{background:#402630!important;color:#ffcad2!important;border-color:#724653!important}
+            #lcst-panel-fixed .lcst-ocr-badge.empty{background:#1b2739!important;color:#a8b5c8!important}
+            #lcst-panel-fixed .lcst-scan-state{background:#101b2c!important;border-radius:12px!important;box-shadow:none!important;min-width:0!important}
+            #lcst-panel-fixed .lcst-scan-state-detail{white-space:normal!important;line-height:1.6!important;color:#a8b5c8!important}
+            #lcst-panel-fixed .lcst-scan-state-text{white-space:normal!important;line-height:1.5!important}
+            #lcst-panel-fixed .lcst-progress span{background:linear-gradient(90deg,#c6a76e,#ead7b0)!important;box-shadow:none!important}
+            #lcst-panel-fixed .lcst-nova-guide-row>span{background:#25344a!important;color:#d6c398!important;border-color:#40516a!important}
+            #lcst-bubble-fixed,#lcst-bubble-fixed *,#lcst-bubble-fixed:before,#lcst-bubble-fixed:after{animation:none!important}
+            #lcst-bubble-fixed{box-shadow:0 6px 18px #00000030!important}
+            #lcst-panel-fixed.lcst-performance-mode{background:#0c1220!important}
+            #lcst-panel-fixed.lcst-performance-mode *,#lcst-panel-fixed.lcst-performance-mode *:before,#lcst-panel-fixed.lcst-performance-mode *:after{animation:none!important;transition:none!important;filter:none!important;backdrop-filter:none!important;box-shadow:none!important}
+            @media(max-width:1100px){
+                #lcst-panel-fixed{padding:14px!important}
+                #lcst-panel-fixed .lcst-nova-workspace{grid-template-columns:280px minmax(0,1fr)!important;gap:14px!important}
+                #lcst-panel-fixed .lcst-img-media{height:240px!important}
+                #lcst-panel-fixed .lcst-card{padding:15px!important}
+            }
+            @media(max-width:850px){
+                #lcst-panel-fixed .lcst-nova-workspace{grid-template-columns:minmax(0,1fr)!important}
+                #lcst-panel-fixed .lcst-nova-topbar{padding:16px!important}
+            }
+            @media(max-width:560px){
+                #lcst-panel-fixed{padding:9px!important}
+                #lcst-panel-fixed #lcst-image-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important}
+                #lcst-panel-fixed .lcst-img-media{height:220px!important}
+                #lcst-panel-fixed .lcst-nova-scan-btn,#lcst-panel-fixed #lcst-copy{width:100%!important}
+            }
+
+            #lcst-panel-fixed .lcst-nova-topbar .lcst-brand{position:relative!important;display:flex!important;gap:18px!important;align-items:center!important;min-width:0!important}
+            #lcst-panel-fixed .lcst-nova-logo{position:relative!important;left:auto!important;top:auto!important;right:auto!important;bottom:auto!important;width:114px!important;height:50px!important;flex:0 0 114px!important;margin:0!important;transform:none!important}
+            #lcst-panel-fixed #lcst-header-logo-img{position:relative!important;inset:auto!important;width:100%!important;height:100%!important;object-fit:contain!important;filter:none!important;transform:none!important}
+            #lcst-panel-fixed .lcst-nova-top-actions{margin-left:auto!important;flex-wrap:wrap!important}
+            #lcst-panel-fixed .lcst-nova-gallery-head{background:#1b293b!important;border:1px solid #34465d!important;box-shadow:none!important;padding:16px!important;border-radius:13px!important}
+            #lcst-panel-fixed .lcst-nova-gallery-head .lcst-nova-kicker,#lcst-panel-fixed .lcst-nova-output-card .lcst-nova-kicker{color:#d7bc8a!important}
+            #lcst-panel-fixed .lcst-nova-status .lcst-status-title{color:#d7bc8a!important}
+            #lcst-panel-fixed .lcst-bank-head{display:flex!important;flex-wrap:wrap!important;gap:12px!important}
+            #lcst-panel-fixed .lcst-bank-head-main{min-width:0!important;flex:1 1 180px!important}
+            #lcst-panel-fixed .lcst-bank-refresh{font-size:10px!important;flex:0 0 auto!important}
+            #lcst-panel-fixed .lcst-nova-live-chip{color:#b8dace!important;background:#1a332e!important;border-color:#34564b!important;box-shadow:none!important}
+            @media(max-width:560px){#lcst-panel-fixed .lcst-nova-logo{width:76px!important;flex-basis:76px!important;height:42px!important}#lcst-panel-fixed .lcst-title{font-size:18px!important}#lcst-panel-fixed .lcst-nova-top-actions{width:100%!important;justify-content:space-between!important}}
+
+            /* Visual polish only: legible editing, selection and copy feedback. */
+            #lcst-panel-fixed .lcst-nova-topbar{
+                background:linear-gradient(115deg,#243149 0%,#1b2538 58%,#242c3d)!important;
+                border-color:#48556b!important;box-shadow:0 8px 22px #00000025,inset 0 1px #e4cc9a18!important;
+            }
+            #lcst-panel-fixed .lcst-card{
+                background:linear-gradient(145deg,#192437,#141e2e)!important;
+                border-color:#354359!important;
+            }
+            #lcst-panel-fixed .lcst-nova-stat{
+                background:linear-gradient(135deg,#1e2c42,#182337)!important;
+                border:1px solid #3b4a63!important;
+            }
+            #lcst-panel-fixed .lcst-nova-stat.user{border-color:#6b6085!important}
+            #lcst-panel-fixed .lcst-nova-stat.user .lcst-nova-stat-label{color:#d4c1f1!important}
+            #lcst-panel-fixed .lcst-nova-stat.user small{color:#b7c5da!important;font-size:10px!important;line-height:1.5!important}
+            #lcst-panel-fixed .lcst-nova-user-line{gap:9px!important;align-items:center!important;min-width:0!important}
+            #lcst-panel-fixed #lcst-user-text,
+            #lcst-panel-fixed #lcst-user-text:hover,
+            #lcst-panel-fixed #lcst-user-text:focus,
+            #lcst-panel-fixed #lcst-user-text:active{
+                box-sizing:border-box!important;flex:1 1 0!important;width:100%!important;min-width:0!important;
+                min-height:38px!important;padding:8px 10px!important;margin:0!important;
+                border:1px solid #53647d!important;border-radius:9px!important;
+                background:#101c30!important;color:#f1f5fc!important;
+                -webkit-text-fill-color:#f1f5fc!important;caret-color:#ffe1a1!important;
+                font:650 14px/1.4 'Segoe UI',Arial,sans-serif!important;
+                letter-spacing:.3px!important;opacity:1!important;
+                box-shadow:inset 0 1px 3px #00000026!important;
+                outline:none!important;text-shadow:none!important;
+            }
+            #lcst-panel-fixed #lcst-user-text:hover{border-color:#8a9fbe!important;background:#152239!important}
+            #lcst-panel-fixed #lcst-user-text:focus,
+            #lcst-panel-fixed #lcst-user-text:focus-visible{
+                background:#182941!important;color:#ffffff!important;-webkit-text-fill-color:#ffffff!important;
+                border-color:#e2c28b!important;outline:2px solid #e2c28b42!important;outline-offset:2px!important;
+                box-shadow:inset 0 1px 3px #00000026!important;
+            }
+            #lcst-panel-fixed ::selection{background:#a9cafa!important;color:#102039!important;-webkit-text-fill-color:#102039!important;text-shadow:none!important}
+            #lcst-panel-fixed #lcst-user-text::selection,
+            #lcst-panel-fixed input::selection,
+            #lcst-panel-fixed textarea::selection{
+                background:#a9cafa!important;color:#102039!important;-webkit-text-fill-color:#102039!important;
+            }
+            #lcst-panel-fixed #lcst-copy-user{
+                display:grid!important;place-items:center!important;flex:0 0 36px!important;
+                width:36px!important;height:36px!important;min-height:36px!important;padding:0!important;
+                border-radius:10px!important;border:1px solid #87779e!important;
+                background:#3a304e!important;color:#ecddff!important;box-shadow:inset 0 1px #ffffff0c!important;
+            }
+            #lcst-panel-fixed #lcst-copy-user svg{width:16px!important;height:16px!important}
+            #lcst-panel-fixed #lcst-copy-user:hover{background:#52406c!important;border-color:#baa1da!important;transform:translateY(-1px)!important}
+            #lcst-panel-fixed #lcst-copy-user:active{background:#655080!important;transform:none!important}
+            #lcst-panel-fixed #lcst-copy-user:focus-visible{outline:2px solid #e2c28b!important;outline-offset:3px!important}
+            #lcst-panel-fixed #lcst-copy-user.copied{background:#204b3c!important;color:#d2ffe8!important;border-color:#72b998!important}
+            #lcst-panel-fixed .lcst-nova-section-head{border-bottom-color:#40506a!important}
+            #lcst-panel-fixed .lcst-nova-section-head b{color:#f2e4c9!important;letter-spacing:.15px!important}
+            #lcst-panel-fixed .lcst-nova-gallery-head{background:linear-gradient(110deg,#23324a,#1b283d)!important;border-color:#455776!important}
+            #lcst-panel-fixed .lcst-nova-gallery-head h4,#lcst-panel-fixed .lcst-nova-output-card h4{color:#f5ead6!important}
+            #lcst-panel-fixed .lcst-img-card{border-color:#475570!important;border-radius:15px!important}
+            #lcst-panel-fixed .lcst-img-card.target{border-color:#ddbf87!important;box-shadow:0 0 0 1px #ddbf8720!important}
+            #lcst-panel-fixed .lcst-img-index{background:#1a2740f5!important;border-color:#526786!important}
+            #lcst-panel-fixed .lcst-target-tag{color:#ffe2a6!important}
+            #lcst-panel-fixed.lcst-performance-mode #lcst-user-text:focus{outline-color:#e2c28b80!important}
+
+            /* Sapphire and champagne finish; logo is shared with the header. */
+            #lcst-panel-fixed{background:radial-gradient(ellipse at 85% 0%,#24334c 0%,transparent 45%),#0e1625!important}
+            #lcst-panel-fixed .lcst-nova-topbar{background:linear-gradient(115deg,#293a54,#1d293d 64%,#303342)!important;border-color:#5a6273!important}
+            #lcst-panel-fixed .lcst-card{background:linear-gradient(145deg,#1e2b40,#162235)!important;border-color:#42516a!important}
+            #lcst-panel-fixed .lcst-nova-stat{background:linear-gradient(120deg,#263750,#1c2a41)!important;border-color:#4a5e7b!important}
+            #lcst-panel-fixed .lcst-nova-section-head b,#lcst-panel-fixed .lcst-nova-gallery-head h4,#lcst-panel-fixed .lcst-nova-output-card h4{color:#f3dfb9!important}
+            #lcst-panel-fixed .lcst-nova-gallery-head{background:linear-gradient(110deg,#2d405d,#24334c)!important;border-color:#536d91!important}
+            #lcst-panel-fixed .lcst-nova-logo{width:150px!important;flex-basis:150px!important;height:58px!important}
+            #lcst-panel-fixed #lcst-header-logo-img{object-fit:contain!important;filter:none!important}
+            #lcst-panel-fixed .lcst-img-card{background:#152136!important;border-color:#526580!important}
+            #lcst-panel-fixed .lcst-img-card.target{border-color:#e1c48d!important}
+            #lcst-panel-fixed #lcst-copy{background:linear-gradient(120deg,#355577,#294663)!important;border-color:#7194b9!important;color:#f1f7ff!important}
+            #lcst-panel-fixed .lcst-nova-scan-btn{background:linear-gradient(120deg,#ecd7ac,#cdb07c)!important;border-color:#f1deb9!important}
+            #lcst-bubble-fixed{
+                width:108px!important;height:76px!important;min-width:0!important;padding:0!important;
+                border-radius:19px!important;border:1px solid #d0b580!important;
+                background:linear-gradient(140deg,#263951,#101b2d)!important;
+                box-shadow:0 7px 22px #00000045,inset 0 1px #ffffff12!important;
+                overflow:hidden!important;isolation:isolate!important;
+            }
+            #lcst-bubble-fixed:before,#lcst-bubble-fixed:after{display:none!important}
+            #lcst-bubble-fixed #lcst-bubble-brand-image{
+                position:absolute!important;inset:8px 7px 22px!important;
+                width:calc(100% - 14px)!important;height:calc(100% - 30px)!important;
+                object-fit:contain!important;display:block!important;pointer-events:none!important;
+                opacity:1!important;filter:none!important;z-index:1!important;
+            }
+            #lcst-bubble-fixed .lcst-bubble-brand-caption{
+                position:absolute!important;bottom:5px!important;left:0!important;right:0!important;
+                color:#efdbb1!important;font:700 9px/1.5 'Segoe UI',Arial,sans-serif!important;
+                letter-spacing:1.3px!important;text-align:center!important;pointer-events:none!important;z-index:2!important;
+            }
+            #lcst-bubble-fixed:hover{transform:translateY(-2px)!important;border-color:#ffe1a2!important;box-shadow:0 10px 26px #0000004d!important}
+            #lcst-bubble-fixed.lcst-dragging{transform:none!important}
+            @media(max-width:560px){#lcst-panel-fixed .lcst-nova-logo{width:90px!important;flex-basis:90px!important;height:46px!important}#lcst-bubble-fixed{width:96px!important;height:70px!important}}
+
+            #lcst-panel-fixed #lcst-image-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;align-items:start!important}
+            @media(max-width:560px){
+                #lcst-panel-fixed #lcst-image-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
+                #lcst-panel-fixed .lcst-img-media{height:190px!important}
+                #lcst-panel-fixed .lcst-img-index{font-size:8px!important;padding:4px!important;left:3px!important;right:3px!important;flex-wrap:wrap!important}
+            }
+            .lcst-mobile-picker{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}
+            .lcst-mobile-picker .lcst-btn{min-height:44px;touch-action:manipulation}
+            .lcst-mobile-picker-note{font-size:11px;color:#9aa8bd;line-height:1.45}
+            .lcst-touch-handle{display:none;width:100%;min-height:38px;border:0;border-top:1px solid #273246;background:#111a29;color:#d8e2f0;font:800 11px/1 Segoe UI,Arial,sans-serif;touch-action:none;cursor:grab}
+            .lcst-touch-handle:active{background:#26344a;color:#fff}
+            .lcst-img-card.lcst-touch-moving{opacity:.58!important;outline:2px solid #d4b67d!important;transform:scale(.98)!important}
+            .lcst-img-card.lcst-touch-target{outline:2px solid #56b4ff!important}
+            @media(max-width:850px),(pointer:coarse){
+                #lcst-panel-fixed{padding:8px!important;overscroll-behavior:contain}
+                #lcst-panel-fixed:before,#lcst-panel-fixed:after{display:none!important}
+                #lcst-panel-fixed .lcst-touch-handle{display:block}
+                #lcst-panel-fixed .lcst-del{display:grid!important;place-items:center}
+                #lcst-panel-fixed *,#lcst-panel-fixed *:before,#lcst-panel-fixed *:after{animation:none!important;transition:none!important;backdrop-filter:none!important;text-shadow:none!important}
+                #lcst-panel-fixed .lcst-nova-workspace{display:block!important}
+                #lcst-panel-fixed .lcst-nova-sidebar{width:100%!important;position:static!important;margin-bottom:10px!important}
+                #lcst-panel-fixed .lcst-topbar{position:static!important;padding:10px!important}
+                #lcst-panel-fixed .lcst-nova-gallery-head{align-items:flex-start!important;gap:10px!important}
+                #lcst-panel-fixed .lcst-nova-scan-btn{width:100%!important;justify-content:center!important}
+            }
         `;
         document.head.appendChild(style);
     }
 
-    const LCJ2_ACCESS_START_MINUTES = 23 * 60 + 50;
-    const LCJ2_ACCESS_END_MINUTES = 2 * 60;
-    let lcj2DailyLampTimer = null;
-    let lcj2LampMessageTimer = null;
-    let lcj2LastAccessActive = null;
+    /*
+     * Memuat logo dashboard lewat jalur userscript agar tidak hilang karena
+     * pembatasan hotlink/CSP halaman LiveChat. URL langsung tetap dipakai
+     * sebagai fallback sambil menunggu data gambar selesai dimuat.
+     */
+    function lcstApplyDashboardLogo(img) {
+        if (!img) return;
+        img.referrerPolicy = 'no-referrer';
+        img.src = lcstDashboardLogoDataUrl || LCST_DASHBOARD_LOGO_URL;
 
-    function lcj2GetDailyAccessState() {
-        let now;
-        try {
-            now = lcj2GetWibParts(lcj2NowDate());
-        } catch (e) {
-            const values = {};
-            new Intl.DateTimeFormat('en-CA', {
-                timeZone: 'Asia/Jakarta',
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hourCycle: 'h23'
-            }).formatToParts(new Date()).forEach((part) => {
-                if (part.type !== 'literal') values[part.type] = Number(part.value);
+        if (lcstDashboardLogoDataUrl) return;
+        if (typeof GM_xmlhttpRequest !== 'function') return;
+
+        if (!lcstDashboardLogoPromise) {
+            lcstDashboardLogoPromise = new Promise(function (resolve, reject) {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: LCST_DASHBOARD_LOGO_URL,
+                    responseType: 'blob',
+                    timeout: 20000,
+                    headers: {
+                        'Accept': 'image/png,image/*;q=0.9,*/*;q=0.5'
+                    },
+                    onload: function (response) {
+                        try {
+                            if (response.status && (response.status < 200 || response.status >= 300)) {
+                                reject(new Error('Logo HTTP ' + response.status));
+                                return;
+                            }
+                            const blob = response.response instanceof Blob
+                                ? response.response
+                                : new Blob([response.response], { type: 'image/png' });
+                            if (!blob || !blob.size) {
+                                reject(new Error('Logo kosong'));
+                                return;
+                            }
+                            const reader = new FileReader();
+                            reader.onload = function () {
+                                const dataUrl = String(reader.result || '');
+                                if (!dataUrl.startsWith('data:image/')) {
+                                    reject(new Error('Format logo tidak valid'));
+                                    return;
+                                }
+                                lcstDashboardLogoDataUrl = dataUrl;
+                                resolve(dataUrl);
+                            };
+                            reader.onerror = function () { reject(new Error('Logo gagal dibaca')); };
+                            reader.readAsDataURL(blob);
+                        } catch (error) {
+                            reject(error);
+                        }
+                    },
+                    onerror: function () { reject(new Error('Logo gagal dimuat')); },
+                    ontimeout: function () { reject(new Error('Logo timeout')); }
+                });
             });
-            now = {
-                year: values.year,
-                month: values.month,
-                day: values.day,
-                hour: values.hour,
-                minute: values.minute,
-                second: values.second,
-                minutesOfDay: values.hour * 60 + values.minute
-            };
         }
 
-        const active = now.minutesOfDay >= LCJ2_ACCESS_START_MINUTES ||
-            now.minutesOfDay < LCJ2_ACCESS_END_MINUTES;
-
-        return {
-            active,
-            now,
-            clockText: String(now.hour).padStart(2, '0') + ':' +
-                String(now.minute).padStart(2, '0') + ':' +
-                String(now.second).padStart(2, '0')
-        };
-    }
-
-    function lcj2ShowLampMessage(message, duration) {
-        const bubble = document.getElementById('lcj2-bubble-fixed');
-        if (!bubble) return;
-        const messageEl = bubble.querySelector('.lcj2-lamp-message');
-        if (messageEl) messageEl.textContent = message || 'KEMBALI LAGI BESOK';
-        bubble.classList.add('lcj2-show-message');
-        if (lcj2LampMessageTimer) clearTimeout(lcj2LampMessageTimer);
-        lcj2LampMessageTimer = setTimeout(() => {
-            const current = document.getElementById('lcj2-bubble-fixed');
-            if (current) current.classList.remove('lcj2-show-message');
-        }, Number(duration) || 2600);
-    }
-
-    function lcj2RefreshDailyLamp() {
-        const bubble = document.getElementById('lcj2-bubble-fixed');
-        if (!bubble) return;
-
-        const state = lcj2GetDailyAccessState();
-        const caption = bubble.querySelector('.lcj2-lamp-caption');
-        const message = bubble.querySelector('.lcj2-lamp-message');
-
-        bubble.classList.toggle('lcj2-access-active', state.active);
-        bubble.classList.toggle('lcj2-access-inactive', !state.active);
-        bubble.disabled = false;
-        bubble.setAttribute('aria-disabled', state.active ? 'false' : 'true');
-        bubble.title = state.active
-            ? 'OCR AKTIF • Klik untuk membuka • WIB ' + state.clockText
-            : 'OCR MATI • Kembali lagi besok • Aktif pukul 23.50 WIB';
-
-        if (caption) caption.textContent = state.active ? 'LAMPU HIDUP' : 'LAMPU MATI';
-        if (message) {
-            message.textContent = state.active
-                ? 'OCR AKTIF • 23.50–02.00 WIB'
-                : 'KEMBALI LAGI BESOK';
-        }
-
-        if (lcj2LastAccessActive === true && !state.active) {
-            const closeButton = document.querySelector('#lcj2-panel-fixed #lcj2-close');
-            if (closeButton) closeButton.click();
-            lcj2ShowLampMessage('WAKTU HABIS • KEMBALI LAGI BESOK', 4200);
-        }
-
-        lcj2LastAccessActive = state.active;
-    }
-
-    function lcj2EnsureDailyLampTimer() {
-        if (lcj2DailyLampTimer) return;
-        lcj2DailyLampTimer = setInterval(lcj2RefreshDailyLamp, 1000);
+        lcstDashboardLogoPromise.then(function (dataUrl) {
+            if (img && img.isConnected) img.src = dataUrl;
+        }).catch(function () {
+            lcstDashboardLogoPromise = null;
+            if (img && img.isConnected && !img.src) img.src = LCST_DASHBOARD_LOGO_URL;
+        });
     }
 
     function createBubble() {
-        if (document.getElementById('lcj2-bubble-fixed')) return;
+        if (document.getElementById('lcst-bubble-fixed')) return;
         injectStyle();
 
         const bubble = document.createElement('button');
-        bubble.id = 'lcj2-bubble-fixed';
+        bubble.id = 'lcst-bubble-fixed';
         bubble.type = 'button';
-        bubble.title = 'Buka OCR Claim Jam 2 WIB';
-        bubble.setAttribute('aria-label', 'Buka OCR Claim Jam 2 WIB');
-        bubble.innerHTML = `
-            <span class="lcj2-lamp-face" aria-hidden="true">
-                <strong class="lcj2-lamp-number">02</strong>
-                <small class="lcj2-lamp-unit">WIB</small>
-            </span>
-            <span class="lcj2-lamp-led" aria-hidden="true"></span>
-            <span class="lcj2-lamp-caption">MEMERIKSA</span>
-            <span class="lcj2-lamp-message" role="status" aria-live="polite">KEMBALI LAGI BESOK</span>
-        `;
+        bubble.title = 'Buka Scanner LINE TOGEL';
+        bubble.setAttribute('aria-label', 'Buka Scanner LINE TOGEL');
+        bubble.innerHTML = '<img id="lcst-bubble-brand-image" alt="" aria-hidden="true" draggable="false">' +
+            '<span class="lcst-bubble-brand-caption">SCAN STUDIO</span>';
         document.body.appendChild(bubble);
-        lcj2RefreshDailyLamp();
-        lcj2EnsureDailyLampTimer();
+        const bubbleLogo = bubble.querySelector('#lcst-bubble-brand-image');
+        lcstApplyDashboardLogo(bubbleLogo);
+
+        // Saat pointer mendekati bubble, mulai persiapan non-visual lebih awal.
+        // Seluruh OCR tetap berada di Web Worker sehingga hover/click tidak diblokir.
+        bubble.addEventListener('pointerenter', warmupOCRWorker, { once: true, passive: true });
 
         const saved = safeJSONParse(localStorage.getItem(POS_KEY), null);
         if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
-            bubble.style.left = Math.max(6, Math.min(innerWidth - 84, saved.left)) + 'px';
-            bubble.style.top = Math.max(6, Math.min(innerHeight - 84, saved.top)) + 'px';
+            bubble.style.left = Math.max(10, Math.min(innerWidth - bubble.offsetWidth - 10, saved.left)) + 'px';
+            bubble.style.top = Math.max(10, Math.min(innerHeight - bubble.offsetHeight - 10, saved.top)) + 'px';
             bubble.style.right = 'auto';
             bubble.style.bottom = 'auto';
         }
@@ -2609,7 +2769,7 @@
             startY = e.clientY;
             startLeft = rect.left;
             startTop = rect.top;
-            bubble.classList.add('lcj2-dragging');
+            bubble.classList.add('lcst-dragging');
             bubble.style.left = rect.left + 'px';
             bubble.style.top = rect.top + 'px';
             bubble.style.right = 'auto';
@@ -2632,19 +2792,11 @@
         bubble.addEventListener('pointerup', function (e) {
             if (!dragging) return;
             dragging = false;
-            bubble.classList.remove('lcj2-dragging');
+            bubble.classList.remove('lcst-dragging');
             const rect = bubble.getBoundingClientRect();
             localStorage.setItem(POS_KEY, JSON.stringify({ left: rect.left, top: rect.top }));
             try { bubble.releasePointerCapture(e.pointerId); } catch (err) {}
-            if (!moved) {
-                const access = lcj2GetDailyAccessState();
-                if (access.active) {
-                    openTool();
-                } else {
-                    lcj2RefreshDailyLamp();
-                    lcj2ShowLampMessage('KEMBALI LAGI BESOK', 3200);
-                }
-            }
+            if (!moved) openTool();
         });
     }
 
@@ -2727,7 +2879,7 @@
         for (let i = els.length - 1; i >= 0; i--) {
             const el = els[i];
             // Jangan pernah membaca panel script sendiri sebagai isi chat aktif.
-            if (el.closest && el.closest('#lcj2-panel-fixed')) continue;
+            if (el.closest && el.closest('#lcst-panel-fixed')) continue;
             if (!isVisibleElement(el)) continue;
             const t = shortText(el);
             if (!t || t.length > 260) continue;
@@ -2805,7 +2957,8 @@
                 .replace(/[\s,;|)\]}]+$/, '');
             if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{1,49}$/.test(cleaned)) return '';
             if (/^(?:user|userid|id|member|player|livechat|chat|copy|salin|nama|rekening|data|aktif|terdeteksi|belum|otomatis|tampilan)$/i.test(cleaned)) return '';
-            return cleaned;
+            // Semua User ID dinormalisasi ke huruf kecil sejak pertama terdeteksi.
+            return cleaned.toLowerCase();
         }
 
         function addCandidate(value, score) {
@@ -2845,7 +2998,7 @@
         }
 
         function isOwnPanelElement(el) {
-            return !!(el && el.closest && el.closest('#lcj2-panel-fixed'));
+            return !!(el && el.closest && el.closest('#lcst-panel-fixed'));
         }
 
         // Prioritas utama: field profil LiveChat yang memang berlabel USER ID.
@@ -3055,7 +3208,7 @@
 
     function addScopeCandidate(list, el, anchorWeight) {
         if (!el || el === document.body || el === document.documentElement) return;
-        if (el.id === 'lcj2-panel-fixed' || el.id === 'lcj2-bubble-fixed') return;
+        if (el.id === 'lcst-panel-fixed' || el.id === 'lcst-bubble-fixed') return;
         if (list.some((item) => item.el === el)) return;
         let rect;
         try { rect = el.getBoundingClientRect(); } catch (e) { return; }
@@ -3123,7 +3276,9 @@
         const strictImages = [];
         const relaxedImages = [];
         collectImagesFromRoot(root, mk, strictImages, { ignoreMarker: false });
-        collectImagesFromRoot(root, mk, relaxedImages, { ignoreMarker: true });
+        if (!strictImages.length) {
+            collectImagesFromRoot(root, mk, relaxedImages, { ignoreMarker: true });
+        }
         const images = strictImages.length ? strictImages : relaxedImages;
         return {
             userId: uid.userId,
@@ -3180,7 +3335,9 @@
 
         const collectCurrent = () => {
             collectImagesFromRoot(root, mk, strictImages, { ignoreMarker: false });
-            collectImagesFromRoot(root, mk, relaxedImages, { ignoreMarker: true });
+            if (!strictImages.length) {
+                collectImagesFromRoot(root, mk, relaxedImages, { ignoreMarker: true });
+            }
         };
 
         // Amankan gambar yang sedang tampak sebelum posisi scroll diubah.
@@ -3189,7 +3346,7 @@
         try {
             if (canScroll) {
                 root.scrollTop = 0;
-                await waitForChatPaint(4);
+                await waitForChatPaint(0);
             }
 
             collectCurrent();
@@ -3220,12 +3377,110 @@
                     if (nextTop === currentTop || nextTop === lastTop) break;
                     lastTop = currentTop;
                     root.scrollTop = nextTop;
-                    await waitForChatPaint(2);
+                    await waitForChatPaint(0);
                 }
 
                 root.scrollTop = Math.max(0, root.scrollHeight - root.clientHeight);
-                await waitForChatPaint(4);
+                await waitForChatPaint(0);
                 collectCurrent();
+            }
+        } finally {
+            try {
+                root.scrollTop = originalTop;
+                await waitForChatPaint(0);
+            } catch (e) {}
+        }
+
+        const finalMarker = findMarker(root, active.markerHint);
+        const images = strictImages.length ? strictImages : relaxedImages;
+        return {
+            userId: uid.userId,
+            allIds: uid.allIds,
+            marker: finalMarker.marker || (mk && mk.marker) || null,
+            markerText: finalMarker.markerText !== 'Tidak terdeteksi' ? finalMarker.markerText : ((mk && mk.markerText) || 'Tidak terdeteksi'),
+            images,
+            strictCount: strictImages.length,
+            relaxedCount: relaxedImages.length,
+            scopeReason: active.reason
+        };
+    }
+
+    // AURORA FAST V7 — jalur cepat mengumpulkan BUFFER kandidat terbaru.
+    // Hasil akhir tetap maksimal 6 gambar. Buffer kandidat disediakan agar seluruh
+    // slot Paket 1 dan Paket 2 memakai screenshot/fingerprint berbeda bila tersedia.
+    async function scanOneScopeFastLatest(active, onProgress, label) {
+        const root = active && active.scope;
+        if (!root) return null;
+
+        const uid = findUserId(root);
+        const strictImages = [];
+        const relaxedImages = [];
+        const originalTop = typeof root.scrollTop === 'number' ? root.scrollTop : 0;
+        const canScroll = root.scrollHeight > root.clientHeight + 20;
+        let mk = findMarker(root, active.markerHint);
+        let stableRounds = 0;
+        let previousCount = -1;
+
+        const collectCurrent = () => {
+            collectImagesFromRoot(root, mk, strictImages, { ignoreMarker: false });
+            if (!strictImages.length) {
+                collectImagesFromRoot(root, mk, relaxedImages, { ignoreMarker: true });
+            }
+            return strictImages.length || relaxedImages.length;
+        };
+
+        try {
+            // Mulai dari bagian PALING BARU (bawah), bukan dari paling atas chat.
+            if (canScroll) {
+                root.scrollTop = Math.max(0, root.scrollHeight - root.clientHeight);
+                await waitForChatPaint(0);
+            }
+
+            let count = collectCurrent();
+            if (onProgress) onProgress((label || 'Scan cepat') + ' • terbaru dulu • <b>' + count + '</b> gambar.');
+
+            // Jangan berhenti tepat di 6. Ambil buffer agar seluruh slot antarpaket bisa unik.
+            if (count >= LCST_SCAN_CANDIDATE_LIMIT) {
+                const finalMarker = findMarker(root, active.markerHint);
+                return {
+                    userId: uid.userId,
+                    allIds: uid.allIds,
+                    marker: finalMarker.marker || (mk && mk.marker) || null,
+                    markerText: finalMarker.markerText !== 'Tidak terdeteksi' ? finalMarker.markerText : ((mk && mk.markerText) || 'Tidak terdeteksi'),
+                    images: (strictImages.length ? strictImages : relaxedImages).slice(-LCST_SCAN_CANDIDATE_LIMIT),
+                    strictCount: strictImages.length,
+                    relaxedCount: relaxedImages.length,
+                    scopeReason: active.reason
+                };
+            }
+
+            if (canScroll) {
+                // Maksimal 8 lompatan viewport. Berhenti lebih awal ketika dua putaran tidak menambah gambar.
+                for (let stepNo = 0; stepNo < 8; stepNo++) {
+                    const currentTop = Number(root.scrollTop) || 0;
+                    if (currentTop <= 2) break;
+
+                    const step = Math.max(420, Math.floor(root.clientHeight * 1.18));
+                    root.scrollTop = Math.max(0, currentTop - step);
+                    await waitForChatPaint(0);
+
+                    if (stepNo < 2 || stepNo % 3 === 0) {
+                        const foundMarker = findMarker(root, active.markerHint);
+                        if (foundMarker && foundMarker.marker) mk = foundMarker;
+                    }
+
+                    count = collectCurrent();
+                    if (count === previousCount) stableRounds++;
+                    else stableRounds = 0;
+                    previousCount = count;
+
+                    if (onProgress && (stepNo === 0 || stepNo % 2 === 1 || count >= LCST_SCAN_CANDIDATE_LIMIT)) {
+                        onProgress((label || 'Scan cepat') + ' • <b>' + count + '</b> gambar • langkah ' + (stepNo + 1) + '.');
+                    }
+
+                    if (count >= LCST_SCAN_CANDIDATE_LIMIT) break;
+                    if (stableRounds >= 2 && stepNo >= 3) break;
+                }
             }
         } finally {
             try {
@@ -3258,14 +3513,33 @@
             return lastScan;
         }
 
-        let result = await scanOneScopeDeep(active, onProgress, 'Memindai chat aktif');
+        // 1) Jalur instan: baru berhenti tanpa scroll bila buffer kandidat sudah penuh.
+        // Bila baru ada 6 gambar, tetap cari kandidat tambahan untuk mencegah duplikat antarpaket.
+        const instant = scanPageFromActive(active);
+        if (instant && instant.images && instant.images.length >= LCST_SCAN_CANDIDATE_LIMIT) {
+            if (onProgress) onProgress('ULTRA FAST • <b>' + instant.images.length + '</b> gambar tersedia • memilih kandidat terbaru.');
+            instant.images = instant.images.slice(-LCST_SCAN_CANDIDATE_LIMIT);
+            lastScan = instant;
+            return lastScan;
+        }
 
-        // Fallback hanya dijalankan ketika scope utama benar-benar menghasilkan 0 gambar.
+        // 2) Jalur cepat: mulai dari chat terbaru dan kumpulkan buffer kandidat (maks. 12).
+        let result = await scanOneScopeFastLatest(active, onProgress, 'ULTRA FAST mencari kandidat gambar terbaru');
+
+        // 3) Hanya jika belum cukup gambar, pakai deep scan lama sebagai fallback agar kompatibilitas tidak hilang.
+        if (!result || !result.images || result.images.length < Math.min(3, LCST_MAX_SELECTED_IMAGES)) {
+            result = await scanOneScopeDeep(active, onProgress, 'Fallback deep scan');
+        }
+
+        // Scope alternatif hanya jika scope utama benar-benar kosong.
         if (!result.images.length) {
             const alternative = findAlternativeActiveScope(active.scope);
             if (alternative) {
                 if (onProgress) onProgress('Scope pertama kosong. Memeriksa area percakapan aktif yang cocok...');
-                const altResult = await scanOneScopeDeep(alternative, onProgress, 'Memindai area percakapan');
+                let altResult = await scanOneScopeFastLatest(alternative, onProgress, 'ULTRA FAST area percakapan');
+                if (!altResult || !altResult.images || !altResult.images.length) {
+                    altResult = await scanOneScopeDeep(alternative, onProgress, 'Fallback area percakapan');
+                }
                 if (altResult.images.length) result = altResult;
             }
         }
@@ -3275,7 +3549,7 @@
             allIds: result.allIds,
             marker: result.marker,
             markerText: result.markerText,
-            images: result.images,
+            images: (result.images || []).slice(-LCST_SCAN_CANDIDATE_LIMIT),
             scopeReason: result.scopeReason
         };
         return lastScan;
@@ -3305,28 +3579,71 @@
      * mengambil nama pemilik dan nomor rekening. Nama bank dibuang otomatis.
      ******************************************************************/
 
-    const LCJ2_ADMIN_PLAYER_URL = 'https://agwl2.admitoto.com/agentplayerlist.php';
-    const LCJ2_ADMIN_TIMEOUT = 20000;
-    const lcj2BankMemoryCache = new Map();
+    const LCST_ADMIN_SOURCES = [
+        {
+            loginUrl: 'https://agwl2.admitoto.com/',
+            playerUrl: 'https://agwl2.admitoto.com/agentplayerlist.php'
+        },
+        {
+            loginUrl: 'http://agwl2.suksesbogil.com/?passkey=WH9eRDBqtriK4pL',
+            playerUrl: 'http://agwl2.suksesbogil.com/agentplayerlist.php?passkey=WH9eRDBqtriK4pL'
+        },
+        {
+            loginUrl: 'http://agwl2.idnpaito.com/?passkey=WH9eRDBqtriK4pL',
+            playerUrl: 'http://agwl2.idnpaito.com/agentplayerlist.php?passkey=WH9eRDBqtriK4pL'
+        }
+    ];
+    const LCST_ADMIN_ALLOWED_HOSTS = new Set(LCST_ADMIN_SOURCES.map((source) => {
+        try { return new URL(source.loginUrl).hostname.toLowerCase(); } catch (e) { return ''; }
+    }).filter(Boolean));
+    const LCST_ADMIN_TIMEOUT = 6500;
+    const LCST_ADMIN_PREFERRED_TIMEOUT = 2800;
+    const LCST_ADMIN_MAX_ATTEMPTS = 30;
+    const LCST_ADMIN_MEMORY_TTL = 30 * 60 * 1000;
+    const LCST_ADMIN_LOCAL_DB_TTL = 30 * 60 * 1000;
+    const LCST_ADMIN_PROFILE_TTL = 7 * 24 * 60 * 60 * 1000;
+    const LCST_ADMIN_PROFILE_KEY = 'lcst_admin_request_profile_v770';
+    const LCST_ADMIN_UID_TOKEN = '__LCST_UID__';
+    const lcstBankMemoryCache = new Map();
+    const lcstBankLookupInflight = new Map();
 
-    function lcj2ValidLookupUserId(value) {
-        const userId = String(value || '').trim();
+    function lcstIsAllowedAdminUrl(value) {
+        try {
+            const url = new URL(String(value || ''));
+            return (url.protocol === 'http:' || url.protocol === 'https:') &&
+                LCST_ADMIN_ALLOWED_HOSTS.has(url.hostname.toLowerCase());
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function lcstAdminUrlWithParams(baseUrl, params) {
+        const url = new URL(baseUrl);
+        const additions = params instanceof URLSearchParams
+            ? params
+            : new URLSearchParams(params || {});
+        additions.forEach((value, key) => url.searchParams.set(key, value));
+        return url.href;
+    }
+
+    function lcstValidLookupUserId(value) {
+        const userId = String(value || '').trim().toLowerCase();
         if (!userId || /^(user|unknown|null|undefined)$/i.test(userId)) return '';
         return userId;
     }
 
     // Cocokkan User ID secara utuh. Ini mencegah ID pendek seperti "wakjp"
     // mengambil baris milik ID lain yang hanya mengandung teks yang sama.
-    function lcj2HasExactLookupUserId(value, userId) {
-        const uid = lcj2ValidLookupUserId(userId);
+    function lcstHasExactLookupUserId(value, userId) {
+        const uid = lcstValidLookupUserId(userId);
         const text = String(value == null ? '' : value);
         if (!uid || !text) return false;
         const escaped = uid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         return new RegExp('(?:^|[^A-Za-z0-9_.-])' + escaped + '(?=$|[^A-Za-z0-9_.-])', 'i').test(text);
     }
 
-    function lcj2RowHasExactLookupUserId(row, userId) {
-        const uid = lcj2ValidLookupUserId(userId);
+    function lcstRowHasExactLookupUserId(row, userId) {
+        const uid = lcstValidLookupUserId(userId);
         if (!row || !uid) return false;
 
         const cells = Array.from(row.querySelectorAll('th,td'));
@@ -3336,21 +3653,21 @@
         let headers = [];
         if (table) {
             const headerRow = table.querySelector('thead tr') || Array.from(table.querySelectorAll('tr')).find(tr => tr.querySelector('th'));
-            if (headerRow) headers = Array.from(headerRow.querySelectorAll('th,td')).map(cell => lcj2NormalizeBankText(cell.innerText || cell.textContent));
+            if (headerRow) headers = Array.from(headerRow.querySelectorAll('th,td')).map(cell => lcstNormalizeBankText(cell.innerText || cell.textContent));
         }
 
-        const userIndex = lcj2HeaderIndex(headers, /^(?:user\s*id|userid|user\s*name|username|player\s*(?:id|name)|member\s*(?:id|name))$/i);
+        const userIndex = lcstHeaderIndex(headers, /^(?:user\s*id|userid|user\s*name|username|player\s*(?:id|name)|member\s*(?:id|name))$/i);
         if (userIndex >= 0 && cells[userIndex]) {
-            return lcj2HasExactLookupUserId(cells[userIndex].innerText || cells[userIndex].textContent, uid);
+            return lcstHasExactLookupUserId(cells[userIndex].innerText || cells[userIndex].textContent, uid);
         }
 
         // Fallback hanya menerima satu sel yang memuat User ID sebagai token utuh,
         // bukan kecocokan sebagian dari seluruh teks baris.
-        return cells.some(cell => lcj2HasExactLookupUserId(cell.innerText || cell.textContent, uid));
+        return cells.some(cell => lcstHasExactLookupUserId(cell.innerText || cell.textContent, uid));
     }
 
-    function lcj2RowHasDifferentLookupUserId(row, userId) {
-        const uid = lcj2ValidLookupUserId(userId);
+    function lcstRowHasDifferentLookupUserId(row, userId) {
+        const uid = lcstValidLookupUserId(userId);
         if (!row || !uid) return false;
 
         const cells = Array.from(row.querySelectorAll('th,td'));
@@ -3360,15 +3677,15 @@
         const headerRow = table.querySelector('thead tr') || Array.from(table.querySelectorAll('tr')).find(tr => tr.querySelector('th'));
         if (!headerRow) return false;
 
-        const headers = Array.from(headerRow.querySelectorAll('th,td')).map(cell => lcj2NormalizeBankText(cell.innerText || cell.textContent));
-        const userIndex = lcj2HeaderIndex(headers, /^(?:user\s*id|userid|user\s*name|username|player\s*(?:id|name)|member\s*(?:id|name))$/i);
+        const headers = Array.from(headerRow.querySelectorAll('th,td')).map(cell => lcstNormalizeBankText(cell.innerText || cell.textContent));
+        const userIndex = lcstHeaderIndex(headers, /^(?:user\s*id|userid|user\s*name|username|player\s*(?:id|name)|member\s*(?:id|name))$/i);
         if (userIndex < 0 || !cells[userIndex]) return false;
 
-        const foundUserId = lcj2NormalizeBankText(cells[userIndex].innerText || cells[userIndex].textContent);
-        return !!foundUserId && !lcj2HasExactLookupUserId(foundUserId, uid);
+        const foundUserId = lcstNormalizeBankText(cells[userIndex].innerText || cells[userIndex].textContent);
+        return !!foundUserId && !lcstHasExactLookupUserId(foundUserId, uid);
     }
 
-    function lcj2NormalizeBankText(value) {
+    function lcstNormalizeBankText(value) {
         return String(value == null ? '' : value)
             .replace(/&nbsp;/gi, ' ')
             .replace(/\u00a0/g, ' ')
@@ -3377,7 +3694,7 @@
             .trim();
     }
 
-    const LCJ2_BANK_NAME_ALIASES = [
+    const LCST_BANK_NAME_ALIASES = [
         'BANK CENTRAL ASIA', 'BCA DIGITAL', 'BLU BCA DIGITAL', 'BCA',
         'BANK RAKYAT INDONESIA', 'BRI',
         'BANK NEGARA INDONESIA', 'BNI',
@@ -3410,27 +3727,27 @@
         'DANA', 'OVO', 'GOPAY', 'SHOPEEPAY', 'LINKAJA'
     ].sort((a, b) => b.length - a.length);
 
-    function lcj2NormalizeBankAlias(value) {
-        return lcj2NormalizeBankText(value)
+    function lcstNormalizeBankAlias(value) {
+        return lcstNormalizeBankText(value)
             .toUpperCase()
             .replace(/[().]/g, ' ')
             .replace(/\s+/g, ' ')
             .trim();
     }
 
-    function lcj2IsBankNameOnly(value) {
-        const normalized = lcj2NormalizeBankAlias(value)
+    function lcstIsBankNameOnly(value) {
+        const normalized = lcstNormalizeBankAlias(value)
             .replace(/^PT\s+/i, '')
             .replace(/\s+(?:SYARIAH|DIGITAL)$/i, '')
             .trim();
         if (!normalized) return false;
-        if (LCJ2_BANK_NAME_ALIASES.includes(normalized)) return true;
+        if (LCST_BANK_NAME_ALIASES.includes(normalized)) return true;
         if (/^BANK\s+[A-Z0-9 .&-]{2,40}$/.test(normalized)) return true;
         return false;
     }
 
-    function lcj2StripLeadingBankName(value) {
-        let result = lcj2NormalizeBankText(value);
+    function lcstStripLeadingBankName(value) {
+        let result = lcstNormalizeBankText(value);
         if (!result) return '';
 
         result = result
@@ -3440,15 +3757,15 @@
 
         // Jika data berbentuk BANK,NAMA atau BANK|NAMA, buang bagian bank.
         let parts = result.split(/\s*[,;|]\s*/).filter(Boolean);
-        while (parts.length > 1 && lcj2IsBankNameOnly(parts[0])) parts.shift();
+        while (parts.length > 1 && lcstIsBankNameOnly(parts[0])) parts.shift();
         result = parts.join(', ').trim();
 
         // Jika data berbentuk "BCA SUHARTO" atau "BANK BCA - SUHARTO",
         // buang nama bank yang berada di depan nama pemilik rekening.
         for (let pass = 0; pass < 2; pass++) {
             let changed = false;
-            const normalized = lcj2NormalizeBankAlias(result).replace(/^PT\s+/i, '');
-            for (const alias of LCJ2_BANK_NAME_ALIASES) {
+            const normalized = lcstNormalizeBankAlias(result).replace(/^PT\s+/i, '');
+            for (const alias of LCST_BANK_NAME_ALIASES) {
                 const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 const re = new RegExp('^(?:PT\\s+)?(?:BANK\\s+)?' + escaped + '(?=\\s*(?:[-–—,:|/]\\s*|\\s+))', 'i');
                 if (re.test(result) || normalized === alias) {
@@ -3466,32 +3783,32 @@
             .trim();
     }
 
-    function lcj2CleanAccountName(value) {
-        const cleaned = lcj2StripLeadingBankName(value);
-        if (!cleaned || lcj2IsBankNameOnly(cleaned)) return '';
+    function lcstCleanAccountName(value) {
+        const cleaned = lcstStripLeadingBankName(value);
+        if (!cleaned || lcstIsBankNameOnly(cleaned)) return '';
         return cleaned;
     }
 
-    function lcj2CleanAccountNumber(value) {
+    function lcstCleanAccountNumber(value) {
         const digits = String(value == null ? '' : value).replace(/\D/g, '');
         return digits.length >= 6 && digits.length <= 30 ? digits : '';
     }
 
-    function lcj2BankPair(nama, rek, raw) {
-        nama = lcj2CleanAccountName(nama);
-        rek = lcj2CleanAccountNumber(rek);
+    function lcstBankPair(nama, rek, raw) {
+        nama = lcstCleanAccountName(nama);
+        rek = lcstCleanAccountNumber(rek);
         if (!nama || !rek) return null;
         if (/^(bank|rekening|account|nama|nomor|no)$/i.test(nama)) return null;
-        return { nama, rek, raw: lcj2NormalizeBankText(raw || (nama + ',' + rek)) };
+        return { nama, rek, raw: lcstNormalizeBankText(raw || (nama + ',' + rek)) };
     }
 
-    function lcj2ParseBankValue(value, userId) {
-        const raw = lcj2NormalizeBankText(value);
+    function lcstParseBankValue(value, userId) {
+        const raw = lcstNormalizeBankText(value);
         if (!raw) return null;
 
         const labeled = raw.match(/(?:nama(?:\s+(?:bank|rekening|pemilik))?|account\s*name)\s*[:\-]\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 .'/&-]{1,80}?)\s+(?:no(?:mor)?\s*(?:rekening|rek)|rekening|account\s*(?:no|number)?)\s*[:\-]\s*([0-9][0-9 .-]{5,29})/i);
         if (labeled) {
-            const pair = lcj2BankPair(labeled[1], labeled[2], raw);
+            const pair = lcstBankPair(labeled[1], labeled[2], raw);
             if (pair) return pair;
         }
 
@@ -3500,61 +3817,62 @@
         // bank tidak pernah ikut masuk ke Data Rekening.
         const pieces = raw.split(/\s*[,;|]\s*/).filter(Boolean);
         for (let i = 0; i < pieces.length; i++) {
-            const rek = lcj2CleanAccountNumber(pieces[i]);
+            const rek = lcstCleanAccountNumber(pieces[i]);
             if (!rek || i === 0) continue;
             for (let j = i - 1; j >= 0; j--) {
-                const candidate = lcj2CleanAccountName(pieces[j]);
-                if (!candidate || lcj2IsBankNameOnly(candidate)) continue;
-                if (lcj2ValidLookupUserId(userId).toLowerCase() === candidate.toLowerCase()) continue;
-                const pair = lcj2BankPair(candidate, rek, raw);
+                const candidate = lcstCleanAccountName(pieces[j]);
+                if (!candidate || lcstIsBankNameOnly(candidate)) continue;
+                if (lcstValidLookupUserId(userId).toLowerCase() === candidate.toLowerCase()) continue;
+                const pair = lcstBankPair(candidate, rek, raw);
                 if (pair) return pair;
             }
         }
 
         const nameFirst = raw.match(/(?:^|\bBANK\s*[:\-]?\s*)([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 .'/&-]{1,80}?)\s*[,|;]\s*([0-9][0-9 .-]{5,29})(?:\b|$)/i);
         if (nameFirst) {
-            const pair = lcj2BankPair(nameFirst[1], nameFirst[2], raw);
+            const pair = lcstBankPair(nameFirst[1], nameFirst[2], raw);
             if (pair) return pair;
         }
 
         const numberFirst = raw.match(/(?:^|\s)([0-9][0-9 .-]{5,29})\s*[,|;]\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 .'/&-]{1,80})(?:$|\s)/i);
         if (numberFirst) {
-            const pair = lcj2BankPair(numberFirst[2], numberFirst[1], raw);
+            const pair = lcstBankPair(numberFirst[2], numberFirst[1], raw);
             if (pair) return pair;
         }
 
         // Fallback untuk nilai yang dipisah baris/spasi.
         const numberMatch = raw.match(/(?:^|\D)([0-9][0-9 .-]{5,29})(?:\D|$)/);
         if (numberMatch) {
-            const rek = lcj2CleanAccountNumber(numberMatch[1]);
+            const rek = lcstCleanAccountNumber(numberMatch[1]);
             const before = raw.slice(0, numberMatch.index).replace(/(?:rekening|account|no(?:mor)?|rek)\s*[:\-]?/gi, ' ');
             const after = raw.slice((numberMatch.index || 0) + numberMatch[0].length);
-            const beforeParts = before.split(/\s*[,;|]\s*/).map(lcj2CleanAccountName).filter(Boolean).reverse();
-            const afterParts = after.split(/\s*[,;|]\s*/).map(lcj2CleanAccountName).filter(Boolean);
-            const uid = lcj2ValidLookupUserId(userId).toLowerCase();
+            const beforeParts = before.split(/\s*[,;|]\s*/).map(lcstCleanAccountName).filter(Boolean).reverse();
+            const afterParts = after.split(/\s*[,;|]\s*/).map(lcstCleanAccountName).filter(Boolean);
+            const uid = lcstValidLookupUserId(userId).toLowerCase();
             const candidates = beforeParts.concat(afterParts).filter(v => {
-                if (!v || lcj2IsBankNameOnly(v)) return false;
+                if (!v || lcstIsBankNameOnly(v)) return false;
                 if (uid && (v.toLowerCase() === uid || uid.includes(v.toLowerCase()))) return false;
                 return v.length >= 2;
             });
             if (candidates.length) {
-                const pair = lcj2BankPair(candidates[0], rek, raw);
+                const pair = lcstBankPair(candidates[0], rek, raw);
                 if (pair) return pair;
             }
         }
         return null;
     }
 
-    function lcj2CreateLookupError(code, message) {
+    function lcstCreateLookupError(code, message) {
         const err = new Error(message);
         err.code = code;
         return err;
     }
 
-    function lcj2RequestAdminText(method, url, data) {
+    function lcstRequestAdminText(method, url, data, timeoutMs) {
+        const safeTimeout = Math.max(1200, Number(timeoutMs) || LCST_ADMIN_TIMEOUT);
         return new Promise((resolve, reject) => {
             if (typeof GM_xmlhttpRequest !== 'function') {
-                reject(lcj2CreateLookupError('REQUEST_UNAVAILABLE', 'GM_xmlhttpRequest tidak tersedia.'));
+                reject(lcstCreateLookupError('REQUEST_UNAVAILABLE', 'GM_xmlhttpRequest tidak tersedia.'));
                 return;
             }
             GM_xmlhttpRequest({
@@ -3565,7 +3883,7 @@
                 responseType: 'text',
                 anonymous: false,
                 withCredentials: true,
-                timeout: LCJ2_ADMIN_TIMEOUT,
+                timeout: safeTimeout,
                 onload: (res) => {
                     const status = Number(res.status) || 0;
                     if (status >= 200 && status < 400) {
@@ -3575,65 +3893,65 @@
                             status
                         });
                     } else {
-                        reject(lcj2CreateLookupError('HTTP_ERROR', 'Admin membalas HTTP ' + status + '.'));
+                        reject(lcstCreateLookupError('HTTP_ERROR', 'Admin membalas HTTP ' + status + '.'));
                     }
                 },
-                onerror: () => reject(lcj2CreateLookupError('NETWORK_ERROR', 'Halaman admin tidak dapat dihubungi.')),
-                ontimeout: () => reject(lcj2CreateLookupError('TIMEOUT', 'Waktu pengambilan data admin habis.'))
+                onerror: () => reject(lcstCreateLookupError('NETWORK_ERROR', 'Halaman admin tidak dapat dihubungi.')),
+                ontimeout: () => reject(lcstCreateLookupError('TIMEOUT', 'Waktu pengambilan data admin habis.'))
             });
         });
     }
 
-    function lcj2IsAdminLoginDocument(doc) {
+    function lcstIsAdminLoginDocument(doc) {
         if (!doc) return false;
-        const bodyText = lcj2NormalizeBankText(doc.body ? doc.body.innerText || doc.body.textContent : '').toLowerCase();
+        const bodyText = lcstNormalizeBankText(doc.body ? doc.body.innerText || doc.body.textContent : '').toLowerCase();
         return !!doc.querySelector('input[type="password"]') && /username/.test(bodyText) && /password/.test(bodyText);
     }
 
-    function lcj2HeaderIndex(headers, pattern) {
+    function lcstHeaderIndex(headers, pattern) {
         for (let i = 0; i < headers.length; i++) {
             if (pattern.test(headers[i])) return i;
         }
         return -1;
     }
 
-    function lcj2ExtractBankFromRow(row, userId, allowWithoutUser) {
-        const rowText = lcj2NormalizeBankText(row && (row.innerText || row.textContent));
+    function lcstExtractBankFromRow(row, userId, allowWithoutUser) {
+        const rowText = lcstNormalizeBankText(row && (row.innerText || row.textContent));
         if (!rowText) return null;
-        const uid = lcj2ValidLookupUserId(userId);
-        if (!allowWithoutUser && uid && !lcj2RowHasExactLookupUserId(row, uid)) return null;
+        const uid = lcstValidLookupUserId(userId);
+        if (!allowWithoutUser && uid && !lcstRowHasExactLookupUserId(row, uid)) return null;
 
-        const cells = Array.from(row.querySelectorAll('th,td')).map(cell => lcj2NormalizeBankText(cell.innerText || cell.textContent));
+        const cells = Array.from(row.querySelectorAll('th,td')).map(cell => lcstNormalizeBankText(cell.innerText || cell.textContent));
         if (!cells.length) return null;
         const table = row.closest('table');
         let headers = [];
         if (table) {
             const headerRow = table.querySelector('thead tr') || Array.from(table.querySelectorAll('tr')).find(tr => tr.querySelector('th'));
-            if (headerRow) headers = Array.from(headerRow.querySelectorAll('th,td')).map(cell => lcj2NormalizeBankText(cell.innerText || cell.textContent));
+            if (headerRow) headers = Array.from(headerRow.querySelectorAll('th,td')).map(cell => lcstNormalizeBankText(cell.innerText || cell.textContent));
         }
 
-        const bankIndex = lcj2HeaderIndex(headers, /^(?:bank|data\s*bank|bank\s*account|rekening|account)$/i);
+        const bankIndex = lcstHeaderIndex(headers, /^(?:bank|data\s*bank|bank\s*account|rekening|account)$/i);
         if (bankIndex >= 0 && cells[bankIndex]) {
-            const pair = lcj2ParseBankValue(cells[bankIndex], uid);
+            const pair = lcstParseBankValue(cells[bankIndex], uid);
             if (pair) return pair;
         }
 
-        const accountIndex = lcj2HeaderIndex(headers, /(?:no(?:mor)?\s*(?:rekening|rek)|rekening|account\s*(?:no|number)?|bank\s*account)/i);
-        const nameIndex = lcj2HeaderIndex(headers, /(?:nama\s*(?:rekening|bank|pemilik)|account\s*name|holder\s*name)/i);
+        const accountIndex = lcstHeaderIndex(headers, /(?:no(?:mor)?\s*(?:rekening|rek)|rekening|account\s*(?:no|number)?|bank\s*account)/i);
+        const nameIndex = lcstHeaderIndex(headers, /(?:nama\s*(?:rekening|bank|pemilik)|account\s*name|holder\s*name)/i);
         if (accountIndex >= 0 && nameIndex >= 0 && cells[accountIndex] && cells[nameIndex]) {
-            const pair = lcj2BankPair(cells[nameIndex], cells[accountIndex], rowText);
+            const pair = lcstBankPair(cells[nameIndex], cells[accountIndex], rowText);
             if (pair) return pair;
         }
 
         for (const cell of cells) {
-            const pair = lcj2ParseBankValue(cell, uid);
+            const pair = lcstParseBankValue(cell, uid);
             if (pair) return pair;
         }
-        return lcj2ParseBankValue(rowText, uid);
+        return lcstParseBankValue(rowText, uid);
     }
 
-    function lcj2ExtractBankFromJson(value, userId) {
-        const uid = lcj2ValidLookupUserId(userId).toLowerCase();
+    function lcstExtractBankFromJson(value, userId) {
+        const uid = lcstValidLookupUserId(userId).toLowerCase();
         const visited = new Set();
 
         function walk(node) {
@@ -3650,11 +3968,11 @@
             const entries = Object.entries(node);
             let serialized = '';
             try { serialized = JSON.stringify(node).toLowerCase(); } catch (e) {}
-            const matchesUser = !uid || lcj2HasExactLookupUserId(serialized, uid);
+            const matchesUser = !uid || lcstHasExactLookupUserId(serialized, uid);
             if (matchesUser) {
                 for (const [key, val] of entries) {
                     if (/bank|rekening|account|rek/i.test(key) && typeof val !== 'object') {
-                        const pair = lcj2ParseBankValue(val, uid);
+                        const pair = lcstParseBankValue(val, uid);
                         if (pair) return pair;
                     }
                 }
@@ -3662,7 +3980,7 @@
                 const accountEntry = entries.find(([key, val]) => typeof val !== 'object' && /(?:rekening|account_?no|accountnumber|bank_?no|bankaccount|no_?rek|rek$)/i.test(key));
                 const nameEntry = entries.find(([key, val]) => typeof val !== 'object' && /(?:nama_?(?:rekening|bank|pemilik)|account_?name|holder_?name|fullname|name$)/i.test(key));
                 if (accountEntry && nameEntry) {
-                    const pair = lcj2BankPair(nameEntry[1], accountEntry[1], serialized);
+                    const pair = lcstBankPair(nameEntry[1], accountEntry[1], serialized);
                     if (pair) return pair;
                 }
             }
@@ -3676,27 +3994,27 @@
         return walk(value);
     }
 
-    function lcj2ExtractBankResult(raw, userId) {
+    function lcstExtractBankResult(raw, userId) {
         const text = String(raw || '').trim();
         if (!text) return { result: null, loginRequired: false, document: null };
 
         if (/^[\[{]/.test(text)) {
             try {
                 const json = JSON.parse(text);
-                const result = lcj2ExtractBankFromJson(json, userId);
+                const result = lcstExtractBankFromJson(json, userId);
                 if (result) return { result, loginRequired: false, document: null };
             } catch (e) {}
         }
 
         const doc = new DOMParser().parseFromString(text, 'text/html');
-        const loginRequired = lcj2IsAdminLoginDocument(doc);
+        const loginRequired = lcstIsAdminLoginDocument(doc);
         if (loginRequired) return { result: null, loginRequired: true, document: doc };
 
-        const uid = lcj2ValidLookupUserId(userId);
+        const uid = lcstValidLookupUserId(userId);
         const rows = Array.from(doc.querySelectorAll('tr'));
         for (const row of rows) {
-            if (uid && lcj2RowHasExactLookupUserId(row, uid)) {
-                const result = lcj2ExtractBankFromRow(row, uid, false);
+            if (uid && lcstRowHasExactLookupUserId(row, uid)) {
+                const result = lcstExtractBankFromRow(row, uid, false);
                 if (result) return { result, loginRequired: false, document: doc };
             }
         }
@@ -3704,20 +4022,20 @@
         // Jika server sudah memfilter ke satu pemain, izinkan satu baris data
         // walau User ID tidak lagi dicetak pada hasil respons.
         const dataRows = rows.filter(row => row.querySelectorAll('td').length > 0);
-        if (dataRows.length === 1 && !lcj2RowHasDifferentLookupUserId(dataRows[0], uid)) {
-            const result = lcj2ExtractBankFromRow(dataRows[0], uid, true);
+        if (dataRows.length === 1 && !lcstRowHasDifferentLookupUserId(dataRows[0], uid)) {
+            const result = lcstExtractBankFromRow(dataRows[0], uid, true);
             if (result) return { result, loginRequired: false, document: doc };
         }
 
         const scripts = Array.from(doc.querySelectorAll('script[type="application/json"]'));
         for (const script of scripts) {
             try {
-                const result = lcj2ExtractBankFromJson(JSON.parse(script.textContent || ''), uid);
+                const result = lcstExtractBankFromJson(JSON.parse(script.textContent || ''), uid);
                 if (result) return { result, loginRequired: false, document: doc };
             } catch (e) {}
         }
 
-        const bodyText = lcj2NormalizeBankText(doc.body ? doc.body.innerText || doc.body.textContent : '');
+        const bodyText = lcstNormalizeBankText(doc.body ? doc.body.innerText || doc.body.textContent : '');
         if (uid) {
             const escapedUid = uid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const exactMatch = new RegExp('(?:^|[^A-Za-z0-9_.-])' + escapedUid + '(?=$|[^A-Za-z0-9_.-])', 'i').exec(bodyText);
@@ -3725,14 +4043,14 @@
                 const tokenOffset = exactMatch[0].toLowerCase().indexOf(uid.toLowerCase());
                 const index = exactMatch.index + Math.max(0, tokenOffset);
                 const nearby = bodyText.slice(Math.max(0, index - 250), Math.min(bodyText.length, index + uid.length + 500));
-                const result = lcj2ParseBankValue(nearby, uid);
+                const result = lcstParseBankValue(nearby, uid);
                 if (result) return { result, loginRequired: false, document: doc };
             }
         }
         return { result: null, loginRequired: false, document: doc };
     }
 
-    function lcj2BuildCommonAdminParams(userId) {
+    function lcstBuildCommonAdminParams(userId) {
         const p = new URLSearchParams();
         p.set('username', userId);
         p.set('userid', userId);
@@ -3748,13 +4066,19 @@
         return p;
     }
 
-    function lcj2DiscoverAdminRequests(doc, baseUrl, userId) {
+    function lcstDiscoverAdminRequests(doc, baseUrl, userId) {
         const out = [];
         const add = (method, url, data) => {
             try {
-                const fullUrl = new URL(url || baseUrl, baseUrl).href;
-                if (!/^https:\/\/agwl2\.admitoto\.com\//i.test(fullUrl)) return;
-                out.push({ method: String(method || 'GET').toUpperCase(), url: fullUrl, data: data || '' });
+                const base = new URL(baseUrl);
+                const target = new URL(url || baseUrl, baseUrl);
+                // Tautan passkey harus tetap dibawa ketika form memakai action relatif.
+                if (target.hostname === base.hostname &&
+                    !target.searchParams.has('passkey') && base.searchParams.has('passkey')) {
+                    target.searchParams.set('passkey', base.searchParams.get('passkey'));
+                }
+                if (!lcstIsAllowedAdminUrl(target.href)) return;
+                out.push({ method: String(method || 'GET').toUpperCase(), url: target.href, data: data || '' });
             } catch (e) {}
         };
 
@@ -3796,59 +4120,267 @@
             const regex = /(?:url|ajax)\s*[:=]\s*["']([^"']+(?:\.php|ajax)[^"']*)["']/gi;
             let match;
             while ((match = regex.exec(scriptText)) !== null) {
-                add('POST', match[1], lcj2BuildCommonAdminParams(userId).toString());
+                add('POST', match[1], lcstBuildCommonAdminParams(userId).toString());
             }
         }
         return out;
     }
 
-    async function lcj2LookupBankFromAdmin(userId, forceRefresh) {
-        const uid = lcj2ValidLookupUserId(userId);
-        if (!uid) throw lcj2CreateLookupError('NO_USER_ID', 'User ID chat belum terdeteksi.');
+    function lcstAdminRequestKey(req) {
+        if (!req) return '';
+        return String(req.method || 'GET').toUpperCase() + '|' + String(req.url || '') + '|' + String(req.data || '');
+    }
+
+    function lcstAdminRequestToProfile(req, userId) {
+        const uid = lcstValidLookupUserId(userId);
+        if (!req || !uid) return null;
+        const encodedUid = encodeURIComponent(uid);
+        const replaceUid = (value) => String(value || '')
+            .split(encodedUid).join(LCST_ADMIN_UID_TOKEN)
+            .split(uid).join(LCST_ADMIN_UID_TOKEN);
+        const profile = {
+            method: String(req.method || 'GET').toUpperCase(),
+            url: replaceUid(req.url),
+            data: replaceUid(req.data),
+            savedAt: Date.now()
+        };
+        if (!lcstIsAllowedAdminUrl(profile.url.replace(LCST_ADMIN_UID_TOKEN, encodedUid))) return null;
+        if (!profile.url.includes(LCST_ADMIN_UID_TOKEN) && !profile.data.includes(LCST_ADMIN_UID_TOKEN)) return null;
+        return profile;
+    }
+
+    function lcstAdminProfileToRequest(profile, userId) {
+        const uid = lcstValidLookupUserId(userId);
+        if (!profile || !uid) return null;
+        if (!profile.savedAt || Date.now() - Number(profile.savedAt) > LCST_ADMIN_PROFILE_TTL) return null;
+        const encodedUid = encodeURIComponent(uid);
+        const hydrate = (value) => String(value || '').split(LCST_ADMIN_UID_TOKEN).join(encodedUid);
+        const req = {
+            method: String(profile.method || 'GET').toUpperCase(),
+            url: hydrate(profile.url),
+            data: hydrate(profile.data)
+        };
+        if (!lcstIsAllowedAdminUrl(req.url)) return null;
+        return req;
+    }
+
+    function lcstLoadAdminPreferredRequest(userId) {
+        try {
+            const raw = typeof GM_getValue === 'function' ? GM_getValue(LCST_ADMIN_PROFILE_KEY, '') : '';
+            const profile = typeof raw === 'string' ? safeJSONParse(raw, null) : raw;
+            return lcstAdminProfileToRequest(profile, userId);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function lcstSaveAdminPreferredRequest(req, userId) {
+        try {
+            const profile = lcstAdminRequestToProfile(req, userId);
+            if (!profile) return;
+            if (typeof GM_setValue === 'function') GM_setValue(LCST_ADMIN_PROFILE_KEY, JSON.stringify(profile));
+        } catch (e) {}
+    }
+
+    async function lcstLookupBankFromAdminCore(uid, forceRefresh) {
+        if (!uid) throw lcstCreateLookupError('NO_USER_ID', 'User ID chat belum terdeteksi.');
 
         const cacheKey = uid.toLowerCase();
-        const cached = lcj2BankMemoryCache.get(cacheKey);
-        if (!forceRefresh && cached && Date.now() - cached.time < 5 * 60 * 1000) return cached.value;
+        const cached = lcstBankMemoryCache.get(cacheKey);
+        if (!forceRefresh && cached && Date.now() - cached.time < LCST_ADMIN_MEMORY_TTL) return cached.value;
 
-        const common = lcj2BuildCommonAdminParams(uid);
-        const queue = [
-            { method: 'POST', url: LCJ2_ADMIN_PLAYER_URL, data: common.toString() },
-            { method: 'GET', url: LCJ2_ADMIN_PLAYER_URL + '?' + new URLSearchParams({ username: uid, search: uid }).toString(), data: '' },
-            { method: 'GET', url: LCJ2_ADMIN_PLAYER_URL, data: '' }
-        ];
-        const seen = new Set();
-        let lastError = null;
-        let attempts = 0;
+        const common = lcstBuildCommonAdminParams(uid);
+        let loginRequiredSeen = false;
+        let usableAdminResponseSeen = false;
 
-        while (queue.length && attempts < 10) {
-            const req = queue.shift();
-            const key = req.method + '|' + req.url + '|' + req.data;
-            if (seen.has(key)) continue;
-            seen.add(key);
-            attempts++;
+        const parseAdminResponse = (response, req) => {
+            const parsed = lcstExtractBankResult(response.text, uid);
+            if (parsed.loginRequired) return { loginRequired: true, parsed, response, req };
+            // Respons HTTP yang bukan halaman login membuktikan setidaknya satu
+            // alamat admin/passkey sudah dapat dimasuki. Karena itu halaman login
+            // dari domain lain tidak boleh menimpa status seluruh pencarian.
+            usableAdminResponseSeen = true;
+            if (parsed.result) {
+                const value = { ...parsed.result, userId: uid, source: response.finalUrl || req.url };
+                return { value, parsed, response, req };
+            }
+            return { parsed, response, req };
+        };
 
+        const requestAndParse = async (req, timeoutMs) => {
             try {
-                const response = await lcj2RequestAdminText(req.method, req.url, req.data);
-                const parsed = lcj2ExtractBankResult(response.text, uid);
-                if (parsed.loginRequired) {
-                    throw lcj2CreateLookupError('ADMIN_LOGIN_REQUIRED', 'Sesi login admin belum aktif.');
-                }
-                if (parsed.result) {
-                    const value = { ...parsed.result, userId: uid, source: response.finalUrl || req.url };
-                    lcj2BankMemoryCache.set(cacheKey, { time: Date.now(), value });
-                    return value;
-                }
-
-                const discovered = lcj2DiscoverAdminRequests(parsed.document, response.finalUrl || req.url, uid);
-                discovered.forEach(item => queue.push(item));
+                const response = await lcstRequestAdminText(req.method, req.url, req.data, timeoutMs);
+                return parseAdminResponse(response, req);
             } catch (err) {
-                if (err && err.code === 'ADMIN_LOGIN_REQUIRED') throw err;
-                lastError = err;
+                return { error: err, req };
+            }
+        };
+
+        const firstValidFrom = async (requests, timeoutMs) => {
+            const tasks = requests.map(req => requestAndParse(req, timeoutMs));
+            let first = null;
+            await new Promise((resolve) => {
+                let settled = 0;
+                tasks.forEach(task => Promise.resolve(task).then(item => {
+                    if (!first && item && item.value) {
+                        first = item;
+                        resolve();
+                        return;
+                    }
+                    settled++;
+                    if (settled >= tasks.length) resolve();
+                }).catch(() => {
+                    settled++;
+                    if (settled >= tasks.length) resolve();
+                }));
+            });
+            if (first) return { first, results: null, tasks };
+            return { first: null, results: await Promise.all(tasks), tasks };
+        };
+
+        // V6.4.2: setelah satu pola Admin pernah berhasil, pakai pola itu SENDIRI dahulu.
+        // Biasanya lookup berikutnya cukup satu request. Timeout pendek mencegah profil lama
+        // memperlambat fallback bila halaman Admin berubah.
+        const preferredRequest = !forceRefresh ? lcstLoadAdminPreferredRequest(uid) : null;
+        if (preferredRequest) {
+            const preferred = await requestAndParse(preferredRequest, LCST_ADMIN_PREFERRED_TIMEOUT);
+            if (preferred && preferred.value) {
+                lcstBankMemoryCache.set(cacheKey, { time: Date.now(), value: preferred.value });
+                return preferred.value;
+            }
+            if (preferred && preferred.loginRequired) {
+                // Profil lama boleh kedaluwarsa pada satu domain. Tetap coba dua
+                // tautan passkey lain sebelum menyatakan login belum aktif.
+                loginRequiredSeen = true;
             }
         }
 
+        // Satu POST ringan per alamat lebih dahulu. Ini menambah dukungan dua link
+        // passkey tanpa langsung mengirim 12 request yang dapat membuat halaman berat.
+        const directRequests = LCST_ADMIN_SOURCES.map((source) => ({
+            method: 'POST',
+            url: source.playerUrl,
+            data: common.toString()
+        }));
+
+        const preferredKey = preferredRequest ? lcstAdminRequestKey(preferredRequest) : '';
+        const directUnique = preferredKey
+            ? directRequests.filter(req => lcstAdminRequestKey(req) !== preferredKey)
+            : directRequests;
+        const direct = await firstValidFrom(directUnique.length ? directUnique : directRequests, LCST_ADMIN_TIMEOUT);
+        if (direct.first && direct.first.value) {
+            lcstSaveAdminPreferredRequest(direct.first.req, uid);
+            lcstBankMemoryCache.set(cacheKey, { time: Date.now(), value: direct.first.value });
+            return direct.first.value;
+        }
+
+        const directResults = direct.results || await Promise.all(direct.tasks || []);
+        if (directResults.some(item => item && item.loginRequired)) loginRequiredSeen = true;
+
+        const queue = [];
+        const seen = new Set((directUnique.length ? directUnique : directRequests).map(lcstAdminRequestKey));
+        let lastError = directResults.map(item => item && item.error).filter(Boolean).pop() || null;
+        let attempts = (directUnique.length ? directUnique : directRequests).length;
+
+        // Ketiga login dicoba pada batch pertama agar satu domain yang lambat/tidak
+        // aktif tidak menahan domain lain. Setelah itu pola pencarian diinterleave.
+        LCST_ADMIN_SOURCES.forEach((source) => {
+            queue.push({ method: 'GET', url: source.loginUrl, data: '' });
+        });
+        LCST_ADMIN_SOURCES.forEach((source) => {
+            queue.push({ method: 'GET', url: source.playerUrl, data: '' });
+        });
+        LCST_ADMIN_SOURCES.forEach((source) => {
+            queue.push({
+                method: 'GET',
+                url: lcstAdminUrlWithParams(source.playerUrl, { username: uid, search: uid }),
+                data: ''
+            });
+        });
+        LCST_ADMIN_SOURCES.forEach((source) => {
+            queue.push({
+                method: 'GET',
+                url: lcstAdminUrlWithParams(source.playerUrl, { userid: uid, keyword: uid }),
+                data: ''
+            });
+        });
+        LCST_ADMIN_SOURCES.forEach((source) => {
+            queue.push({
+                method: 'GET',
+                url: lcstAdminUrlWithParams(source.playerUrl, { 'search[value]': uid, sSearch: uid }),
+                data: ''
+            });
+        });
+        // Endpoint/form yang ditemukan dari respons server adalah jalur paling
+        // akurat. Taruh di depan antrean agar tidak kalah oleh tebakan URL umum.
+        directResults.slice().reverse().forEach(item => {
+            if (!item || !item.parsed || !item.response || !item.req) return;
+            const discovered = lcstDiscoverAdminRequests(item.parsed.document, item.response.finalUrl || item.req.url, uid);
+            discovered.slice().reverse().forEach(req => queue.unshift(req));
+        });
+
+        // Fallback lama tetap ada, tetapi endpoint hasil discovery dikerjakan per batch 3,
+        // bukan satu request -> tunggu -> request berikutnya.
+        while (queue.length && attempts < LCST_ADMIN_MAX_ATTEMPTS) {
+            const batch = [];
+            while (queue.length && batch.length < 3 && attempts < LCST_ADMIN_MAX_ATTEMPTS) {
+                const req = queue.shift();
+                const key = req.method + '|' + req.url + '|' + req.data;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                attempts++;
+                batch.push(req);
+            }
+            if (!batch.length) continue;
+
+            const raced = await firstValidFrom(batch);
+            if (raced.first && raced.first.value) {
+                lcstSaveAdminPreferredRequest(raced.first.req, uid);
+                lcstBankMemoryCache.set(cacheKey, { time: Date.now(), value: raced.first.value });
+                return raced.first.value;
+            }
+            const batchResults = raced.results || await Promise.all(raced.tasks || []);
+            if (batchResults.some(item => item && item.loginRequired)) loginRequiredSeen = true;
+            batchResults.forEach((item, idx) => {
+                const req = batch[idx];
+                if (item && item.error) lastError = item.error;
+                if (item && item.parsed && item.response) {
+                    const discovered = lcstDiscoverAdminRequests(item.parsed.document, item.response.finalUrl || req.url, uid);
+                    // Setelah GET link passkey berhasil, form daftar pemain yang
+                    // sebenarnya langsung dikerjakan pada batch berikutnya.
+                    discovered.slice().reverse().forEach(nextReq => queue.unshift(nextReq));
+                }
+            });
+        }
+
+        if (loginRequiredSeen && !usableAdminResponseSeen) {
+            throw lcstCreateLookupError('ADMIN_LOGIN_REQUIRED', 'Sesi login admin belum aktif pada semua alamat yang tersedia.');
+        }
         if (lastError && attempts <= 1) throw lastError;
-        throw lcj2CreateLookupError('BANK_NOT_FOUND', 'Data Bank untuk User ID ' + uid + ' tidak ditemukan pada daftar pemain.');
+        throw lcstCreateLookupError('BANK_NOT_FOUND', 'Data Bank untuk User ID ' + uid + ' tidak ditemukan pada daftar pemain.');
+    }
+
+    async function lcstLookupBankFromAdmin(userId, forceRefresh) {
+        const uid = lcstValidLookupUserId(userId);
+        if (!uid) throw lcstCreateLookupError('NO_USER_ID', 'User ID chat belum terdeteksi.');
+        const cacheKey = uid.toLowerCase();
+
+        if (!forceRefresh) {
+            const cached = lcstBankMemoryCache.get(cacheKey);
+            if (cached && Date.now() - cached.time < LCST_ADMIN_MEMORY_TTL) return cached.value;
+            const running = lcstBankLookupInflight.get(cacheKey);
+            if (running) return running;
+        }
+
+        const task = lcstLookupBankFromAdminCore(uid, !!forceRefresh);
+        if (!forceRefresh) lcstBankLookupInflight.set(cacheKey, task);
+        try {
+            return await task;
+        } finally {
+            if (!forceRefresh && lcstBankLookupInflight.get(cacheKey) === task) {
+                lcstBankLookupInflight.delete(cacheKey);
+            }
+        }
     }
 
     function getPackageSizeFromCount(count) {
@@ -3864,13 +4396,17 @@
     }
 
     function makeOutput(scan) {
-        const rekInput = document.getElementById('lcj2-rek-all');
+        const rekInput = document.getElementById('lcst-rek-all');
         const rn = parseRekNama(rekInput ? rekInput.value : '');
         const imgs = scan.images || [];
         const packageSize = getPackageSizeFromImages(imgs);
         let out = '';
         for (let i = 0; i < imgs.length; i += packageSize) {
             const rowIdx = Math.floor(i / packageSize);
+
+            // Kode boleh tampil lebih dahulu di input, tetapi output baru dibuka
+            // setelah validasi taruhan dan timestamp paket tersebut selesai.
+            if (scan.metadataPendingRows && scan.metadataPendingRows[rowIdx]) continue;
 
             // Paket dengan Taruhan di bawah 1,60 tidak dimasukkan ke output,
             // sehingga paket tersebut tidak dapat tersalin lewat COPY OUTPUT
@@ -3879,25 +4415,25 @@
 
             const urls = imgs.slice(i, i + packageSize);
             while (urls.length < 3) urls.push('');
-            const periodInput = document.getElementById('lcj2-prd-' + rowIdx);
+            const periodInput = document.getElementById('lcst-prd-' + rowIdx);
             const inputPeriod = periodInput ? periodInput.value.trim() : '';
             const ocrPeriod = scan.ocrPeriods && scan.ocrPeriods[rowIdx] ? scan.ocrPeriods[rowIdx] : '';
             const period = inputPeriod || ocrPeriod || ('MENUNGGU OCR ' + (rowIdx + 1));
 
             // V5.7.4: sumber utama batas claim adalah tanggal + jam yang dibaca
-            // langsung dari GAMBAR 2 DAN GAMBAR 4 sesuai paket. Periode hanya menjadi fallback
+            // langsung dari GAMBAR KE-2 pada paket ini. Periode hanya menjadi fallback
             // bila tulisan waktu pada screenshot benar-benar tidak dapat dibaca.
             const imageClaimTimestamp = scan.claimTimestampByRow && scan.claimTimestampByRow[rowIdx]
                 ? scan.claimTimestampByRow[rowIdx]
                 : null;
-            const claimDeadline = lcj2CheckClaimDeadline(imageClaimTimestamp, period);
+            const claimDeadline = lcstCheckClaimDeadline(imageClaimTimestamp, period);
             scan.claimExpiredRows = scan.claimExpiredRows || [];
             scan.claimDeadlineByRow = scan.claimDeadlineByRow || [];
             scan.claimExpiredRows[rowIdx] = !!claimDeadline.expired;
             scan.claimDeadlineByRow[rowIdx] = claimDeadline;
             if (claimDeadline.expired) continue;
 
-            out += scan.userId + '\t' + urls.join('\t') + '\t' + rn.rek + '\t' + rn.nama + '\t' + period + '\n';
+            out += String(scan.userId || '').trim().toLowerCase() + '\t' + urls.join('\t') + '\t' + rn.rek + '\t' + rn.nama + '\t' + period + '\n';
         }
         return out;
     }
@@ -3928,80 +4464,73 @@
      * terlebih dahulu oleh pasangan dua tanda bulat oranye.
      ******************************************************************/
 
-    const LCJ2_EXPECTED_TOP_LENGTH = 9;
-    const LCJ2_EXPECTED_BOTTOM_LENGTH = 10;
-    const LCJ2_EXPECTED_FULL_LENGTH = 19;
-    const LCJ2_STRICT_DOUBLE_MARKER = true;
-    const LCJ2_MIN_BET_ODDS = 1.60;
+    const LCST_EXPECTED_TOP_LENGTH = 9;
+    const LCST_EXPECTED_BOTTOM_LENGTH = 10;
+    const LCST_EXPECTED_FULL_LENGTH = 19;
+    const LCST_STRICT_DOUBLE_MARKER = true;
+    const LCST_MIN_BET_ODDS = 1.60;
 
-    function lcj2FormatBetOdds(value, fallback) {
-        const n = Number(value);
-        return Number.isFinite(n)
-            ? n.toFixed(2).replace('.', ',')
-            : (fallback || 'BELUM TERBACA');
-    }
+    // V7.6 RESPONSIVE: jumlah worker dibatasi berdasarkan CPU/RAM nyata.
+    // Browser yang tidak melaporkan deviceMemory dianggap 4 GB, bukan 8 GB,
+    // supaya script tidak membuat terlalu banyak worker dan membuat LiveChat nge-lag.
+    const LCST_CPU_THREADS = Math.max(1, Number(navigator.hardwareConcurrency) || 4);
+    const LCST_REPORTED_DEVICE_MEMORY_GB = Number(navigator.deviceMemory);
+    const LCST_DEVICE_MEMORY_GB = Number.isFinite(LCST_REPORTED_DEVICE_MEMORY_GB) &&
+        LCST_REPORTED_DEVICE_MEMORY_GB > 0
+        ? LCST_REPORTED_DEVICE_MEMORY_GB
+        : 4;
+    const LCST_MAX_OCR_WORKERS = LCST_CPU_THREADS >= 4 && LCST_DEVICE_MEMORY_GB >= 4 ? 2 : 1;
+    const LCST_DUAL_PACKAGE_OCR = LCST_MAX_OCR_WORKERS >= 2;
+    const LCST_TURBO_PARALLEL_OCR = LCST_MAX_OCR_WORKERS >= 3;
+    // Worker ke-4 sengaja dimatikan. Timestamp berbagi worker metadata supaya
+    // penggunaan RAM stabil dan halaman tetap responsif selama scan.
+    const LCST_TURBO_TIMESTAMP_WORKER = LCST_MAX_OCR_WORKERS >= 4;
 
-    // V5.7.7 TURBO: perangkat dengan sedikitnya 4 logical CPU memakai worker
-    // metadata terpisah. Periode tetap dibaca worker utama, sedangkan taruhan
-    // dan tanggal/jam gambar 2 serta gambar 4 dikerjakan bersamaan tanpa mengubah hasil.
-    const LCJ2_CPU_THREADS = Math.max(1, Number(navigator.hardwareConcurrency) || 4);
-    const LCJ2_DEVICE_MEMORY_GB = Math.max(0, Number(navigator.deviceMemory) || 0);
-    const LCJ2_TURBO_PARALLEL_OCR = LCJ2_CPU_THREADS >= 4;
-
-    // V1.4.4 TURBO STABIL:
-    // Worker ketiga hanya aktif pada perangkat yang cukup kuat. Perangkat ringan
-    // tetap memakai maksimal dua worker agar browser tidak kehabisan memori.
-    const LCJ2_TURBO_TIMESTAMP_WORKER =
-        (LCJ2_CPU_THREADS >= 6 && LCJ2_DEVICE_MEMORY_GB >= 4) ||
-        (LCJ2_CPU_THREADS >= 8 && LCJ2_DEVICE_MEMORY_GB === 0);
-    const LCJ2_FAST_SCAN_MODE = true;
-
-    // V1.0.0 — OCR CLAIM JAM 2 TERPISAH.
-    // Jendela khusus berlaku pukul 23.00 sampai sebelum 02.00 WIB.
-    // - 23.00-23.59: tanggal operasional = tanggal hari ini.
-    // - 00.00-01.59: tanggal operasional = tanggal semalam.
-    // - Dalam jendela khusus, transaksi 22.59 ke bawah TIDAK dapat claim.
-    // - Transaksi mulai 23.00 dapat claim sampai sebelum pukul 02.00 WIB.
-    // Di luar jendela khusus, aturan lama D+1 pukul 02.00 tetap dipakai.
-    // Zona waktu dipaksa ke Asia/Jakarta agar hasil tidak mengikuti zona komputer.
-    const LCJ2_CLAIM_TIME_ZONE = 'Asia/Jakarta';
-    const LCJ2_CLAIM_CUTOFF_MINUTES = 2 * 60;
-    const LCJ2_NIGHT_CLAIM_START_MINUTES = 23 * 60;
-    const LCJ2_NIGHT_CLAIM_END_MINUTES = 2 * 60;
-    const LCJ2_NUMERIC_OCR_WHITELIST = '0123456789';
-    const LCJ2_TIMESTAMP_OCR_WHITELIST = '0123456789:/.-+− AMPampGMTUTCgmtutcBIOQSLZbioqslz';
+    // V6.6.0 — Batas claim berdasarkan waktu yang terbaca pada GAMBAR KE-2 / KE-5.
+    // WIB/GMT+7 dipakai langsung, WITA/GMT+8 dikurangi 1 jam, dan
+    // WIT/GMT+9 dikurangi 2 jam. Pergeseran melewati 00.00 ikut mengubah tanggal.
+    // Tanggal semalam hanya berlaku untuk transaksi 23.00–23.59 WIB dan hanya
+    // dapat diklaim sampai sebelum pukul 02.00 WIB.
+    const LCST_CLAIM_TIME_ZONE = 'Asia/Jakarta';
+    const LCST_TARGET_GMT_OFFSET_MINUTES = 7 * 60;
+    const LCST_HISTORY_DEFAULT_GMT_OFFSET_MINUTES = LCST_TARGET_GMT_OFFSET_MINUTES;
+    const LCST_CLAIM_CUTOFF_MINUTES = 2 * 60;
+    const LCST_NIGHT_CLAIM_START_MINUTES = 23 * 60;
+    const LCST_NUMERIC_OCR_WHITELIST = '0123456789';
+    // GMT/UTC/WIB/WITA/WIT ikut diizinkan agar zona gambar dapat dibaca OCR.
+    const LCST_TIMESTAMP_OCR_WHITELIST = '0123456789:/.,-+−() ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 
     // Selisih terhadap jam perangkat. Nilainya diperbarui dari header Date server
     // secara non-blocking agar proses scan tidak menunggu koneksi internet.
-    let lcj2OnlineTimeOffsetMs = 0;
-    let lcj2OnlineTimeSource = 'PERANGKAT';
-    let lcj2OnlineTimeLastSync = 0;
-    let lcj2OnlineTimeSyncRunning = false;
+    let lcstOnlineTimeOffsetMs = 0;
+    let lcstOnlineTimeSource = 'PERANGKAT';
+    let lcstOnlineTimeLastSync = 0;
+    let lcstOnlineTimeSyncRunning = false;
 
-    function lcj2NowMs() {
-        return Date.now() + (Number(lcj2OnlineTimeOffsetMs) || 0);
+    function lcstNowMs() {
+        return Date.now() + (Number(lcstOnlineTimeOffsetMs) || 0);
     }
 
-    function lcj2NowDate() {
-        return new Date(lcj2NowMs());
+    function lcstNowDate() {
+        return new Date(lcstNowMs());
     }
 
-    function lcj2GetOnlineTimeSourceLabel() {
-        return lcj2OnlineTimeSource === 'ONLINE' ? 'ONLINE' : 'PERANGKAT';
+    function lcstGetOnlineTimeSourceLabel() {
+        return lcstOnlineTimeSource === 'ONLINE' ? 'ONLINE' : 'PERANGKAT';
     }
 
-    function lcj2SyncOnlineTime(force) {
+    function lcstSyncOnlineTime(force) {
         const now = Date.now();
-        if (lcj2OnlineTimeSyncRunning) return;
-        if (!force && lcj2OnlineTimeLastSync && now - lcj2OnlineTimeLastSync < 5 * 60 * 1000) return;
+        if (lcstOnlineTimeSyncRunning) return;
+        if (!force && lcstOnlineTimeLastSync && now - lcstOnlineTimeLastSync < 5 * 60 * 1000) return;
         if (typeof GM_xmlhttpRequest !== 'function') return;
 
-        lcj2OnlineTimeSyncRunning = true;
+        lcstOnlineTimeSyncRunning = true;
         const startedAt = Date.now();
         try {
             GM_xmlhttpRequest({
                 method: 'GET',
-                url: 'https://www.google.com/generate_204?lcj2_time=' + startedAt,
+                url: 'https://www.google.com/generate_204?lcst_time=' + startedAt,
                 timeout: 5000,
                 headers: { 'Cache-Control': 'no-cache' },
                 onload: (response) => {
@@ -4012,24 +4541,25 @@
                     if (Number.isFinite(serverMs)) {
                         // Tambahkan setengah waktu perjalanan agar pendekatan jam server lebih dekat.
                         const estimatedServerNow = serverMs + Math.max(0, endedAt - startedAt) / 2;
-                        lcj2OnlineTimeOffsetMs = estimatedServerNow - endedAt;
-                        lcj2OnlineTimeSource = 'ONLINE';
-                        lcj2OnlineTimeLastSync = endedAt;
+                        lcstOnlineTimeOffsetMs = estimatedServerNow - endedAt;
+                        lcstOnlineTimeSource = 'ONLINE';
+                        lcstOnlineTimeLastSync = endedAt;
                     }
-                    lcj2OnlineTimeSyncRunning = false;
+                    lcstOnlineTimeSyncRunning = false;
                 },
-                onerror: () => { lcj2OnlineTimeSyncRunning = false; },
-                ontimeout: () => { lcj2OnlineTimeSyncRunning = false; }
+                onerror: () => { lcstOnlineTimeSyncRunning = false; },
+                ontimeout: () => { lcstOnlineTimeSyncRunning = false; }
             });
         } catch (e) {
-            lcj2OnlineTimeSyncRunning = false;
+            lcstOnlineTimeSyncRunning = false;
         }
     }
 
-    function lcj2GetWibParts(dateValue) {
-        const date = dateValue instanceof Date ? dateValue : new Date(dateValue != null ? dateValue : lcj2NowMs());
-        const formatter = new Intl.DateTimeFormat('en-CA', {
-            timeZone: LCJ2_CLAIM_TIME_ZONE,
+    let lcstWibFormatter = null;
+    function lcstGetWibParts(dateValue) {
+        const date = dateValue instanceof Date ? dateValue : new Date(dateValue != null ? dateValue : lcstNowMs());
+        const formatter = lcstWibFormatter || (lcstWibFormatter = new Intl.DateTimeFormat('en-CA', {
+            timeZone: LCST_CLAIM_TIME_ZONE,
             year: 'numeric',
             month: '2-digit',
             day: '2-digit',
@@ -4037,7 +4567,7 @@
             minute: '2-digit',
             second: '2-digit',
             hourCycle: 'h23'
-        });
+        }));
         const values = {};
         formatter.formatToParts(date).forEach((part) => {
             if (part.type !== 'literal') values[part.type] = part.value;
@@ -4055,7 +4585,7 @@
         };
     }
 
-    function lcj2ValidDateParts(year, month, day) {
+    function lcstValidDateParts(year, month, day) {
         year = Number(year);
         month = Number(month);
         day = Number(day);
@@ -4073,7 +4603,7 @@
         };
     }
 
-    function lcj2ParseClaimDateFromPeriod(period) {
+    function lcstParseClaimDateFromPeriod(period) {
         const digits = String(period == null ? '' : period).replace(/\D/g, '');
         const candidates = [];
         if (digits.length >= 8) candidates.push(digits.slice(0, 8));
@@ -4084,7 +4614,7 @@
 
         for (const dateKey of candidates) {
             if (!/^20\d{6}$/.test(dateKey)) continue;
-            const valid = lcj2ValidDateParts(
+            const valid = lcstValidDateParts(
                 Number(dateKey.slice(0, 4)),
                 Number(dateKey.slice(4, 6)),
                 Number(dateKey.slice(6, 8))
@@ -4094,7 +4624,7 @@
         return null;
     }
 
-    const LCJ2_MONTH_NUMBER = {
+    const LCST_MONTH_NUMBER = {
         JAN: 1, JANUARI: 1, JANUARY: 1,
         FEB: 2, FEBRUARI: 2, FEBRUARY: 2,
         MAR: 3, MARET: 3, MARCH: 3,
@@ -4109,7 +4639,7 @@
         DES: 12, DESEMBER: 12, DEC: 12, DECEMBER: 12
     };
 
-    function lcj2FixOcrNumericText(value) {
+    function lcstFixOcrNumericText(value) {
         const source = String(value == null ? '' : value).toUpperCase();
         let out = '';
         for (let i = 0; i < source.length; i++) {
@@ -4126,7 +4656,7 @@
         return out.replace(/[，]/g, ',').replace(/[：]/g, ':');
     }
 
-    function lcj2ParseClockParts(hourRaw, minuteRaw, secondRaw, ampmRaw) {
+    function lcstParseClockParts(hourRaw, minuteRaw, secondRaw, ampmRaw) {
         let hour = Number(hourRaw);
         const minute = Number(minuteRaw);
         const second = secondRaw == null || secondRaw === '' ? 0 : Number(secondRaw);
@@ -4142,43 +4672,22 @@
         return { hour, minute, second, minutesOfDay: hour * 60 + minute };
     }
 
-    function lcj2InferYearForMonthDay(month, day, nowWib) {
-        const now = nowWib || lcj2GetWibParts(lcj2NowDate());
-        let year = now.year;
-        let valid = lcj2ValidDateParts(year, month, day);
-        if (!valid) return null;
-        const candidateDay = Math.floor(Date.UTC(year, month - 1, day) / 86400000);
-        const todayDay = Math.floor(Date.UTC(now.year, now.month - 1, now.day) / 86400000);
-        if (candidateDay > todayDay + 2) year -= 1;
-        return year;
-    }
-
-    function lcj2IsValidGmtOffsetMinutes(offsetMinutes) {
+    function lcstIsValidGmtOffsetMinutes(offsetMinutes) {
         const total = Number(offsetMinutes);
-        if (!Number.isFinite(total) || !Number.isInteger(total)) return false;
-
-        // Rentang zona waktu dunia yang valid: GMT-12:00 sampai GMT+14:00.
-        if (total < -12 * 60 || total > 14 * 60) return false;
-
-        // Menit zona waktu harus 0–59. Mendukung offset setengah/45 menit
-        // seperti GMT+5:30, GMT+5:45, GMT+9:30, dan GMT+12:45.
-        const absoluteMinutes = Math.abs(total);
-        return absoluteMinutes % 60 >= 0 && absoluteMinutes % 60 <= 59;
+        return Number.isInteger(total) && total >= -12 * 60 && total <= 14 * 60;
     }
 
-    function lcj2ParseGmtHourMinute(signRaw, hourRaw, minuteRaw) {
+    function lcstParseGmtHourMinute(signRaw, hourRaw, minuteRaw) {
         const sign = String(signRaw || '+') === '-' ? -1 : 1;
         const hour = Number(hourRaw);
         const minute = minuteRaw == null || minuteRaw === '' ? 0 : Number(minuteRaw);
-
         if (!Number.isInteger(hour) || !Number.isInteger(minute)) return null;
         if (hour < 0 || hour > 14 || minute < 0 || minute > 59) return null;
-
         const total = sign * (hour * 60 + minute);
-        return lcj2IsValidGmtOffsetMinutes(total) ? total : null;
+        return lcstIsValidGmtOffsetMinutes(total) ? total : null;
     }
 
-    function lcj2FindExplicitGmtOffsetMinutes(rawText) {
+    function lcstFindExplicitGmtOffsetMinutes(rawText) {
         let value = String(rawText == null ? '' : rawText)
             .toUpperCase()
             .replace(/[，]/g, ',')
@@ -4187,8 +4696,15 @@
             .replace(/[−–—]/g, '-')
             .replace(/\s+/g, ' ')
             .trim();
-
         if (!value) return null;
+        value = value.replace(/\bW\s*I\s*T\s*A\b/g,'WITA')
+            .replace(/\bW\s*I\s*[B8]\b/g,'WIB')
+            .replace(/\bW\s*I\s*T\b/g,'WIT');
+
+        // Nama zona Indonesia didahulukan agar WIB/WITA/WIT tidak salah dianggap GMT+7.
+        if (/\bWITA\b/.test(value)) return 8 * 60;
+        if (/\bWIB\b/.test(value)) return 7 * 60;
+        if (/\bWIT\b/.test(value)) return 9 * 60;
 
         // Koreksi OCR umum pada label GMT/UTC.
         value = value
@@ -4200,59 +4716,36 @@
             .replace(/(?:GMT|UTC)\s*\+\s*B\b/g, 'GMT+8')
             .replace(/(?:GMT|UTC)\s*\+\s*Q\b/g, 'GMT+9')
             .replace(/(?:GMT|UTC)\s*\+\s*O\s*(\d{1,2})\b/g, 'GMT+$1')
-            .replace(/(?:GMT|UTC)\s*\+\s*I\s*(\d)\b/g, 'GMT+1$1')
-            .replace(/(?:GMT|UTC)\s*\+\s*L\s*(\d)\b/g, 'GMT+1$1')
+            .replace(/(?:GMT|UTC)\s*\+\s*[IL]\s*(\d)\b/g, 'GMT+1$1')
             .replace(/(?:GMT|UTC)\s*\+\s*S\b/g, 'GMT+5');
 
-        // Format yang didukung:
-        // GMT+7, GMT+08, GMT+8:00, GMT+0530, UTC-4, UTC+12:45.
         const signedPatterns = [
             /\b(?:GMT|UTC)\s*([+-])\s*(\d{1,2})\s*[:.]\s*([0-5]\d)\b/i,
             /\b(?:GMT|UTC)\s*([+-])\s*(\d{1,2})([0-5]\d)\b/i,
             /\b(?:GMT|UTC)\s*([+-])\s*0?(\d{1,2})\b/i
         ];
-
         for (const pattern of signedPatterns) {
             const match = value.match(pattern);
             if (!match) continue;
-
-            let hourRaw = match[2];
-            let minuteRaw = match[3] || '';
-
-            // Untuk pola HHMM, pecah menjadi jam dan menit.
-            if (pattern === signedPatterns[1]) {
-                hourRaw = match[2];
-                minuteRaw = match[3];
-            }
-
-            const parsed = lcj2ParseGmtHourMinute(match[1], hourRaw, minuteRaw);
+            const parsed = lcstParseGmtHourMinute(match[1], match[2], match[3] || '');
             if (parsed != null) return parsed;
         }
 
-        // Sebagian screenshot menulis "GMT 8" tanpa tanda +.
-        // Tanpa tanda, angka dianggap offset positif.
+        // Beberapa tampilan menulis "GMT 8" tanpa tanda plus.
         const unsigned = value.match(/\b(?:GMT|UTC)\s*(0?\d|1[0-4])(?:\s*[:.]\s*([0-5]\d))?\b/i);
         if (unsigned) {
-            const parsed = lcj2ParseGmtHourMinute('+', unsigned[1], unsigned[2] || '');
+            const parsed = lcstParseGmtHourMinute('+', unsigned[1], unsigned[2] || '');
             if (parsed != null) return parsed;
         }
-
-        // Bentuk singkat seperti "GMT+7H" atau "UTC-5H".
-        const hourSuffix = value.match(/\b(?:GMT|UTC)\s*([+-])\s*(\d{1,2})\s*H\b/i);
-        if (hourSuffix) {
-            const parsed = lcj2ParseGmtHourMinute(hourSuffix[1], hourSuffix[2], '');
-            if (parsed != null) return parsed;
-        }
-
         return null;
     }
 
-    function lcj2DetectImageGmtOffsetMinutes(rawText) {
-        const explicit = lcj2FindExplicitGmtOffsetMinutes(rawText);
-        return explicit == null ? 7 * 60 : explicit;
+    // Alias kompatibel dengan alur script pertama.
+    function lcstParseGmtOffsetMinutes(rawText) {
+        return lcstFindExplicitGmtOffsetMinutes(rawText);
     }
 
-    function lcj2GmtOffsetLabel(offsetMinutes) {
+    function lcstGmtOffsetLabel(offsetMinutes) {
         const total = Number(offsetMinutes);
         const sign = total < 0 ? '-' : '+';
         const absolute = Math.abs(total);
@@ -4261,17 +4754,24 @@
         return 'GMT' + sign + hour + (minute ? ':' + String(minute).padStart(2, '0') : '');
     }
 
-    function lcj2ApplySourceGmtOffset(timestamp, sourceOffsetMinutes, evidenceText) {
+    function lcstIndonesianZoneLabel(offsetMinutes) {
+        const name = ({420:'WIB',480:'WITA',540:'WIT'})[offsetMinutes];
+        return (name ? name + '/' : '') + lcstGmtOffsetLabel(offsetMinutes);
+    }
+
+    function lcstNormalizeTimestampToWib(timestamp, sourceGmtOffsetMinutes, evidenceText) {
         if (!timestamp || !timestamp.hasTime) return timestamp;
+        const detectedOffset = lcstFindExplicitGmtOffsetMinutes(timestamp.rawText || '');
+        const suppliedOffset = sourceGmtOffsetMinutes != null &&
+            lcstIsValidGmtOffsetMinutes(Number(sourceGmtOffsetMinutes))
+            ? Number(sourceGmtOffsetMinutes)
+            : null;
+        const sourceOffset = suppliedOffset != null
+            ? suppliedOffset
+            : (detectedOffset != null ? detectedOffset : LCST_HISTORY_DEFAULT_GMT_OFFSET_MINUTES);
+        const timezoneExplicit = suppliedOffset != null || detectedOffset != null;
 
-        const targetOffsetMinutes = 7 * 60;
-        const explicitOffset = Number(sourceOffsetMinutes);
-        const safeSourceOffset = lcj2IsValidGmtOffsetMinutes(explicitOffset)
-            ? explicitOffset
-            : targetOffsetMinutes;
-
-        // Selalu hitung ulang dari waktu sebelum konversi agar pengurangan zona
-        // tidak pernah diterapkan dua kali.
+        // Gunakan waktu asli agar konversi zona tidak pernah diterapkan dua kali.
         const base = timestamp.originalTimestamp || {
             year: timestamp.year,
             month: timestamp.month,
@@ -4280,67 +4780,72 @@
             minute: timestamp.minute,
             second: timestamp.second || 0
         };
-
         const shiftedMs = Date.UTC(
-            base.year,
-            base.month - 1,
-            base.day,
-            base.hour,
-            base.minute,
-            base.second || 0
-        ) + (targetOffsetMinutes - safeSourceOffset) * 60000;
+            Number(base.year),
+            Number(base.month) - 1,
+            Number(base.day),
+            Number(base.hour),
+            Number(base.minute),
+            Number(base.second) || 0
+        ) + (LCST_TARGET_GMT_OFFSET_MINUTES - sourceOffset) * 60000;
+        const targetWall = new Date(shiftedMs);
+        const year = targetWall.getUTCFullYear();
+        const month = targetWall.getUTCMonth() + 1;
+        const day = targetWall.getUTCDate();
+        const hour = targetWall.getUTCHours();
+        const minute = targetWall.getUTCMinutes();
+        const second = targetWall.getUTCSeconds();
+        const valid = lcstValidDateParts(year, month, day);
+        if (!valid) return timestamp;
 
-        const shifted = new Date(shiftedMs);
-        timestamp.year = shifted.getUTCFullYear();
-        timestamp.month = shifted.getUTCMonth() + 1;
-        timestamp.day = shifted.getUTCDate();
-        timestamp.hour = shifted.getUTCHours();
-        timestamp.minute = shifted.getUTCMinutes();
-        timestamp.second = shifted.getUTCSeconds();
-        timestamp.minutesOfDay = timestamp.hour * 60 + timestamp.minute;
-        timestamp.dateKey = String(timestamp.year).padStart(4, '0') +
-            String(timestamp.month).padStart(2, '0') +
-            String(timestamp.day).padStart(2, '0');
-
-        timestamp.originalTimestamp = {
-            year: base.year,
-            month: base.month,
-            day: base.day,
-            hour: base.hour,
-            minute: base.minute,
-            second: base.second || 0
+        return {
+            ...timestamp,
+            dateKey: valid.dateKey,
+            year, month, day, hour, minute, second,
+            minutesOfDay: hour * 60 + minute,
+            hasTime: true,
+            originalTimestamp: {
+                year: Number(base.year),
+                month: Number(base.month),
+                day: Number(base.day),
+                hour: Number(base.hour),
+                minute: Number(base.minute),
+                second: Number(base.second) || 0
+            },
+            sourceDateKey: String(base.year).padStart(4, '0') + String(base.month).padStart(2, '0') + String(base.day).padStart(2, '0'),
+            sourceGmtOffsetMinutes: sourceOffset,
+            sourceGmtLabel: lcstIndonesianZoneLabel(sourceOffset),
+            targetGmtOffsetMinutes: LCST_TARGET_GMT_OFFSET_MINUTES,
+            normalizedGmtLabel: 'GMT+7',
+            timezoneAdjusted: sourceOffset !== LCST_TARGET_GMT_OFFSET_MINUTES,
+            timezoneExplicit,
+            timezoneEvidence: String(evidenceText || timestamp.rawText || '').trim().slice(0, 300)
         };
-        timestamp.sourceGmtOffsetMinutes = safeSourceOffset;
-        timestamp.sourceGmtLabel = lcj2GmtOffsetLabel(safeSourceOffset);
-        timestamp.normalizedGmtLabel = 'GMT+7';
-        timestamp.timezoneAdjusted = safeSourceOffset !== targetOffsetMinutes;
-        timestamp.timezoneExplicit = true;
-        timestamp.timezoneEvidence = String(evidenceText || '').trim().slice(0, 300);
-
-        return timestamp;
     }
 
-    function lcj2NormalizeTimestampToGmt7(timestamp, rawText) {
-        if (!timestamp || !timestamp.hasTime) {
-            if (timestamp) {
-                timestamp.sourceGmtOffsetMinutes = 7 * 60;
-                timestamp.sourceGmtLabel = 'GMT+7';
-                timestamp.normalizedGmtLabel = 'GMT+7';
-                timestamp.timezoneAdjusted = false;
-                timestamp.timezoneExplicit = false;
-            }
-            return timestamp;
-        }
-
-        const explicitOffset = lcj2FindExplicitGmtOffsetMinutes(rawText);
-        const sourceOffsetMinutes = explicitOffset == null ? 7 * 60 : explicitOffset;
-
-        lcj2ApplySourceGmtOffset(timestamp, sourceOffsetMinutes, rawText);
-        timestamp.timezoneExplicit = explicitOffset != null;
-        return timestamp;
+    function lcstApplySourceGmtOffset(timestamp, sourceGmtOffsetMinutes, evidenceText) {
+        return lcstNormalizeTimestampToWib(timestamp, sourceGmtOffsetMinutes, evidenceText);
     }
 
-    function lcj2MakeImageTimestamp(dateInfo, clockInfo, rawText, source, confidence) {
+    function lcstLooksLikeTimestampText(rawText) {
+        const text = lcstFixOcrNumericText(rawText || '');
+        const hasClock = /\b[0-2]?\d\s*[:.]\s*[0-5]\d(?:\s*[:.]\s*[0-5]\d)?\b/.test(text);
+        const hasDate = /\b(?:20\d{2}\s*[-/.]\s*[01]?\d\s*[-/.]\s*[0-3]?\d|[01]?\d\s*[-/.]\s*[0-3]?\d|[0-3]?\d\s*[-/.]\s*[01]?\d)\b/.test(text);
+        return hasClock && hasDate;
+    }
+
+    function lcstInferYearForMonthDay(month, day, nowWib) {
+        const now = nowWib || lcstGetWibParts(lcstNowDate());
+        let year = now.year;
+        let valid = lcstValidDateParts(year, month, day);
+        if (!valid) return null;
+        const candidateDay = Math.floor(Date.UTC(year, month - 1, day) / 86400000);
+        const todayDay = Math.floor(Date.UTC(now.year, now.month - 1, now.day) / 86400000);
+        if (candidateDay > todayDay + 2) year -= 1;
+        return year;
+    }
+
+    function lcstMakeImageTimestamp(dateInfo, clockInfo, rawText, source, confidence, sourceGmtOffsetMinutes) {
         if (!dateInfo) return null;
         const clock = clockInfo || { hour: null, minute: null, second: null, minutesOfDay: null };
         const timestamp = {
@@ -4354,230 +4859,160 @@
             minutesOfDay: Number.isInteger(clock.minutesOfDay) ? clock.minutesOfDay : null,
             hasTime: Number.isInteger(clock.hour) && Number.isInteger(clock.minute),
             rawText: String(rawText || '').trim().slice(0, 900),
-            source: source || 'image-2-or-4-ocr',
+            source: source || 'image-2-ocr',
             confidence: Number(confidence) || 0
         };
-        return lcj2NormalizeTimestampToGmt7(timestamp, rawText);
+        return timestamp.hasTime
+            ? lcstNormalizeTimestampToWib(timestamp, sourceGmtOffsetMinutes)
+            : timestamp;
     }
 
-    function lcj2ParseImageTimestampText(rawText, fallbackPeriod, nowValue) {
+    // V7.6 FAST TRUSTED DATE: delapan digit tanggal sudah tersedia di periode
+    // 19 digit yang terkunci pada dua bulatan. OCR timestamp tidak perlu membaca
+    // tanggal yang sama lagi; cukup ambil HH:mm[:ss] dari crop baris waktu.
+    function lcstParseClockWithTrustedPeriod(rawText, fallbackPeriod, source, confidence, sourceGmtOffsetMinutes) {
+        const dateInfo = lcstParseClaimDateFromPeriod(fallbackPeriod);
+        if (!dateInfo) return null;
+
         const original = String(rawText == null ? '' : rawText)
             .replace(/\r/g, '\n')
             .replace(/[\t ]+/g, ' ')
-            .replace(/\n+/g, '\n')
             .trim();
-        const numeric = lcj2FixOcrNumericText(original);
-        const nowWib = lcj2GetWibParts(nowValue || lcj2NowDate());
-        const candidates = [];
+        const numeric = lcstFixOcrNumericText(original);
+        // Jalur cepat mensyaratkan ':' pertama agar tanggal seperti 08.28 tidak
+        // salah dianggap 08:28. Format bertitik tetap ditangani parser lengkap.
+        let match = /\b([0-2]?\d)\s*:\s*([0-5]\d)(?:\s*[:.]\s*([0-5]\d))?\s*(A\.?M\.?|P\.?M\.?)?/i.exec(numeric);
+        let clock = match
+            ? lcstParseClockParts(match[1], match[2], match[3], match[4])
+            : null;
 
-        const addCandidate = (yearRaw, monthRaw, dayRaw, hourRaw, minuteRaw, secondRaw, ampmRaw, index, source) => {
-            let year = Number(yearRaw);
-            if (year >= 0 && year < 100) year += year >= 70 ? 1900 : 2000;
-            const dateInfo = lcj2ValidDateParts(year, Number(monthRaw), Number(dayRaw));
-            if (!dateInfo) return;
-            const clock = hourRaw == null || minuteRaw == null
-                ? null
-                : lcj2ParseClockParts(hourRaw, minuteRaw, secondRaw, ampmRaw);
-            if (hourRaw != null && minuteRaw != null && !clock) return;
-            const explicitYear = String(yearRaw == null ? '' : yearRaw).replace(/\D/g, '').length >= 4;
-            candidates.push({
-                timestamp: lcj2MakeImageTimestamp(dateInfo, clock, original, source, 0),
-                index: Number(index) || 0,
-                score: (clock ? 45 : 15) + (/image-2-row/.test(source) ? 18 : 0) + (explicitYear ? 95 : 0)
-            });
-        };
-
-        const timeTail = '(?:[T,\\s]+([0-2]?\\d)\\s*[:.]\\s*([0-5]\\d)(?:\\s*[:.]\\s*([0-5]\\d))?\\s*(A\\.?M\\.?|P\\.?M\\.?)?)?';
-        let match;
-        let re = new RegExp('\\b(20\\d{2})\\s*[-/.]\\s*([01]?\\d)\\s*[-/.]\\s*([0-3]?\\d)' + timeTail, 'gi');
-        while ((match = re.exec(numeric))) addCandidate(match[1], match[2], match[3], match[4], match[5], match[6], match[7], match.index, 'image-2-ocr-ymd');
-
-        re = new RegExp('\\b([0-3]?\\d)\\s*[-/.]\\s*([01]?\\d)\\s*[-/.]\\s*(20\\d{2}|\\d{2})' + timeTail, 'gi');
-        while ((match = re.exec(numeric))) addCandidate(match[3], match[2], match[1], match[4], match[5], match[6], match[7], match.index, 'image-2-ocr-dmy');
-
-        const monthNames = Object.keys(LCJ2_MONTH_NUMBER).sort((a, b) => b.length - a.length).join('|');
-        re = new RegExp('\\b([0-3]?\\d)\\s+(?:' + monthNames + ')\\s+(20\\d{2}|\\d{2})' + timeTail, 'gi');
-        while ((match = re.exec(original.toUpperCase()))) {
-            const monthWordMatch = String(match[0]).toUpperCase().match(new RegExp('(' + monthNames + ')'));
-            const month = monthWordMatch ? LCJ2_MONTH_NUMBER[monthWordMatch[1]] : null;
-            if (month) addCandidate(match[2], month, match[1], match[3], match[4], match[5], match[6], match.index, 'image-2-ocr-month');
-        }
-
-        // Format tanpa tahun, misalnya 31/07 23:58. Tahun dipilih yang paling dekat dengan hari ini.
-        re = /\b([0-3]?\d)\s*[-/.]\s*([01]?\d)(?!\s*[-/.]\s*\d{2,4})(?:\s+|\s*[,|-]\s*)([0-2]?\d)\s*[:.]\s*([0-5]\d)(?:\s*[:.]\s*([0-5]\d))?\s*(A\.?M\.?|P\.?M\.?)?/gi;
-        while ((match = re.exec(numeric))) {
-            const inferredYear = lcj2InferYearForMonthDay(Number(match[2]), Number(match[1]), nowWib);
-            if (inferredYear) addCandidate(inferredYear, match[2], match[1], match[3], match[4], match[5], match[6], match.index, 'image-2-ocr-dm');
-        }
-
-        // Format tanpa tahun MM/DD HH:MM, misalnya 07/31 16:33 atau 07/31, 16:33.
-        re = /\b([01]?\d)\s*[-/.]\s*([0-3]?\d)(?!\s*[-/.]\s*\d{2,4})(?:\s+|\s*[,|-]\s*)([0-2]?\d)\s*[:.]\s*([0-5]\d)(?:\s*[:.]\s*([0-5]\d))?\s*(A\.?M\.?|P\.?M\.?)?/gi;
-        while ((match = re.exec(numeric))) {
-            const inferredYear = lcj2InferYearForMonthDay(Number(match[1]), Number(match[2]), nowWib);
-            if (inferredYear) addCandidate(inferredYear, match[1], match[2], match[3], match[4], match[5], match[6], match.index, 'image-2-ocr-md');
-        }
-
-        // Format waktu lebih dulu, lalu tanggal di baris/kolom berikutnya.
-        // Mendukung susunan seperti "16:33:25 07/31" yang umum pada screenshot Riwayat Permainan.
-        re = /\b([0-2]?\d)\s*[:.]\s*([0-5]\d)(?:\s*[:.]\s*([0-5]\d))?\s*(A\.?M\.?|P\.?M\.?)?(?:\s+|\s*[,|-]\s*)([01]?\d)\s*[-/.]\s*([0-3]?\d)\b(?!\s*[-/.]\s*\d{2,4})/gi;
-        while ((match = re.exec(numeric))) {
-            const inferredYear = lcj2InferYearForMonthDay(Number(match[5]), Number(match[6]), nowWib);
-            if (inferredYear) addCandidate(inferredYear, match[5], match[6], match[1], match[2], match[3], match[4], match.index, 'image-2-ocr-time-md');
-        }
-        re = /\b([0-2]?\d)\s*[:.]\s*([0-5]\d)(?:\s*[:.]\s*([0-5]\d))?\s*(A\.?M\.?|P\.?M\.?)?(?:\s+|\s*[,|-]\s*)([0-3]?\d)\s*[-/.]\s*([01]?\d)\b(?!\s*[-/.]\s*\d{2,4})/gi;
-        while ((match = re.exec(numeric))) {
-            const inferredYear = lcj2InferYearForMonthDay(Number(match[6]), Number(match[5]), nowWib);
-            if (inferredYear) addCandidate(inferredYear, match[6], match[5], match[1], match[2], match[3], match[4], match.index, 'image-2-ocr-time-dm');
-        }
-
-        // Bila tanggal dan jam terpisah oleh baris/label, gabungkan tanggal terbaik dengan jam terdekat.
-        const dateOnly = [];
-        const addDateOnly = (yearRaw, monthRaw, dayRaw, index) => {
-            const explicitYear = String(yearRaw == null ? '' : yearRaw).replace(/\D/g, '').length >= 4;
-            let year = Number(yearRaw);
-            if (year >= 0 && year < 100) year += year >= 70 ? 1900 : 2000;
-            const dateInfo = lcj2ValidDateParts(year, Number(monthRaw), Number(dayRaw));
-            if (dateInfo) dateOnly.push({ dateInfo, index, explicitYear });
-        };
-        const addDateOnlyNoYear = (monthRaw, dayRaw, index) => {
-            const inferredYear = lcj2InferYearForMonthDay(Number(monthRaw), Number(dayRaw), nowWib);
-            const dateInfo = inferredYear ? lcj2ValidDateParts(inferredYear, Number(monthRaw), Number(dayRaw)) : null;
-            if (dateInfo) dateOnly.push({ dateInfo, index, explicitYear: false });
-        };
-        re = /\b(20\d{2})\s*[-/.]\s*([01]?\d)\s*[-/.]\s*([0-3]?\d)\b/g;
-        while ((match = re.exec(numeric))) addDateOnly(match[1], match[2], match[3], match.index);
-        re = /\b([0-3]?\d)\s*[-/.]\s*([01]?\d)\s*[-/.]\s*(20\d{2}|\d{2})\b/g;
-        while ((match = re.exec(numeric))) addDateOnly(match[3], match[2], match[1], match.index);
-        // Format tanpa tahun pada kolom waktu game sering memakai MM/DD, mis. 07/31.
-        re = /\b([01]?\d)\s*[-/.]\s*([0-3]?\d)\b(?!\s*[-/.]\s*\d{2,4})/g;
-        while ((match = re.exec(numeric))) addDateOnlyNoYear(match[1], match[2], match.index);
-        // Tambahkan juga pembacaan DD/MM agar format lokal tetap terbaca bila muncul.
-        re = /\b([0-3]?\d)\s*[-/.]\s*([01]?\d)\b(?!\s*[-/.]\s*\d{2,4})/g;
-        while ((match = re.exec(numeric))) addDateOnlyNoYear(match[2], match[1], match.index);
-
-        const times = [];
-        re = /\b([0-2]?\d)\s*[:.]\s*([0-5]\d)(?:\s*[:.]\s*([0-5]\d))?\s*(A\.?M\.?|P\.?M\.?)?/gi;
-        while ((match = re.exec(numeric))) {
-            const clock = lcj2ParseClockParts(match[1], match[2], match[3], match[4]);
-            if (clock) times.push({ clock, index: match.index });
-        }
-        dateOnly.forEach((dateItem) => {
-            const nearest = times.slice().sort((a, b) => Math.abs(a.index - dateItem.index) - Math.abs(b.index - dateItem.index))[0];
-            if (nearest && Math.abs(nearest.index - dateItem.index) <= 120) {
-                candidates.push({
-                    timestamp: lcj2MakeImageTimestamp(dateItem.dateInfo, nearest.clock, original, 'image-2-ocr-split', 0),
-                    index: dateItem.index,
-                    score: 52 - Math.min(20, Math.floor(Math.abs(nearest.index - dateItem.index) / 8)) + (dateItem.explicitYear ? 95 : 0)
-                });
+        // Cadangan aman bila tanda ':' hilang: hanya terima satu token 6 digit
+        // HHMMSS. Token 4 digit sengaja tidak dipakai karena dapat tertukar MMDD.
+        if (!clock) {
+            const rows = original.split(/\n+/)
+                .map((line) => String(line || '').replace(/\D/g, ''))
+                .filter((digits) => digits.length === 6);
+            for (const digits of rows) {
+                clock = lcstParseClockParts(
+                    digits.slice(0, 2),
+                    digits.slice(2, 4),
+                    digits.slice(4, 6),
+                    ''
+                );
+                if (clock) break;
             }
-        });
-
-
-        // Cadangan ketika Tesseract menghilangkan tanda ':' '/' '-'.
-        // Contoh gambar Riwayat Permainan dapat terbaca sebagai dua baris:
-        // 163325 dan 0731, atau 1600 dan 31072025.
-        const compactRows = original.split(/\n+/).map((line, index) => ({
-            index,
-            digits: String(line || '').replace(/\D/g, '')
-        })).filter((item) => item.digits.length >= 4 && item.digits.length <= 12);
-        const compactDates = [];
-        const compactTimes = [];
-
-        const pushCompactDate = (year, month, day, index, source) => {
-            const valid = lcj2ValidDateParts(Number(year), Number(month), Number(day));
-            if (valid) compactDates.push({ dateInfo: valid, index, source });
-        };
-        const pushCompactDateNoYear = (month, day, index, source) => {
-            const year = lcj2InferYearForMonthDay(Number(month), Number(day), nowWib);
-            if (year) pushCompactDate(year, month, day, index, source);
-        };
-        const pushCompactTime = (hour, minute, second, index, source) => {
-            const clock = lcj2ParseClockParts(hour, minute, second, '');
-            if (clock) compactTimes.push({ clock, index, source });
-        };
-
-        compactRows.forEach((item) => {
-            const d = item.digits;
-            if (d.length === 4) {
-                pushCompactTime(d.slice(0, 2), d.slice(2, 4), '0', item.index, 'image-2-compact-hm');
-                pushCompactDateNoYear(d.slice(0, 2), d.slice(2, 4), item.index, 'image-2-compact-md');
-                pushCompactDateNoYear(d.slice(2, 4), d.slice(0, 2), item.index, 'image-2-compact-dm');
-            } else if (d.length === 6) {
-                pushCompactTime(d.slice(0, 2), d.slice(2, 4), d.slice(4, 6), item.index, 'image-2-compact-hms');
-            } else if (d.length === 8) {
-                if (/^20\d{6}$/.test(d)) pushCompactDate(d.slice(0, 4), d.slice(4, 6), d.slice(6, 8), item.index, 'image-2-compact-ymd');
-                pushCompactDate(d.slice(4, 8), d.slice(2, 4), d.slice(0, 2), item.index, 'image-2-compact-dmy');
-                pushCompactDate(d.slice(4, 8), d.slice(0, 2), d.slice(2, 4), item.index, 'image-2-compact-mdy');
-            } else if (d.length === 10) {
-                // HHMMSS + MMDD atau MMDD + HHMMSS.
-                pushCompactTime(d.slice(0, 2), d.slice(2, 4), d.slice(4, 6), item.index, 'image-2-compact-hms-md');
-                pushCompactDateNoYear(d.slice(6, 8), d.slice(8, 10), item.index, 'image-2-compact-hms-md');
-                pushCompactDateNoYear(d.slice(0, 2), d.slice(2, 4), item.index, 'image-2-compact-md-hms');
-                pushCompactTime(d.slice(4, 6), d.slice(6, 8), d.slice(8, 10), item.index, 'image-2-compact-md-hms');
-            } else if (d.length === 12) {
-                // HHMM + DDMMYYYY / MMDDYYYY atau tanggal 8 digit + HHMM.
-                pushCompactTime(d.slice(0, 2), d.slice(2, 4), '0', item.index, 'image-2-compact-hm-date');
-                pushCompactDate(d.slice(8, 12), d.slice(6, 8), d.slice(4, 6), item.index, 'image-2-compact-hm-dmy');
-                pushCompactDate(d.slice(8, 12), d.slice(4, 6), d.slice(6, 8), item.index, 'image-2-compact-hm-mdy');
-                if (/^20\d{6}/.test(d)) {
-                    pushCompactDate(d.slice(0, 4), d.slice(4, 6), d.slice(6, 8), item.index, 'image-2-compact-ymd-hm');
-                    pushCompactTime(d.slice(8, 10), d.slice(10, 12), '0', item.index, 'image-2-compact-ymd-hm');
-                }
-                pushCompactDate(d.slice(4, 8), d.slice(2, 4), d.slice(0, 2), item.index, 'image-2-compact-dmy-hm');
-                pushCompactTime(d.slice(8, 10), d.slice(10, 12), '0', item.index, 'image-2-compact-dmy-hm');
-            }
-        });
-
-        compactDates.forEach((dateItem) => {
-            const combinedSource = /(?:hms-md|md-hms|hm-dmy|hm-mdy|ymd-hm|dmy-hm)/.test(dateItem.source);
-            const timePool = compactTimes.filter((timeItem) => combinedSource || timeItem.index !== dateItem.index);
-            const nearest = timePool.sort((a, b) => Math.abs(a.index - dateItem.index) - Math.abs(b.index - dateItem.index))[0];
-            if (!nearest || Math.abs(nearest.index - dateItem.index) > 3) return;
-            const explicitYear = /(?:ymd|dmy|mdy)/.test(dateItem.source) && !/(?:compact-md$|compact-dm$)/.test(dateItem.source);
-            candidates.push({
-                timestamp: lcj2MakeImageTimestamp(
-                    dateItem.dateInfo,
-                    nearest.clock,
-                    original,
-                    dateItem.source + '+' + nearest.source,
-                    0
-                ),
-                index: Math.min(dateItem.index, nearest.index),
-                score: 40 - Math.abs(nearest.index - dateItem.index) * 4 + (explicitYear ? 95 : 0)
-            });
-        });
-
-        if (candidates.length) {
-            const todayDay = Math.floor(Date.UTC(nowWib.year, nowWib.month - 1, nowWib.day) / 86400000);
-            candidates.forEach((item) => {
-                const ts = item.timestamp;
-                const itemDay = Math.floor(Date.UTC(ts.year, ts.month - 1, ts.day) / 86400000);
-                const dayDistance = todayDay - itemDay;
-                if (dayDistance >= 0 && dayDistance <= 3) item.score += 30;
-                else if (dayDistance < -1) item.score -= 45;
-                if (ts.hasTime) item.score += 12;
-            });
-            candidates.sort((a, b) => (b.score - a.score) || (a.index - b.index));
-            return candidates[0].timestamp;
         }
 
-        const fallbackDate = lcj2ParseClaimDateFromPeriod(fallbackPeriod);
-        if (fallbackDate) {
-            return lcj2MakeImageTimestamp(fallbackDate, null, original, 'period-date-fallback', 0);
-        }
-        return null;
+        if (!clock) return null;
+        return lcstMakeImageTimestamp(
+            dateInfo,
+            clock,
+            original,
+            source || 'image-2-time-with-period-date',
+            Number(confidence) || 0,
+            sourceGmtOffsetMinutes
+        );
     }
 
-    function lcj2FormatClaimDate(dateInfo) {
+    function lcstParseImageTimestampText(rawText, fallbackPeriod, nowValue, sourceGmtOffsetMinutes) {
+        const original = String(rawText || '').replace(/\r/g, '').trim();
+        const text = lcstFixOcrNumericText(original).replace(/[\t ]+/g, ' ');
+        if (!text) return null;
+        const now = lcstGetWibParts(nowValue || lcstNowDate());
+        const periodDate = lcstParseClaimDateFromPeriod(fallbackPeriod);
+        const anchor = periodDate || now;
+        const anchorMs = Date.UTC(anchor.year, anchor.month - 1, anchor.day);
+        const dates = [];
+        const spans = [];
+        const yearFor = (month, day) => {
+            const options = [anchor.year - 1, anchor.year, anchor.year + 1]
+                .map(year => lcstValidDateParts(year, month, day)).filter(Boolean);
+            options.sort((a, b) => Math.abs(Date.UTC(a.year, a.month - 1, a.day) - anchorMs) -
+                Math.abs(Date.UTC(b.year, b.month - 1, b.day) - anchorMs));
+            return options[0] || null;
+        };
+        const addDate = (match, year, month, day, explicitYear, priority) => {
+            const date = explicitYear ? lcstValidDateParts(year, month, day) : yearFor(month, day);
+            if (date) dates.push({date, text:match[0], index: match.index, end: match.index + match[0].length, explicitYear, priority});
+        };
+        let m;
+        let re = /\b(20\d{2})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{1,2})\b/g;
+        while ((m = re.exec(text))) {
+            spans.push([m.index, re.lastIndex]);
+            addDate(m, +m[1], +m[2], +m[3], true, 100);
+        }
+        re = /\b(\d{1,2})\s*([-/.])\s*(\d{1,2})\s*\2\s*(20\d{2}|\d{2})\b/g;
+        while ((m = re.exec(text))) {
+            if (spans.some(([a,b]) => m.index < b && re.lastIndex > a)) continue;
+            spans.push([m.index, re.lastIndex]);
+            const year = m[4].length === 2 ? 2000 + +m[4] : +m[4];
+            // Tanggal lengkap lokal DD/MM/YYYY; MM/DD/YYYY bila DD/MM tidak valid.
+            if (+m[3] <= 12) addDate(m, year, +m[3], +m[1], true, 100);
+            else addDate(m, year, +m[1], +m[3], true, 100);
+        }
+        const names = Object.keys(LCST_MONTH_NUMBER).sort((a,b) => b.length-a.length).join('|');
+        re = new RegExp('\\b(\\d{1,2})\\s+(' + names + ')\\s+(20\\d{2})\\b', 'g');
+        while ((m = re.exec(text))) {
+            spans.push([m.index, re.lastIndex]);
+            addDate(m, +m[3], LCST_MONTH_NUMBER[m[2]], +m[1], true, 100);
+        }
+        re = /\b(\d{1,2})\s*[-/.]\s*(\d{1,2})\b/g;
+        while ((m = re.exec(text))) {
+            if (spans.some(([a,b]) => m.index < b && re.lastIndex > a)) continue;
+            // Jangan membaca pecahan dari tanggal lengkap yang rusak.
+            if (/\d\s*[-/.]\s*$/.test(text.slice(0,m.index)) || /^\s*[-/.]\s*\d/.test(text.slice(re.lastIndex))) continue;
+            // Kolom history tanpa tahun menggunakan MM/DD; DD/MM jika bulan > 12.
+            const month = +m[1] > 12 ? +m[2] : +m[1];
+            const day = +m[1] > 12 ? +m[1] : +m[2];
+            addDate(m, 0, month, day, false, 50);
+        }
+        const clocks = [];
+        re = /\b([0-2]?\d)\s*:\s*([0-5]\d)(?:\s*[:.]\s*([0-5]\d))?\s*(A\.?M\.?|P\.?M\.?)?/gi;
+        while ((m = re.exec(text))) {
+            const clock = lcstParseClockParts(m[1],m[2],m[3],m[4]);
+            if (clock) clocks.push({clock,index:m.index,end:re.lastIndex});
+        }
+        // Jam bertitik hanya dengan detik lengkap agar 09.10 tidak dikira jam.
+        re = /\b([0-2]?\d)\s*\.\s*([0-5]\d)\s*\.\s*([0-5]\d)\b(?!\d)/g;
+        while ((m = re.exec(text))) {
+            if (dates.some(d => m.index < d.end && re.lastIndex > d.index && d.explicitYear)) continue;
+            const clock = lcstParseClockParts(m[1],m[2],m[3],'');
+            if (clock) clocks.push({clock,index:m.index,end:re.lastIndex});
+        }
+        const candidates = [];
+        for (const date of dates) for (const time of clocks) {
+            if (time.index < date.end && time.end > date.index) continue;
+            const gap = time.index >= date.end ? text.slice(date.end,time.index) : text.slice(time.end,date.index);
+            // Hanya baris bersebelahan/label waktu, bukan angka transaksi lain.
+            if (gap.length > 32 || (gap.match(/\n/g)||[]).length > 2 || /\d/.test(gap)) continue;
+            if (!/^[\s,T|:;()\-]*(?:(?:JAM|WAKTU|TIME|TANGGAL|DATE)[\s:;()\-]*)?$/i.test(gap)) continue;
+            const start = Math.min(date.index,time.index);
+            const end = Math.max(date.end,time.end);
+            const evidence = text.slice(start,end);
+            const ts = lcstMakeImageTimestamp(date.date,time.clock,evidence,'image-row-date-time',0,sourceGmtOffsetMinutes);
+            ts.dateEvidence = 'image';
+            ts.dateText = date.text;
+            ts.yearInferred = !date.explicitYear;
+            candidates.push({ts, score:date.priority-gap.length, index:start});
+        }
+        candidates.sort((a,b) => b.score-a.score || a.index-b.index);
+        if (!candidates.length) return null;
+        // Satu crop tidak boleh memilih otomatis di antara beberapa transaksi.
+        const distinct = new Set(candidates.map(x => x.ts.sourceDateKey+'|'+x.ts.originalTimestamp.hour+':'+x.ts.originalTimestamp.minute+':'+x.ts.originalTimestamp.second));
+        if (distinct.size > 1) return null;
+        return candidates[0].ts;
+    }
+
+    function lcstFormatClaimDate(dateInfo) {
         if (!dateInfo) return '-';
         return String(dateInfo.day).padStart(2, '0') + '/' +
             String(dateInfo.month).padStart(2, '0') + '/' +
             String(dateInfo.year);
     }
 
-    function lcj2FormatClaimTimestamp(timestamp) {
+    function lcstFormatClaimTimestamp(timestamp) {
         if (!timestamp) return '-';
-        const dateText = lcj2FormatClaimDate(timestamp);
+        const dateText = lcstFormatClaimDate(timestamp);
         if (!timestamp.hasTime) return dateText + ' • jam tidak terbaca';
         const base = dateText + ' ' +
             String(timestamp.hour).padStart(2, '0') + ':' +
@@ -4587,17 +5022,17 @@
             const originalText = Number.isInteger(original.hour) && Number.isInteger(original.minute)
                 ? String(original.hour).padStart(2, '0') + ':' + String(original.minute).padStart(2, '0')
                 : '-';
-            return base + ' GMT+7 (asli ' + originalText + ' ' + timestamp.sourceGmtLabel + ')';
+            return base + ' WIB/GMT+7 (asli ' + originalText + ' ' + (timestamp.sourceGmtLabel || '-') + ')';
         }
-        return base + ' GMT+7' + (timestamp.timezoneExplicit ? '' : ' • zona tidak terbaca');
+        return base + ' WIB/GMT+7' + (timestamp.timezoneExplicit ? '' : ' • zona tidak terbaca');
     }
 
-    function lcj2FormatClaimDeadline(status) {
+    function lcstFormatClaimDeadline(status) {
         if (!status || !status.deadlineDate) return '-';
-        return lcj2FormatClaimDate(status.deadlineDate) + ' 02.00 WIB';
+        return lcstFormatClaimDate(status.deadlineDate) + ' 02.00 WIB';
     }
 
-    function lcj2UtcDayToDateInfo(utcDay) {
+    function lcstUtcDayToDateInfo(utcDay) {
         const value = new Date(Number(utcDay) * 86400000);
         return {
             year: value.getUTCFullYear(),
@@ -4609,34 +5044,21 @@
         };
     }
 
-    function lcj2IsNightClaimWindow(nowWib) {
-        if (!nowWib) return false;
-        return nowWib.minutesOfDay >= LCJ2_NIGHT_CLAIM_START_MINUTES ||
-            nowWib.minutesOfDay < LCJ2_NIGHT_CLAIM_END_MINUTES;
-    }
-
-    function lcj2GetNightOperationalUtcDay(nowWib) {
-        const todayUtcDay = Math.floor(Date.UTC(nowWib.year, nowWib.month - 1, nowWib.day) / 86400000);
-        return nowWib.minutesOfDay < LCJ2_NIGHT_CLAIM_END_MINUTES
-            ? todayUtcDay - 1
-            : todayUtcDay;
-    }
-
-    function lcj2ClaimStatusMessage(status) {
+    function lcstClaimStatusMessage(status) {
         if (!status) return 'Tidak dapat claim.';
         return status.reason || 'Tidak dapat claim karena tidak memenuhi aturan waktu.';
     }
 
-    function lcj2FormatCurrentWib(nowValue) {
-        const nowWib = lcj2GetWibParts(nowValue || lcj2NowDate());
-        return lcj2FormatClaimDate(nowWib) + ' ' +
+    function lcstFormatCurrentWib(nowValue) {
+        const nowWib = lcstGetWibParts(nowValue || lcstNowDate());
+        return lcstFormatClaimDate(nowWib) + ' ' +
             String(nowWib.hour).padStart(2, '0') + ':' +
             String(nowWib.minute).padStart(2, '0') + ':' +
             String(nowWib.second).padStart(2, '0') + ' WIB';
     }
 
-    function lcj2CheckClaimDeadline(imageTimestamp, fallbackPeriod, nowValue) {
-        // Kompatibilitas panggilan lama: lcj2CheckClaimDeadline(period, nowDate)
+    function lcstCheckClaimDeadline(imageTimestamp, fallbackPeriod, nowValue) {
+        // Kompatibilitas panggilan lama: lcstCheckClaimDeadline(period, nowDate)
         if (typeof imageTimestamp === 'string') {
             if (fallbackPeriod instanceof Date || typeof fallbackPeriod === 'number') {
                 nowValue = fallbackPeriod;
@@ -4649,10 +5071,9 @@
             ? imageTimestamp
             : null;
         const claimDate = timestamp
-            ? lcj2ValidDateParts(timestamp.year, timestamp.month, timestamp.day)
-            : lcj2ParseClaimDateFromPeriod(fallbackPeriod);
-        const nowWib = lcj2GetWibParts(nowValue || lcj2NowDate());
-
+            ? lcstValidDateParts(timestamp.year, timestamp.month, timestamp.day)
+            : lcstParseClaimDateFromPeriod(fallbackPeriod);
+        const nowWib = lcstGetWibParts(nowValue || lcstNowDate());
         if (!claimDate) {
             return {
                 expired: false,
@@ -4661,7 +5082,7 @@
                 imageTimestamp: timestamp,
                 timestampSource: timestamp ? timestamp.source : '',
                 nowWib,
-                onlineTimeSource: lcj2GetOnlineTimeSourceLabel(),
+                onlineTimeSource: lcstGetOnlineTimeSourceLabel(),
                 dayDifference: null,
                 reasonCode: 'NO_DATE',
                 reason: '',
@@ -4673,8 +5094,7 @@
         const todayDay = Math.floor(Date.UTC(nowWib.year, nowWib.month - 1, nowWib.day) / 86400000);
         const yesterdayDay = todayDay - 1;
         const dayDifference = todayDay - claimDay;
-        const deadlineUtcDay = claimDay + 1;
-        const deadlineDate = lcj2UtcDayToDateInfo(deadlineUtcDay);
+        const deadlineDate = lcstUtcDayToDateInfo(claimDay + 1);
         const transactionMinutes = timestamp && timestamp.hasTime &&
             Number.isInteger(timestamp.minutesOfDay)
             ? timestamp.minutesOfDay
@@ -4685,45 +5105,43 @@
         let reason = '';
         let ruleText = '';
 
-        // PERATURAN UTAMA:
-        // 1. Tanggal hari ini langsung dapat claim.
-        // 2. Tanggal semalam hanya dapat claim bila jam transaksi GMT+7 adalah 23.00–23.59,
-        //    dan claim dilakukan sebelum pukul 02.00 WIB.
-        // 3. Tanggal yang lebih lama dari semalam tidak dapat claim.
+        // Aturan utama:
+        // 1. Tanggal hari ini dapat claim.
+        // 2. Tanggal semalam hanya transaksi 23.00–23.59 WIB, dan claim wajib
+        //    dilakukan pada 00.00–01.59 WIB. Tepat 02.00 atau sesudahnya ditolak.
+        // 3. Tanggal lebih lama dari semalam dan tanggal masa depan ditolak.
         if (claimDay === todayDay) {
-            expired = false;
             reasonCode = 'TODAY_VALID';
             ruleText = 'Tanggal hari ini dapat claim.';
         } else if (claimDay === yesterdayDay) {
-            if (nowWib.minutesOfDay >= LCJ2_CLAIM_CUTOFF_MINUTES) {
+            if (nowWib.minutesOfDay >= LCST_CLAIM_CUTOFF_MINUTES) {
                 expired = true;
                 reasonCode = 'YESTERDAY_AFTER_02';
                 reason = 'Tanggal semalam hanya dapat claim sebelum pukul 02.00 WIB.';
-                ruleText = 'Tanggal semalam dapat diajukan pukul 00.00–01.59 WIB saja.';
+                ruleText = 'Batas tanggal semalam adalah 01.59 WIB; mulai 02.00 WIB tidak dapat claim.';
             } else if (transactionMinutes == null) {
                 expired = true;
                 reasonCode = 'YESTERDAY_TIME_NOT_READABLE';
-                reason = 'Jam transaksi pada gambar 2 atau gambar 4 belum terbaca.';
-                ruleText = 'Tanggal semalam hanya bisa claim jika waktu GMT+7 terbaca pada rentang 23.00–23.59.';
-            } else if (transactionMinutes < 23 * 60) {
+                reason = 'Jam transaksi tanggal semalam belum terbaca.';
+                ruleText = 'Tanggal semalam hanya bisa claim jika waktu hasil normalisasi WIB terbaca pada 23.00–23.59.';
+            } else if (transactionMinutes < LCST_NIGHT_CLAIM_START_MINUTES) {
                 expired = true;
-                reasonCode = 'YESTERDAY_0000_2259_BLOCKED';
-                reason = 'Tanggal semalam tidak dapat claim untuk transaksi pukul 00.00–22.59 GMT+7.';
-                ruleText = 'Yang bisa claim untuk tanggal semalam hanya transaksi pukul 23.00–23.59 GMT+7.';
+                reasonCode = 'YESTERDAY_BEFORE_23_BLOCKED';
+                reason = 'Tanggal semalam tidak dapat claim untuk transaksi sebelum pukul 23.00 WIB.';
+                ruleText = 'Yang dapat claim untuk tanggal semalam hanya transaksi 23.00–23.59 WIB.';
             } else {
-                expired = false;
                 reasonCode = 'YESTERDAY_2300_2359_VALID';
-                ruleText = 'Tanggal semalam dapat claim karena waktu transaksi berada pada 23.00–23.59 GMT+7.';
+                ruleText = 'Tanggal semalam masih dapat claim: transaksi 23.00–23.59 WIB dan sekarang belum 02.00 WIB.';
             }
         } else if (claimDay < yesterdayDay) {
             expired = true;
             reasonCode = 'OLDER_THAN_YESTERDAY';
             reason = 'Tanggal transaksi lebih lama dari tanggal semalam dan tidak dapat claim.';
-            ruleText = 'Hanya tanggal hari ini, atau tanggal semalam dengan waktu 23.00–23.59 GMT+7, yang dapat claim.';
+            ruleText = 'Hanya tanggal hari ini atau tanggal semalam pada 23.00–23.59 WIB yang dapat claim.';
         } else {
             expired = true;
             reasonCode = 'FUTURE_DATE';
-            reason = 'Tanggal transaksi berada setelah tanggal hari ini dan tidak dapat claim.';
+            reason = 'Tanggal transaksi berada setelah tanggal WIB sekarang dan tidak dapat claim.';
             ruleText = 'Tanggal transaksi tidak boleh melebihi tanggal WIB sekarang.';
         }
 
@@ -4735,12 +5153,12 @@
             timestampSource: timestamp ? timestamp.source : 'period-date-fallback',
             usedImageTimestamp: !!timestamp && timestamp.source !== 'period-date-fallback',
             nowWib,
-            onlineTimeSource: lcj2GetOnlineTimeSourceLabel(),
+            onlineTimeSource: lcstGetOnlineTimeSourceLabel(),
             dayDifference,
             deadlineDate,
             cutoffReached: expired && reasonCode === 'YESTERDAY_AFTER_02',
-            nightWindowActive: nowWib.minutesOfDay < LCJ2_CLAIM_CUTOFF_MINUTES,
-            operationalDate: lcj2UtcDayToDateInfo(todayDay),
+            nightWindowActive: nowWib.minutesOfDay < LCST_CLAIM_CUTOFF_MINUTES,
+            operationalDate: lcstUtcDayToDateInfo(todayDay),
             operationalUtcDay: todayDay,
             reasonCode,
             reason,
@@ -4748,33 +5166,42 @@
         };
     }
 
-    let lcj2SharedWorker = null;
-    let lcj2SharedWorkerInit = null;
-    let lcj2MetadataWorker = null;
-    let lcj2MetadataWorkerInit = null;
-    let lcj2TimestampWorker = null;
-    let lcj2TimestampWorkerInit = null;
-    let lcj2WorkerProgressHandler = null;
-    let lcj2WorkerPsm = null;
-    let lcj2WorkerPsmByWorker = new WeakMap();
-    let lcj2LastWorkerLogAt = 0;
-    let lcj2LastWorkerPct = -1;
-    let lcj2DashboardYieldCounter = 0;
-    const lcj2PreparedBaseCache = new WeakMap();
+    let lcstSharedWorker = null;
+    let lcstSharedWorkerInit = null;
+    let lcstSecondaryWorker = null;
+    let lcstSecondaryWorkerInit = null;
+    let lcstMetadataWorker = null;
+    let lcstMetadataWorkerInit = null;
+    let lcstTimestampWorker = null;
+    let lcstTimestampWorkerInit = null;
+    let lcstWorkerProgressHandler = null;
+    let lcstWorkerPsm = null;
+    let lcstWorkerPsmByWorker = new WeakMap();
+    let lcstLastWorkerLogAt = 0;
+    let lcstLastWorkerPct = -1;
+    let lcstDashboardYieldCounter = 0;
+    const lcstPreparedBaseCache = new WeakMap();
+    const lcstTimezoneOffsetCache = new WeakMap();
 
     // Cache hanya mempercepat pemuatan/scan ulang. Pemilihan gambar, marker,
     // crop, paket, dan validasi periode tetap memakai cara kerja V5.5.1.
-    const lcj2BlobUrlCache = new Map();
-    const lcj2ArrangeCanvasCache = new Map();
-    const lcj2ImageAnalysisCache = new Map();
-    const lcj2PeriodResultCache = new Map();
-    const lcj2TimezoneOffsetCache = new WeakMap();
-    const LCJ2_BLOB_CACHE_LIMIT = 24;
-    const LCJ2_ARRANGE_CANVAS_CACHE_LIMIT = 24;
-    const LCJ2_ANALYSIS_CACHE_LIMIT = 24;
-    const LCJ2_RESULT_CACHE_LIMIT = 24;
-    let lcj2WorkerWarmupStarted = false;
-    let lcj2WorkerGeneration = 0;
+    const lcstBlobUrlCache = new Map();
+    const lcstArrangeCanvasCache = new Map();
+    const lcstVisualMeasureCache = new WeakMap();
+    const lcstOrangeMarkerCache = new WeakMap();
+    const lcstImageAnalysisCache = new Map();
+    const lcstPeriodResultCache = new Map();
+    // Satu screenshot resolusi tinggi dapat memakan puluhan MB ketika menjadi
+    // canvas. Cache disesuaikan dengan buffer scan agar RAM tidak terus menumpuk.
+    const LCST_BLOB_CACHE_LIMIT = 16;
+    const LCST_ARRANGE_CANVAS_CACHE_LIMIT = 12;
+    const LCST_ANALYSIS_CACHE_LIMIT = 12;
+    const LCST_RESULT_CACHE_LIMIT = 24;
+    // Setelah jalur cepat gagal, batasi jumlah recognize() mahal. Delapan pass
+    // sudah mencakup direct lock, dua baris, consensus, dan satu konfirmasi.
+    const LCST_MAX_CODE_FALLBACK_PASSES = 8;
+    let lcstWorkerWarmupStarted = false;
+    let lcstWorkerGeneration = 0;
 
     function trimFastCache(map, limit, onRemove) {
         while (map.size > limit) {
@@ -4809,11 +5236,11 @@
                 return;
             }
 
-            const cached = lcj2BlobUrlCache.get(src);
+            const cached = lcstBlobUrlCache.get(src);
             if (cached) {
                 // Refresh urutan LRU tanpa mengubah URL atau isi gambar.
-                lcj2BlobUrlCache.delete(src);
-                lcj2BlobUrlCache.set(src, cached);
+                lcstBlobUrlCache.delete(src);
+                lcstBlobUrlCache.set(src, cached);
                 resolve(cached);
                 return;
             }
@@ -4827,13 +5254,14 @@
                 url: src,
                 responseType: 'blob',
                 anonymous: false,
-                timeout: 25000,
+                // Attachment gagal tidak boleh menahan seluruh scan sampai 25 detik.
+                timeout: 10000,
                 onload: (res) => {
                     if (res.status >= 200 && res.status < 300 && res.response) {
                         try {
                             const objectUrl = URL.createObjectURL(res.response);
-                            lcj2BlobUrlCache.set(src, objectUrl);
-                            trimFastCache(lcj2BlobUrlCache, LCJ2_BLOB_CACHE_LIMIT, (url) => {
+                            lcstBlobUrlCache.set(src, objectUrl);
+                            trimFastCache(lcstBlobUrlCache, LCST_BLOB_CACHE_LIMIT, (url) => {
                                 if (/^blob:/i.test(url || '')) URL.revokeObjectURL(url);
                             });
                             resolve(objectUrl);
@@ -4869,64 +5297,107 @@
     }
     async function getSharedOCRWorker(onProgress) {
         await waitForTesseract(15000);
-        lcj2WorkerProgressHandler = onProgress || null;
+        lcstWorkerProgressHandler = onProgress || null;
 
-        if (lcj2SharedWorker) return lcj2SharedWorker;
-        if (lcj2SharedWorkerInit) return lcj2SharedWorkerInit;
+        if (lcstSharedWorker) return lcstSharedWorker;
+        if (lcstSharedWorkerInit) return lcstSharedWorkerInit;
 
-        const workerGeneration = lcj2WorkerGeneration;
-        lcj2SharedWorkerInit = (async () => {
+        const workerGeneration = lcstWorkerGeneration;
+        lcstSharedWorkerInit = (async () => {
             const worker = await window.Tesseract.createWorker(
                 'eng',
                 1,
                 {
                     logger: (m) => {
-                        const fn = lcj2WorkerProgressHandler;
+                        const fn = lcstWorkerProgressHandler;
                         if (!fn || !m || !m.status) return;
                         const now = Date.now();
                         const pct = typeof m.progress === 'number' ? Math.round(m.progress * 100) : -1;
-                        const meaningfulStep = pct < 0 || lcj2LastWorkerPct < 0 || Math.abs(pct - lcj2LastWorkerPct) >= 10;
-                        if (!meaningfulStep && now - lcj2LastWorkerLogAt < 800) return;
-                        lcj2LastWorkerLogAt = now;
-                        lcj2LastWorkerPct = pct;
+                        const meaningfulStep = pct < 0 || lcstLastWorkerPct < 0 || Math.abs(pct - lcstLastWorkerPct) >= 10;
+                        if (!meaningfulStep && now - lcstLastWorkerLogAt < 800) return;
+                        lcstLastWorkerLogAt = now;
+                        lcstLastWorkerPct = pct;
                         fn(m.status + (pct < 0 ? '' : ' ' + pct + '%'));
                     },
-                    errorHandler: (err) => console.error('[LCJ2 OCR]', err)
+                    errorHandler: (err) => console.error('[LCST OCR]', err)
                 },
                 { load_system_dawg: '0', load_freq_dawg: '0' }
             );
 
             // Parameter tetap hanya dikirim sekali. Selanjutnya hanya PSM yang berubah bila diperlukan.
             await worker.setParameters({
-                tessedit_char_whitelist: LCJ2_NUMERIC_OCR_WHITELIST,
+                tessedit_char_whitelist: LCST_NUMERIC_OCR_WHITELIST,
                 preserve_interword_spaces: '1',
                 user_defined_dpi: '300',
-                classify_bln_numeric_mode: '1'
+                classify_bln_numeric_mode: '1',
+                tessedit_pageseg_mode: '6'
             });
-            if (workerGeneration !== lcj2WorkerGeneration) {
+            if (workerGeneration !== lcstWorkerGeneration) {
                 try { await worker.terminate(); } catch (e) {}
                 throw new Error('Persiapan OCR dibatalkan.');
             }
-            lcj2WorkerPsm = null;
-            lcj2SharedWorker = worker;
+            lcstWorkerPsmByWorker.set(worker, '6');
+            lcstWorkerPsm = '6';
+            lcstSharedWorker = worker;
             return worker;
         })();
 
         try {
-            return await lcj2SharedWorkerInit;
+            return await lcstSharedWorkerInit;
         } finally {
-            lcj2SharedWorkerInit = null;
+            lcstSharedWorkerInit = null;
+        }
+    }
+
+
+    async function getSecondaryOCRWorker() {
+        if (!LCST_DUAL_PACKAGE_OCR) return null;
+        await waitForTesseract(15000);
+        if (lcstSecondaryWorker) return lcstSecondaryWorker;
+        if (lcstSecondaryWorkerInit) return lcstSecondaryWorkerInit;
+
+        const workerGeneration = lcstWorkerGeneration;
+        lcstSecondaryWorkerInit = (async () => {
+            const worker = await window.Tesseract.createWorker(
+                'eng',
+                1,
+                {
+                    logger: () => {},
+                    errorHandler: (err) => console.error('[LCST OCR SECOND]', err)
+                },
+                { load_system_dawg: '0', load_freq_dawg: '0' }
+            );
+            await worker.setParameters({
+                tessedit_char_whitelist: LCST_NUMERIC_OCR_WHITELIST,
+                preserve_interword_spaces: '1',
+                user_defined_dpi: '300',
+                classify_bln_numeric_mode: '1',
+                tessedit_pageseg_mode: '6'
+            });
+            if (workerGeneration !== lcstWorkerGeneration) {
+                try { await worker.terminate(); } catch (e) {}
+                throw new Error('Persiapan OCR paket kedua dibatalkan.');
+            }
+            lcstWorkerPsmByWorker.set(worker, '6');
+            lcstSecondaryWorker = worker;
+            return worker;
+        })();
+
+        try {
+            return await lcstSecondaryWorkerInit;
+        } finally {
+            lcstSecondaryWorkerInit = null;
         }
     }
 
     async function getMetadataOCRWorker() {
-        if (!LCJ2_TURBO_PARALLEL_OCR) return null;
+        if (!LCST_TURBO_PARALLEL_OCR) return null;
         await waitForTesseract(15000);
-        if (lcj2MetadataWorker) return lcj2MetadataWorker;
-        if (lcj2MetadataWorkerInit) return lcj2MetadataWorkerInit;
+        if (lcstMetadataWorker) return lcstMetadataWorker;
+        if (lcstMetadataWorkerInit) return lcstMetadataWorkerInit;
 
-        const workerGeneration = lcj2WorkerGeneration;
-        lcj2MetadataWorkerInit = (async () => {
+        const workerGeneration = lcstWorkerGeneration;
+        lcstMetadataWorkerInit = (async () => {
             const worker = await window.Tesseract.createWorker(
                 'eng',
                 1,
@@ -4934,111 +5405,104 @@
                     // Worker metadata dibuat tanpa progress UI agar pembaruan panel
                     // tidak berebut waktu dengan worker periode utama.
                     logger: () => {},
-                    errorHandler: (err) => console.error('[LCJ2 OCR META]', err)
+                    errorHandler: (err) => console.error('[LCST OCR META]', err)
                 },
                 { load_system_dawg: '0', load_freq_dawg: '0' }
             );
             await worker.setParameters({
-                tessedit_char_whitelist: LCJ2_NUMERIC_OCR_WHITELIST,
+                tessedit_char_whitelist: LCST_NUMERIC_OCR_WHITELIST,
                 preserve_interword_spaces: '1',
                 user_defined_dpi: '300',
-                classify_bln_numeric_mode: '1'
+                classify_bln_numeric_mode: '1',
+                tessedit_pageseg_mode: '6'
             });
-            if (workerGeneration !== lcj2WorkerGeneration) {
+            if (workerGeneration !== lcstWorkerGeneration) {
                 try { await worker.terminate(); } catch (e) {}
                 throw new Error('Persiapan OCR metadata dibatalkan.');
             }
-            lcj2WorkerPsmByWorker.delete(worker);
-            lcj2MetadataWorker = worker;
+            lcstWorkerPsmByWorker.set(worker, '6');
+            lcstMetadataWorker = worker;
             return worker;
         })();
 
         try {
-            return await lcj2MetadataWorkerInit;
+            return await lcstMetadataWorkerInit;
         } finally {
-            lcj2MetadataWorkerInit = null;
+            lcstMetadataWorkerInit = null;
         }
     }
 
     async function getTimestampOCRWorker() {
-        if (!LCJ2_TURBO_TIMESTAMP_WORKER) return null;
+        if (!LCST_TURBO_TIMESTAMP_WORKER) return null;
         await waitForTesseract(15000);
-        if (lcj2TimestampWorker) return lcj2TimestampWorker;
-        if (lcj2TimestampWorkerInit) return lcj2TimestampWorkerInit;
+        if (lcstTimestampWorker) return lcstTimestampWorker;
+        if (lcstTimestampWorkerInit) return lcstTimestampWorkerInit;
 
-        const workerGeneration = lcj2WorkerGeneration;
-        lcj2TimestampWorkerInit = (async () => {
+        const workerGeneration = lcstWorkerGeneration;
+        lcstTimestampWorkerInit = (async () => {
             const worker = await window.Tesseract.createWorker(
                 'eng',
                 1,
                 {
                     logger: () => {},
-                    errorHandler: (err) => console.error('[LCJ2 OCR TIME]', err)
+                    errorHandler: (err) => console.error('[LCST OCR TIME]', err)
                 },
                 { load_system_dawg: '0', load_freq_dawg: '0' }
             );
             await worker.setParameters({
-                tessedit_char_whitelist: LCJ2_NUMERIC_OCR_WHITELIST,
+                tessedit_char_whitelist: LCST_NUMERIC_OCR_WHITELIST,
                 preserve_interword_spaces: '1',
                 user_defined_dpi: '300',
-                classify_bln_numeric_mode: '1'
+                classify_bln_numeric_mode: '1',
+                tessedit_pageseg_mode: '6'
             });
-            if (workerGeneration !== lcj2WorkerGeneration) {
+            if (workerGeneration !== lcstWorkerGeneration) {
                 try { await worker.terminate(); } catch (e) {}
                 throw new Error('Persiapan OCR waktu dibatalkan.');
             }
-            lcj2WorkerPsmByWorker.delete(worker);
-            lcj2TimestampWorker = worker;
+            lcstWorkerPsmByWorker.set(worker, '6');
+            lcstTimestampWorker = worker;
             return worker;
         })();
 
         try {
-            return await lcj2TimestampWorkerInit;
+            return await lcstTimestampWorkerInit;
         } finally {
-            lcj2TimestampWorkerInit = null;
+            lcstTimestampWorkerInit = null;
         }
     }
 
     function warmupOCRWorker() {
-        const primaryReady = !!(lcj2SharedWorker || lcj2SharedWorkerInit);
-        const metadataReady = !LCJ2_TURBO_PARALLEL_OCR || !!(lcj2MetadataWorker || lcj2MetadataWorkerInit);
-        const timestampReady = !LCJ2_TURBO_TIMESTAMP_WORKER || !!(lcj2TimestampWorker || lcj2TimestampWorkerInit);
-        if (lcj2WorkerWarmupStarted || (primaryReady && metadataReady && timestampReady)) return;
-        lcj2WorkerWarmupStarted = true;
+        const primaryReady = !!(lcstSharedWorker || lcstSharedWorkerInit);
+        if (lcstWorkerWarmupStarted || primaryReady) return;
+        lcstWorkerWarmupStarted = true;
         setTimeout(() => {
-            const jobs = [
-                getSharedOCRWorker(null).catch((err) => console.warn('[LCJ2 OCR warmup]', err))
-            ];
-            if (LCJ2_TURBO_PARALLEL_OCR) {
-                jobs.push(
-                    getMetadataOCRWorker().catch((err) => console.warn('[LCJ2 OCR metadata warmup]', err))
-                );
-            }
-            if (LCJ2_TURBO_TIMESTAMP_WORKER) {
-                jobs.push(
-                    getTimestampOCRWorker().catch((err) => console.warn('[LCJ2 OCR time warmup]', err))
-                );
-            }
-            Promise.allSettled(jobs)
-                .finally(() => { lcj2WorkerWarmupStarted = false; });
+            // Hanya worker utama dipanaskan. Versi lama langsung mengompilasi
+            // 3-4 worker ketika panel dibuka dan membuat LiveChat tersendat.
+            // Worker tambahan dibuat secara lazy hanya ketika tombol SCAN ditekan.
+            getSharedOCRWorker(null)
+                .catch((err) => console.warn('[LCST OCR warmup]', err))
+                .finally(() => { lcstWorkerWarmupStarted = false; });
         }, 0);
     }
 
     async function destroySharedOCRWorker() {
-        lcj2WorkerGeneration++;
-        const workers = [lcj2SharedWorker, lcj2MetadataWorker, lcj2TimestampWorker].filter(Boolean);
-        lcj2SharedWorker = null;
-        lcj2SharedWorkerInit = null;
-        lcj2MetadataWorker = null;
-        lcj2MetadataWorkerInit = null;
-        lcj2TimestampWorker = null;
-        lcj2TimestampWorkerInit = null;
-        lcj2WorkerProgressHandler = null;
-        lcj2WorkerPsm = null;
-        lcj2WorkerPsmByWorker = new WeakMap();
-        lcj2LastWorkerLogAt = 0;
-        lcj2LastWorkerPct = -1;
-        lcj2WorkerWarmupStarted = false;
+        lcstWorkerGeneration++;
+        const workers = [lcstSharedWorker, lcstSecondaryWorker, lcstMetadataWorker, lcstTimestampWorker].filter(Boolean);
+        lcstSharedWorker = null;
+        lcstSharedWorkerInit = null;
+        lcstSecondaryWorker = null;
+        lcstSecondaryWorkerInit = null;
+        lcstMetadataWorker = null;
+        lcstMetadataWorkerInit = null;
+        lcstTimestampWorker = null;
+        lcstTimestampWorkerInit = null;
+        lcstWorkerProgressHandler = null;
+        lcstWorkerPsm = null;
+        lcstWorkerPsmByWorker = new WeakMap();
+        lcstLastWorkerLogAt = 0;
+        lcstLastWorkerPct = -1;
+        lcstWorkerWarmupStarted = false;
         await Promise.allSettled(workers.map(async (worker) => {
             try { await worker.terminate(); } catch (e) {}
         }));
@@ -5047,9 +5511,23 @@
     function loadImageElement(src) {
         return new Promise((resolve, reject) => {
             const img = new Image();
+            let settled = false;
+            const finish = (error) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                img.onload = null;
+                img.onerror = null;
+                if (error) reject(error);
+                else resolve(img);
+            };
+            const timer = setTimeout(() => {
+                try { img.src = ''; } catch (e) {}
+                finish(new Error('Pemuatan gambar OCR melewati 12 detik.'));
+            }, 12000);
             img.decoding = 'async';
-            img.onload = () => resolve(img);
-            img.onerror = () => reject(new Error('Gambar gagal dimuat untuk OCR.'));
+            img.onload = () => finish(null);
+            img.onerror = () => finish(new Error('Gambar gagal dimuat untuk OCR.'));
             img.src = src;
         });
     }
@@ -5072,29 +5550,56 @@
         const key = String(src || '');
         if (!key) throw new Error('Sumber gambar kosong.');
 
-        const existing = lcj2ArrangeCanvasCache.get(key);
+        const existing = lcstArrangeCanvasCache.get(key);
         if (existing) {
-            lcj2ArrangeCanvasCache.delete(key);
-            lcj2ArrangeCanvasCache.set(key, existing);
+            lcstArrangeCanvasCache.delete(key);
+            lcstArrangeCanvasCache.set(key, existing);
             return existing;
         }
 
         const task = (async () => {
+            // HYPER FAST: gunakan image yang SUDAH dimuat LiveChat bila URL-nya sama.
+            // Ini menghindari download kedua lewat GM_xmlhttpRequest pada attachment yang
+            // browser sudah punya. Bila canvas terkena CORS/tainted, otomatis fallback.
+            try {
+                const imgs = Array.from(document.images || []);
+                const domImg = imgs.find((img) => {
+                    if (!img || !img.complete || !(img.naturalWidth > 0) || !(img.naturalHeight > 0)) return false;
+                    const candidates = [
+                        img.currentSrc,
+                        img.src,
+                        img.getAttribute && img.getAttribute('src'),
+                        img.getAttribute && img.getAttribute('data-src'),
+                        img.getAttribute && img.getAttribute('data-original'),
+                        img.getAttribute && img.getAttribute('data-image-url'),
+                        img.getAttribute && img.getAttribute('data-full-src')
+                    ].filter(Boolean).map(String);
+                    return candidates.includes(key);
+                });
+                if (domImg) {
+                    const sourceCanvas = imageToCanvas(domImg);
+                    // Tes 1 pixel untuk memastikan canvas tidak tainted.
+                    sourceCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, 1, 1);
+                    return { blobUrl: key, sourceCanvas, reusedDom: true };
+                }
+            } catch (e) {}
+
             const blobUrl = await srcToBlobUrlByGM(key);
             const img = await loadImageElement(blobUrl);
             return {
                 blobUrl,
-                sourceCanvas: imageToCanvas(img)
+                sourceCanvas: imageToCanvas(img),
+                reusedDom: false
             };
         })();
 
-        lcj2ArrangeCanvasCache.set(key, task);
-        trimFastCache(lcj2ArrangeCanvasCache, LCJ2_ARRANGE_CANVAS_CACHE_LIMIT);
+        lcstArrangeCanvasCache.set(key, task);
+        trimFastCache(lcstArrangeCanvasCache, LCST_ARRANGE_CANVAS_CACHE_LIMIT);
 
         try {
             return await task;
         } catch (err) {
-            lcj2ArrangeCanvasCache.delete(key);
+            lcstArrangeCanvasCache.delete(key);
             throw err;
         }
     }
@@ -5103,30 +5608,35 @@
         const key = String(src || '');
         if (!key) throw new Error('Sumber gambar kosong.');
 
-        const existing = lcj2ImageAnalysisCache.get(key);
+        const existing = lcstImageAnalysisCache.get(key);
         if (existing) {
-            lcj2ImageAnalysisCache.delete(key);
-            lcj2ImageAnalysisCache.set(key, existing);
+            lcstImageAnalysisCache.delete(key);
+            lcstImageAnalysisCache.set(key, existing);
             return existing;
         }
 
         const task = (async () => {
             const base = await getArrangeImageCanvas(key);
             const marker = detectDoubleOrangeMarker(base.sourceCanvas);
+            const visualFingerprint = lcstMeasureScreenshotVisuals(base.sourceCanvas).visualFingerprint || '';
             return {
                 blobUrl: base.blobUrl,
                 sourceCanvas: base.sourceCanvas,
-                marker
+                marker,
+                markerCandidates: marker && Array.isArray(marker.candidates)
+                    ? marker.candidates.slice()
+                    : (marker ? [marker] : []),
+                visualFingerprint
             };
         })();
 
-        lcj2ImageAnalysisCache.set(key, task);
-        trimFastCache(lcj2ImageAnalysisCache, LCJ2_ANALYSIS_CACHE_LIMIT);
+        lcstImageAnalysisCache.set(key, task);
+        trimFastCache(lcstImageAnalysisCache, LCST_ANALYSIS_CACHE_LIMIT);
 
         try {
             return await task;
         } catch (err) {
-            lcj2ImageAnalysisCache.delete(key);
+            lcstImageAnalysisCache.delete(key);
             throw err;
         }
     }
@@ -5144,14 +5654,42 @@
        - Screenshot Kemenangan Total harus dominan merah/oranye/emas.
        - Screenshot lebar/gabungan diprioritaskan sebagai gambar permainan.
        ========================================================= */
-    function lcj2MeasureScreenshotVisuals(sourceCanvas) {
-        const sample = createCanvas(72, 96);
+    function lcstMeasureScreenshotVisuals(sourceCanvas) {
+        const cached = lcstVisualMeasureCache.get(sourceCanvas);
+        if (cached && cached.width === sourceCanvas.width && cached.height === sourceCanvas.height) return cached.value;
+        const value = lcstMeasureScreenshotVisualsUncached(sourceCanvas);
+        lcstVisualMeasureCache.set(sourceCanvas, {width:sourceCanvas.width, height:sourceCanvas.height, value});
+        return value;
+    }
+
+    function lcstMeasureScreenshotVisualsUncached(sourceCanvas) {
+        // Sampling kecil supaya koreksi gambar tetap cepat walaupun screenshot banyak.
+        const sample = createCanvas(84, 120);
         const ctx = sample.getContext('2d', { willReadFrequently: true });
         ctx.imageSmoothingEnabled = true;
         ctx.drawImage(sourceCanvas, 0, 0, sample.width, sample.height);
 
-        const data = ctx.getImageData(0, 0, sample.width, sample.height).data;
+        const sw = sample.width;
+        const sh = sample.height;
+        const data = ctx.getImageData(0, 0, sw, sh).data;
         const total = Math.max(1, data.length / 4);
+
+        // V6.4.1: sidik-jari visual ringan. Screenshot yang sama dapat mempunyai URL berbeda
+        // (token/query CDN berbeda), jadi URL saja tidak cukup untuk mendeteksi duplikat.
+        // RGB dikuantisasi agar perubahan kompresi kecil tidak mudah mengubah identitas.
+        let visualHash = 0x811c9dc5;
+        for (let y = 0; y < sh; y += 2) {
+            for (let x = 0; x < sw; x += 2) {
+                const o = ((y * sw) + x) * 4;
+                const qr = data[o] >> 4;
+                const qg = data[o + 1] >> 4;
+                const qb = data[o + 2] >> 4;
+                visualHash ^= (qr << 8) ^ (qg << 4) ^ qb;
+                visualHash = Math.imul(visualHash, 0x01000193) >>> 0;
+            }
+        }
+        const visualFingerprint = sw + 'x' + sh + ':' + visualHash.toString(16).padStart(8, '0');
+
         let warm = 0;
         let strongWarm = 0;
         let dark = 0;
@@ -5161,46 +5699,202 @@
             const r = data[i];
             const g = data[i + 1];
             const b = data[i + 2];
-
             if (r >= 140 && r > g * 1.04 && g > b * 1.18 && b < 145) warm++;
             if (r >= 170 && g >= 55 && g <= 215 && b < 115 && r > g * 1.08) strongWarm++;
             if (r < 82 && g < 82 && b < 94) dark++;
             if (r > 210 && g > 205 && b > 195) pale++;
         }
 
+        const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+        const offset = (x, y) => ((y * sw) + x) * 4;
+        const readPixel = (x, y) => {
+            const o = offset(x, y);
+            return { r: data[o], g: data[o + 1], b: data[o + 2] };
+        };
+        const isScatterWarm = (x, y) => {
+            const { r, g, b } = readPixel(x, y);
+            return r >= 155 && g >= 35 && g <= 225 && b < 150 && r > g * 1.07 && g > b * 1.06;
+        };
+        const measureRegion = (x1, y1, x2, y2) => {
+            const left = clamp(Math.floor(x1), 0, sw - 1);
+            const top = clamp(Math.floor(y1), 0, sh - 1);
+            const right = clamp(Math.ceil(x2), left + 1, sw);
+            const bottom = clamp(Math.ceil(y2), top + 1, sh);
+            let count = 0;
+            let warmCount = 0;
+            let darkCount = 0;
+            let paleCount = 0;
+            let strongWarmCount = 0;
+            for (let y = top; y < bottom; y++) {
+                for (let x = left; x < right; x++) {
+                    const { r, g, b } = readPixel(x, y);
+                    count++;
+                    if (r >= 140 && r > g * 1.04 && g > b * 1.18 && b < 145) warmCount++;
+                    if (r >= 170 && g >= 55 && g <= 215 && b < 115 && r > g * 1.08) strongWarmCount++;
+                    if (r < 82 && g < 82 && b < 94) darkCount++;
+                    if (r > 210 && g > 205 && b > 195) paleCount++;
+                }
+            }
+            const area = Math.max(1, count);
+            return {
+                warmRatio: warmCount / area,
+                strongWarmRatio: strongWarmCount / area,
+                darkRatio: darkCount / area,
+                paleRatio: paleCount / area
+            };
+        };
+
+        // Area papan permainan saja. Cluster merah/oranye dipakai sebagai prioritas scatter.
+        const left = clamp(Math.floor(sw * 0.10), 0, sw - 1);
+        const top = clamp(Math.floor(sh * 0.18), 0, sh - 1);
+        const right = clamp(Math.ceil(sw * 0.90), left + 1, sw);
+        const bottom = clamp(Math.ceil(sh * 0.66), top + 1, sh);
+        const rw = right - left;
+        const rh = bottom - top;
+        const visited = new Uint8Array(Math.max(1, rw * rh));
+        const localIndex = (x, y) => ((y - top) * rw) + (x - left);
+        const minArea = Math.max(8, Math.round(rw * rh * 0.0055));
+        const components = [];
+        let boardWarmPixels = 0;
+
+        for (let y = top; y < bottom; y++) {
+            for (let x = left; x < right; x++) {
+                if (!isScatterWarm(x, y)) continue;
+                boardWarmPixels++;
+                const li = localIndex(x, y);
+                if (visited[li]) continue;
+
+                const qx = [x];
+                const qy = [y];
+                visited[li] = 1;
+                let cursor = 0;
+                let area = 0;
+                let minX = x, maxX = x, minY = y, maxY = y;
+
+                while (cursor < qx.length) {
+                    const cx = qx[cursor];
+                    const cy = qy[cursor];
+                    cursor++;
+                    area++;
+                    if (cx < minX) minX = cx;
+                    if (cx > maxX) maxX = cx;
+                    if (cy < minY) minY = cy;
+                    if (cy > maxY) maxY = cy;
+
+                    const neighbors = [[cx-1,cy],[cx+1,cy],[cx,cy-1],[cx,cy+1]];
+                    for (let j = 0; j < neighbors.length; j++) {
+                        const nx = neighbors[j][0];
+                        const ny = neighbors[j][1];
+                        if (nx < left || nx >= right || ny < top || ny >= bottom) continue;
+                        const ni = localIndex(nx, ny);
+                        if (visited[ni] || !isScatterWarm(nx, ny)) continue;
+                        visited[ni] = 1;
+                        qx.push(nx);
+                        qy.push(ny);
+                    }
+                }
+
+                const cw = maxX - minX + 1;
+                const ch = maxY - minY + 1;
+                const aspect = cw / Math.max(1, ch);
+                if (area >= minArea && aspect >= 0.25 && aspect <= 4.8) {
+                    components.push({ area, width: cw, height: ch });
+                }
+            }
+        }
+
+        // V6.3.4 — bedakan GAME ASLI dengan gambar PROMO/INTRO.
+        // GAME ASLI wajib terlihat papan Mahjong (banyak tile pucat/putih di area tengah).
+        // Gambar promo seperti "PUTARAN GRATIS AKAN DIMENANGKAN / MULAI" biasanya
+        // merah-oranye di tengah tetapi hampir tidak mempunyai area tile pucat.
+        const topBar = measureRegion(sw * 0.10, sh * 0.02, sw * 0.90, sh * 0.16);
+        const boardCenter = measureRegion(sw * 0.12, sh * 0.18, sw * 0.88, sh * 0.72);
+        const lowerBanner = measureRegion(sw * 0.04, sh * 0.74, sw * 0.96, sh * 0.99);
+
+        const isBoardGameCandidate = !!(
+            boardCenter.paleRatio >= 0.095 &&
+            boardCenter.warmRatio <= 0.58
+        );
+
+        // Contoh pertama user: gameplay penuh/free-spin, papan terlihat + bagian bawah hangat/oranye.
+        const isPreferredFullGame = !!(
+            isBoardGameCandidate &&
+            boardCenter.paleRatio >= 0.16 &&
+            lowerBanner.warmRatio >= 0.18 &&
+            dark / total <= 0.28
+        );
+
+        // Promo/intro: tengah dominan merah-oranye dan hampir tidak ada tile Mahjong.
+        const isPromoSplash = !!(
+            boardCenter.paleRatio < 0.075 &&
+            boardCenter.warmRatio >= 0.38
+        );
+
+        const promoSplashPenalty = isPromoSplash ? 5200 : 0;
+        const boardGamePriority = isBoardGameCandidate
+            ? 1250 + boardCenter.paleRatio * 1450 - boardCenter.darkRatio * 180
+            : -1850;
+        const fullGamePriority = isPreferredFullGame
+            ? 4200 +
+                topBar.warmRatio * 260 +
+                boardCenter.paleRatio * 900 +
+                lowerBanner.warmRatio * 1050 +
+                lowerBanner.strongWarmRatio * 350
+            : 0;
+
+        components.sort((a, b) => b.area - a.area);
+        const scatterClusterCount = Math.min(6, components.length);
+        const scatterLargestArea = components[0] ? components[0].area : 0;
+        const scatterArea = components.reduce((sum, c) => sum + c.area, 0);
+        const scatterWarmRatio = boardWarmPixels / Math.max(1, rw * rh);
+        const scatterPriority =
+            scatterClusterCount * 190 +
+            Math.min(330, scatterLargestArea * 2.25) +
+            Math.min(230, scatterArea * 0.45) +
+            scatterWarmRatio * 520 +
+            fullGamePriority;
+
         const width = Math.max(1, Number(sourceCanvas.width) || 1);
         const height = Math.max(1, Number(sourceCanvas.height) || 1);
-
         return {
             width,
             height,
             aspectRatio: width / height,
+            visualFingerprint,
             warmRatio: warm / total,
             strongWarmRatio: strongWarm / total,
             darkRatio: dark / total,
-            paleRatio: pale / total
+            paleRatio: pale / total,
+            scatterClusterCount,
+            scatterLargestArea,
+            scatterArea,
+            scatterWarmRatio,
+            isBoardGameCandidate,
+            isPreferredFullGame,
+            isPromoSplash,
+            promoSplashPenalty,
+            boardGamePriority,
+            fullGamePriority,
+            topBarWarmRatio: topBar.warmRatio,
+            boardCenterPaleRatio: boardCenter.paleRatio,
+            boardCenterWarmRatio: boardCenter.warmRatio,
+            lowerBannerWarmRatio: lowerBanner.warmRatio,
+            scatterPriority
         };
     }
 
-    async function lcj2AnalyzeScreenshotForAutoArrange(src, index) {
+    async function lcstAnalyzeScreenshotForAutoArrange(src, index) {
         // Tahap cepat: cukup muat canvas sekali dan ukur warna/rasio.
         // Detektor dua bulatan yang lebih berat hanya dijalankan pada kandidat Riwayat.
         const base = await getArrangeImageCanvas(src);
-        const stats = lcj2MeasureScreenshotVisuals(base.sourceCanvas);
+        const stats = lcstMeasureScreenshotVisuals(base.sourceCanvas);
         const portrait = stats.aspectRatio <= 0.74;
         const wideOrCombined = stats.aspectRatio >= 0.78;
 
         let marker = null;
         const possibleHistory = portrait && stats.darkRatio >= 0.24 && stats.warmRatio <= 0.20;
         if (possibleHistory) {
-            // Sekaligus isi cache marker untuk proses SCAN. Dengan demikian deteksi
-            // dua bulatan tidak dikerjakan dua kali setelah gambar selesai disusun.
-            try {
-                const fullAnalysis = await getImageAnalysis(src);
-                marker = fullAnalysis ? fullAnalysis.marker : null;
-            } catch (e) {
-                marker = detectDoubleOrangeMarker(base.sourceCanvas);
-            }
+            marker = detectDoubleOrangeMarker(base.sourceCanvas);
         }
 
         const markerConfidence = marker && Number(marker.confidence)
@@ -5227,9 +5921,13 @@
         const gameScore =
             (wideOrCombined ? 430 : 0) +
             Math.min(1.5, stats.aspectRatio) * 100 +
-            stats.paleRatio * 18 -
+            stats.paleRatio * 18 +
+            stats.scatterPriority * 0.28 +
+            stats.boardGamePriority +
+            stats.fullGamePriority -
+            stats.promoSplashPenalty -
             (portrait && stats.darkRatio >= 0.62 ? 230 : 0) -
-            (portrait && stats.warmRatio >= 0.32 ? 170 : 0);
+            (portrait && stats.warmRatio >= 0.32 && !stats.isPreferredFullGame ? 260 : 0);
 
         return {
             src,
@@ -5246,7 +5944,7 @@
         };
     }
 
-    async function lcj2AnalyzeScreenshotsForAutoArrange(images, onProgress) {
+    async function lcstAnalyzeScreenshotsForAutoArrange(images, onProgress) {
         const list = Array.isArray(images) ? images.slice() : [];
         const results = new Array(list.length);
         let cursor = 0;
@@ -5255,34 +5953,49 @@
         const runner = async () => {
             while (cursor < list.length) {
                 const index = cursor++;
+                const nextIndex = index + concurrency;
+                if (nextIndex < list.length) getArrangeImageCanvas(list[nextIndex]).catch(() => {});
                 try {
-                    results[index] = await lcj2AnalyzeScreenshotForAutoArrange(list[index], index);
+                    results[index] = await lcstAnalyzeScreenshotForAutoArrange(list[index], index);
                 } catch (err) {
                     results[index] = {
                         src: list[index], index, marker: null, hasHistoryMarker: false,
                         markerConfidence: 0, portrait: false, wideOrCombined: false,
                         historyScore: -999, winScore: -999, gameScore: -999,
-                        aspectRatio: 1, warmRatio: 0, strongWarmRatio: 0,
+                        aspectRatio: 1, visualFingerprint: '', warmRatio: 0, strongWarmRatio: 0,
                         darkRatio: 0, paleRatio: 0,
+                        scatterClusterCount: 0, scatterLargestArea: 0,
+                        scatterArea: 0, scatterWarmRatio: 0,
+                        isBoardGameCandidate: false, isPreferredFullGame: false, isPromoSplash: false,
+                        promoSplashPenalty: 0, boardGamePriority: -1850, fullGamePriority: 0,
+                        topBarWarmRatio: 0, boardCenterPaleRatio: 0, boardCenterWarmRatio: 0,
+                        lowerBannerWarmRatio: 0, scatterPriority: 0,
                         error: err && err.message ? err.message : String(err)
                     };
                 }
                 completed++;
                 if (typeof onProgress === 'function') onProgress(completed, list.length);
+                // Analisis warna/marker berjalan di main thread. Yield setiap gambar
+                // agar input, scroll, dan render LiveChat tidak membeku.
+                if (completed < list.length) {
+                    await waitForChatPaint(0);
+                }
             }
         };
 
-        // Muat dan ukur maksimal empat gambar bersamaan. Deteksi berat tetap hanya
-        // berjalan pada kandidat Riwayat, sehingga auto-susun lebih cepat tanpa membebani semua gambar.
+        // Promise paralel tidak membuat analisis canvas menjadi multi-thread. Batasi
+        // dua runner (tiga hanya pada perangkat sangat kuat) agar CPU tidak melonjak.
         const workers = [];
-        const autoArrangeLimit = LCJ2_CPU_THREADS >= 12 ? 10 : (LCJ2_CPU_THREADS >= 8 ? 8 : (LCJ2_CPU_THREADS >= 4 ? 5 : 2));
+        const autoArrangeLimit = LCST_CPU_THREADS >= 12 && LCST_DEVICE_MEMORY_GB >= 12
+            ? 3
+            : (LCST_CPU_THREADS >= 4 ? 2 : 1);
         const concurrency = Math.min(autoArrangeLimit, Math.max(1, list.length));
         for (let i = 0; i < concurrency; i++) workers.push(runner());
         await Promise.all(workers);
         return results;
     }
 
-    function lcj2PickHighest(items, scoreKey, excluded) {
+    function lcstPickHighest(items, scoreKey, excluded) {
         const blocked = excluded || new Set();
         return items
             .filter((item) => item && !blocked.has(item.index))
@@ -5293,7 +6006,7 @@
             )[0] || null;
     }
 
-    function lcj2ArrangeSingleThreeImagePackage(packageImages, packageAnalyses) {
+    function lcstArrangeSingleThreeImagePackage(packageImages, packageAnalyses) {
         const images = Array.isArray(packageImages) ? packageImages.slice(0, 3) : [];
         const items = images.map((src, localIndex) => {
             const item = packageAnalyses && packageAnalyses[localIndex]
@@ -5313,7 +6026,15 @@
                 winScore: -999,
                 gameScore: -999,
                 hasHistoryMarker: false,
-                markerConfidence: 0
+                markerConfidence: 0,
+                scatterClusterCount: 0,
+                scatterPriority: 0,
+                isBoardGameCandidate: false,
+                isPreferredFullGame: false,
+                isPromoSplash: false,
+                promoSplashPenalty: 0,
+                boardGamePriority: -1850,
+                fullGamePriority: 0
             };
         });
 
@@ -5326,10 +6047,16 @@
             a.index - b.index
         );
 
-        // 1) Selalu tentukan RIWAYAT dulu dari gambar paling gelap.
-        //    Ini menyesuaikan contoh terbaru pengguna: semua screenshot portrait,
-        //    jadi gambar permainan tidak lagi dicari dari rasio lebar.
-        const historyRank = rankDesc(items, 'historyScore');
+        // 1) Tentukan GAME dulu. GAME penuh seperti contoh pertama selalu paling tinggi,
+        // lalu fallback ke tampilan papan permainan biasa. Promo/intro mendapat penalti besar.
+        const gameRank = items.slice().sort((a, b) =>
+            lcstRoleUtility(b, 'game') - lcstRoleUtility(a, 'game') || a.index - b.index
+        );
+        let game = gameRank[0] || null;
+
+        // 2) Tentukan RIWAYAT dari sisa gambar paling gelap/bermarker.
+        const remainingAfterGame = items.filter((item) => !game || item.index !== game.index);
+        const historyRank = rankDesc(remainingAfterGame, 'historyScore');
         let history = historyRank.find((item) =>
             item && item.portrait && (
                 item.darkRatio >= 0.30 ||
@@ -5337,18 +6064,10 @@
             )
         ) || historyRank[0] || null;
 
-        const remainingAfterHistory = items.filter((item) => !history || item.index !== history.index);
-
-        // 2) Dari sisa dua gambar, tentukan KEMENANGAN TOTAL dari gambar paling hangat/keemasan.
+        // 3) Sisa terakhir menjadi KEMENANGAN TOTAL; bila perlu ambil skor win tertinggi.
+        const remainingAfterHistory = remainingAfterGame.filter((item) => !history || item.index !== history.index);
         const winRank = rankDesc(remainingAfterHistory, 'winScore');
-        let win = winRank.find((item) =>
-            item && item.portrait &&
-            item.darkRatio <= 0.60 && (
-                item.warmRatio >= 0.16 ||
-                item.strongWarmRatio >= 0.08 ||
-                item.paleRatio >= 0.10
-            )
-        ) || winRank[0] || null;
+        let win = winRank[0] || null;
 
         // Pengaman: bila hasil awal tertukar antara Riwayat dan Kemenangan, tukar balik.
         if (history && win) {
@@ -5361,20 +6080,14 @@
             }
         }
 
-        // 3) Gambar yang tersisa pasti menjadi screenshot PERMAINAN.
-        let game = items.find((item) =>
-            item &&
-            (!history || item.index !== history.index) &&
-            (!win || item.index !== win.index)
-        ) || null;
-
-        // Fallback ekstra bila ada benturan yang tidak terduga.
+        // Fallback ekstra bila GAME belum terpilih.
         if (!game) {
             const excluded = new Set([
                 history ? history.index : -1,
                 win ? win.index : -1
             ]);
-            game = rankDesc(items.filter((item) => !excluded.has(item.index)), 'gameScore')[0] || null;
+            game = items.filter((item) => !excluded.has(item.index))
+                .sort((a, b) => lcstRoleUtility(b, 'game') - lcstRoleUtility(a, 'game') || a.index - b.index)[0] || null;
         }
         if (!history && game) {
             history = items.find((item) => item.index !== game.index) || null;
@@ -5395,12 +6108,7 @@
 
         const ordered = orderedItems.slice(0, 3).map((item) => item.src);
         const changed = ordered.some((src, idx) => src !== images[idx]);
-        const confident = !!(
-            game && history && win &&
-            history.darkRatio >= 0.24 &&
-            win.darkRatio <= 0.60 &&
-            (win.warmRatio >= 0.16 || win.strongWarmRatio >= 0.08 || win.paleRatio >= 0.10)
-        );
+        const confident = !!(game && history && win);
 
         return {
             images: ordered,
@@ -5410,13 +6118,14 @@
         };
     }
 
-    function lcj2RoleUtility(item, role) {
+    function lcstRoleUtility(item, role) {
         if (!item) return -1000000;
 
         if (role === 'history') {
             return (Number(item.historyScore) || -999) +
                 (Number(item.darkRatio) || 0) * 210 -
-                (Number(item.warmRatio) || 0) * 95 +
+                (Number(item.warmRatio) || 0) * 95 -
+                (Number(item.scatterClusterCount) || 0) * 30 +
                 (item.hasHistoryMarker ? 35 : 0);
         }
 
@@ -5431,41 +6140,41 @@
         // Karena jumlah tiap jenis dikunci sama, gambar permainan adalah
         // gambar yang bukan Riwayat paling gelap dan bukan Kemenangan paling hangat.
         return (Number(item.gameScore) || -999) +
+            (item.isPreferredFullGame ? 6200 : 0) +
+            (item.isBoardGameCandidate ? 1850 : -3600) +
+            (item.isPromoSplash ? -9000 : 0) +
+            (Number(item.fullGamePriority) || 0) * 0.55 +
+            (Number(item.boardGamePriority) || 0) * 0.35 +
             (item.wideOrCombined ? 120 : 0) +
-            (Number(item.paleRatio) || 0) * 45 -
+            (Number(item.paleRatio) || 0) * 45 +
+            (Number(item.scatterClusterCount) || 0) * 65 -
+            Math.max(0, (Number(item.warmRatio) || 0) - 0.38) * 680 -
             Math.max(0, (Number(item.darkRatio) || 0) - 0.72) * 170;
     }
 
-    function lcj2AssignScreenshotRolesGlobally(items, rows) {
+    function lcstAssignScreenshotRolesGlobally(items, rows) {
         const list = Array.isArray(items) ? items : [];
         const target = Math.max(1, Number(rows) || 1);
         if (list.length !== target * 3) return null;
 
-        // Dynamic programming: tepat target gambar Permainan, target Riwayat,
-        // dan target Kemenangan. Ini mencegah paket bercampur sebelum klasifikasi.
+        // Dynamic programming: tepat target Permainan, Riwayat, dan Kemenangan.
+        // Pada jalur >6, kandidat sudah dideduplikasi sebelum fungsi ini dipanggil.
+        const enforceDistinctWins = lcstCanEnforceDistinctWins(list, target);
         let states = new Map();
-        states.set('0|0|0', { score: 0, roles: [] });
+        const initial = { score: 0, roles: [], winKeys: [], g: 0, h: 0, w: 0 };
+        states.set(lcstRoleStateMapKey(0, 0, 0, [], enforceDistinctWins), initial);
 
         list.forEach((item, itemIndex) => {
             const next = new Map();
+            const keepBest = (candidate) => {
+                const key = lcstRoleStateMapKey(candidate.g, candidate.h, candidate.w, candidate.winKeys, enforceDistinctWins);
+                const old = next.get(key);
+                if (!old || candidate.score > old.score) next.set(key, candidate);
+            };
 
-            states.forEach((state, key) => {
-                const parts = key.split('|').map(Number);
-                const g = parts[0];
-                const h = parts[1];
-                const w = parts[2];
-
-                const choices = [
-                    ['game', g, h, w],
-                    ['history', g, h, w],
-                    ['win', g, h, w]
-                ];
-
-                choices.forEach((choice) => {
-                    const role = choice[0];
-                    let ng = g;
-                    let nh = h;
-                    let nw = w;
+            states.forEach((state) => {
+                ['game', 'history', 'win'].forEach((role) => {
+                    let ng = state.g, nh = state.h, nw = state.w;
                     if (role === 'game') ng++;
                     if (role === 'history') nh++;
                     if (role === 'win') nw++;
@@ -5474,22 +6183,25 @@
                     const remaining = list.length - itemIndex - 1;
                     if (ng + remaining < target || nh + remaining < target || nw + remaining < target) return;
 
-                    const score = state.score + lcj2RoleUtility(item, role);
-                    const nextKey = ng + '|' + nh + '|' + nw;
-                    const old = next.get(nextKey);
-                    if (!old || score > old.score) {
-                        next.set(nextKey, {
-                            score,
-                            roles: state.roles.concat(role)
-                        });
+                    let winKeys = state.winKeys.slice();
+                    if (role === 'win' && enforceDistinctWins) {
+                        const winKey = lcstDistinctImageKey(item);
+                        if (winKey && winKeys.includes(winKey)) return;
+                        if (winKey) winKeys.push(winKey);
                     }
+
+                    keepBest({
+                        score: state.score + lcstRoleUtility(item, role),
+                        roles: state.roles.concat(role),
+                        winKeys, g: ng, h: nh, w: nw
+                    });
                 });
             });
 
             states = next;
         });
 
-        const finalState = states.get(target + '|' + target + '|' + target);
+        const finalState = lcstPickBestCompleteRoleState(states, target);
         if (!finalState) return null;
 
         return list.map((item, index) => ({
@@ -5498,133 +6210,364 @@
         }));
     }
 
-    function lcj2BuildAutoArrangedOrder(images, analyses) {
-        const list = Array.isArray(images) ? images.slice() : [];
-        const packageSize = getPackageSizeFromImages(list);
+    /* =========================================================
+       KOREKSI KHUSUS GAMBAR — MAKSIMAL 6
+       3 gambar  : Scatter/Permainan -> Riwayat -> Kemenangan Total
+       6 gambar  : 2 paket dengan urutan yang sama
+       >6 gambar : analisa buffer kandidat, pilih tepat 6 terbaik; WIN paket 1/2 dibuat berbeda bila tersedia
+       ========================================================= */
+    const LCST_MAX_SELECTED_IMAGES = 6;
+    const LCST_MAX_SELECTED_PACKAGES = 2;
+    // Pertahankan buffer 12 kandidat agar aturan pemilihan dan keunikan gambar
+    // paket tetap sama. Optimasi V7.6 hanya menyentuh jalur OCR kode/timestamp.
+    const LCST_SCAN_CANDIDATE_LIMIT = 12;
 
-        if (packageSize !== 3 || list.length < 3 || list.length % 3 !== 0) {
-            return {
-                images: list,
-                changed: false,
-                confident: false,
-                rows: 0,
-                reason: 'not-three-image-package'
-            };
+    function lcstStableImageSourceKey(src) {
+        const value = String(src || '').trim();
+        if (!value) return '';
+        try {
+            const u = new URL(value, location.href);
+            return 'url:' + u.origin + u.pathname;
+        } catch (e) {
+            return 'url:' + value.split('#')[0].split('?')[0];
         }
+    }
 
-        const rows = list.length / 3;
-        const rawAnalyses = Array.isArray(analyses) ? analyses : [];
-        const items = list.map((src, index) => {
-            const analysis = rawAnalyses[index] || {};
-            return {
-                src,
-                index,
-                marker: analysis.marker || null,
-                hasHistoryMarker: !!analysis.hasHistoryMarker,
-                markerConfidence: Number(analysis.markerConfidence) || 0,
-                portrait: !!analysis.portrait,
-                wideOrCombined: !!analysis.wideOrCombined,
-                aspectRatio: Number(analysis.aspectRatio) || 1,
-                warmRatio: Number(analysis.warmRatio) || 0,
-                strongWarmRatio: Number(analysis.strongWarmRatio) || 0,
-                darkRatio: Number(analysis.darkRatio) || 0,
-                paleRatio: Number(analysis.paleRatio) || 0,
-                historyScore: Number(analysis.historyScore) || -999,
-                winScore: Number(analysis.winScore) || -999,
-                gameScore: Number(analysis.gameScore) || -999
+    function lcstDistinctImageKey(item) {
+        if (!item) return '';
+        const fp = String(item.visualFingerprint || '').trim();
+        if (fp) return 'visual:' + fp;
+        const src = String(item.src || '').trim();
+        if (!src) return 'index:' + String(item.index == null ? '' : item.index);
+        // Bila fingerprint gagal dibuat, hilangkan query/hash CDN agar URL gambar yang sama
+        // dengan token berbeda tetap dianggap satu screenshot.
+        return lcstStableImageSourceKey(src);
+    }
+
+    function lcstCountDistinctImageKeys(items) {
+        const keys = new Set();
+        (items || []).forEach((item) => {
+            const key = lcstDistinctImageKey(item);
+            if (key) keys.add(key);
+        });
+        return keys.size;
+    }
+
+    function lcstDeduplicateAnalysisItems(items) {
+        const byContent = new Map();
+        (items || []).forEach((item) => {
+            if (!item) return;
+            const key = lcstDistinctImageKey(item) || ('index:' + item.index);
+            const previous = byContent.get(key);
+            // Kandidat paling baru dipertahankan. Analisis visual gambar duplikat sama,
+            // sedangkan indeks terbaru lebih cocok dengan alur chat terbaru-dulu.
+            if (!previous || Number(item.index) >= Number(previous.index)) {
+                byContent.set(key, item);
+            }
+        });
+        return Array.from(byContent.values()).sort((a, b) => a.index - b.index);
+    }
+
+    function lcstHasDuplicateStableSources(images) {
+        const seen = new Set();
+        for (const src of images || []) {
+            const key = lcstStableImageSourceKey(src);
+            if (!key) continue;
+            if (seen.has(key)) return true;
+            seen.add(key);
+        }
+        return false;
+    }
+
+    function lcstLikelyWinCandidate(item) {
+        if (!item) return false;
+        return (
+            Number(item.warmRatio) >= 0.14 ||
+            Number(item.strongWarmRatio) >= 0.07 ||
+            Number(item.paleRatio) >= 0.09 ||
+            Number(item.winScore) >= 120
+        );
+    }
+
+    function lcstCanEnforceDistinctWins(items, targetRows) {
+        const target = Math.max(1, Number(targetRows) || 1);
+        if (target <= 1) return false;
+        const keys = new Set();
+        (items || []).forEach((item) => {
+            if (!lcstLikelyWinCandidate(item)) return;
+            const key = lcstDistinctImageKey(item);
+            if (key) keys.add(key);
+        });
+        return keys.size >= target;
+    }
+
+    function lcstRoleStateMapKey(g, h, w, winKeys, enforceDistinctWins) {
+        return g + '|' + h + '|' + w + '|' +
+            (enforceDistinctWins ? (winKeys || []).slice().sort().join(',') : '');
+    }
+
+    function lcstPickBestCompleteRoleState(states, target) {
+        let best = null;
+        (states || new Map()).forEach((state) => {
+            if (!state || state.g !== target || state.h !== target || state.w !== target) return;
+            if (!best || state.score > best.score) best = state;
+        });
+        return best;
+    }
+
+    function lcstAssignScreenshotRolesWithLimit(items, targetRows) {
+        const rawList = Array.isArray(items) ? items : [];
+        const target = Math.max(1, Number(targetRows) || 1);
+        // Deduplikasi dilakukan sebelum DP. Ini menjamin semua role antarpaket unik
+        // sekaligus menghindari ledakan kombinasi saat kandidat berjumlah 12.
+        const list = lcstCountDistinctImageKeys(rawList) >= target * 3
+            ? lcstDeduplicateAnalysisItems(rawList)
+            : rawList;
+        if (list.length < target * 3) return null;
+
+        // Bila tersedia >=2 screenshot Kemenangan Total yang benar-benar berbeda,
+        // DP dilarang memilih fingerprint yang sama untuk role WIN dua kali.
+        const enforceDistinctWins = lcstCanEnforceDistinctWins(list, target);
+        let states = new Map();
+        const initial = { score: 0, roles: [], winKeys: [], g: 0, h: 0, w: 0 };
+        states.set(lcstRoleStateMapKey(0, 0, 0, [], enforceDistinctWins), initial);
+
+        list.forEach((item, itemIndex) => {
+            const next = new Map();
+            const keepBest = (candidate) => {
+                const key = lcstRoleStateMapKey(candidate.g, candidate.h, candidate.w, candidate.winKeys, enforceDistinctWins);
+                const old = next.get(key);
+                if (!old || candidate.score > old.score) next.set(key, candidate);
             };
+
+            states.forEach((state) => {
+                const g = state.g, h = state.h, w = state.w;
+                const remaining = list.length - itemIndex - 1;
+
+                // Boleh abaikan screenshot. Jadi meski ada 7/8/9/12 gambar, hasil akhir tetap 6.
+                if (g + remaining >= target && h + remaining >= target && w + remaining >= target) {
+                    keepBest({
+                        score: state.score, roles: state.roles.concat(null),
+                        winKeys: state.winKeys.slice(), g, h, w
+                    });
+                }
+
+                ['game', 'history', 'win'].forEach((role) => {
+                    let ng = g, nh = h, nw = w;
+                    if (role === 'game') ng++;
+                    if (role === 'history') nh++;
+                    if (role === 'win') nw++;
+                    if (ng > target || nh > target || nw > target) return;
+                    if (ng + remaining < target || nh + remaining < target || nw + remaining < target) return;
+
+                    let winKeys = state.winKeys.slice();
+                    if (role === 'win' && enforceDistinctWins) {
+                        const winKey = lcstDistinctImageKey(item);
+                        if (winKey && winKeys.includes(winKey)) return;
+                        if (winKey) winKeys.push(winKey);
+                    }
+
+                    keepBest({
+                        score: state.score + lcstRoleUtility(item, role),
+                        roles: state.roles.concat(role),
+                        winKeys, g: ng, h: nh, w: nw
+                    });
+                });
+            });
+            states = next;
         });
 
-        const assigned = lcj2AssignScreenshotRolesGlobally(items, rows);
+        const finalState = lcstPickBestCompleteRoleState(states, target);
+        if (!finalState) return null;
+        return list.map((item, index) => ({ ...item, assignedRole: finalState.roles[index] || null }));
+    }
+
+    function lcstAnalysisItem(src, index, analysis) {
+        const a = analysis || {};
+        return {
+            src, index,
+            marker: a.marker || null,
+            hasHistoryMarker: !!a.hasHistoryMarker,
+            markerConfidence: Number(a.markerConfidence) || 0,
+            portrait: !!a.portrait,
+            wideOrCombined: !!a.wideOrCombined,
+            aspectRatio: Number(a.aspectRatio) || 1,
+            visualFingerprint: String(a.visualFingerprint || ''),
+            warmRatio: Number(a.warmRatio) || 0,
+            strongWarmRatio: Number(a.strongWarmRatio) || 0,
+            darkRatio: Number(a.darkRatio) || 0,
+            paleRatio: Number(a.paleRatio) || 0,
+            scatterClusterCount: Number(a.scatterClusterCount) || 0,
+            scatterLargestArea: Number(a.scatterLargestArea) || 0,
+            scatterArea: Number(a.scatterArea) || 0,
+            scatterWarmRatio: Number(a.scatterWarmRatio) || 0,
+            isBoardGameCandidate: !!a.isBoardGameCandidate,
+            isPreferredFullGame: !!a.isPreferredFullGame,
+            isPromoSplash: !!a.isPromoSplash,
+            promoSplashPenalty: Number(a.promoSplashPenalty) || 0,
+            boardGamePriority: Number(a.boardGamePriority) || 0,
+            fullGamePriority: Number(a.fullGamePriority) || 0,
+            topBarWarmRatio: Number(a.topBarWarmRatio) || 0,
+            boardCenterPaleRatio: Number(a.boardCenterPaleRatio) || 0,
+            boardCenterWarmRatio: Number(a.boardCenterWarmRatio) || 0,
+            lowerBannerWarmRatio: Number(a.lowerBannerWarmRatio) || 0,
+            scatterPriority: Number(a.scatterPriority) || 0,
+            historyScore: Number(a.historyScore) || -999,
+            winScore: Number(a.winScore) || -999,
+            gameScore: Number(a.gameScore) || -999
+        };
+    }
+
+    function lcstPickNearestUnused(pool, targetIndex, used, preferBefore, usedContentKeys) {
+        let best = null;
+        let bestScore = Infinity;
+        (pool || []).forEach((item) => {
+            if (!item || used.has(item.index)) return;
+            if (usedContentKeys) {
+                const contentKey = lcstDistinctImageKey(item);
+                if (contentKey && usedContentKeys.has(contentKey)) return;
+            }
+            const delta = (Number(item.index) || 0) - (Number(targetIndex) || 0);
+            const distance = Math.abs(delta);
+            const sidePenalty = preferBefore ? (delta > 0 ? 0.35 : 0) : (delta < 0 ? 0.35 : 0);
+            const score = distance + sidePenalty;
+            if (score < bestScore) {
+                bestScore = score;
+                best = item;
+            }
+        });
+        return best;
+    }
+
+    function lcstBuildPackagesFromAssigned(assigned, rows) {
+        const target = Math.max(1, Number(rows) || 1);
+        const selected = (assigned || []).filter((x) => x && x.assignedRole);
+        const games = selected.filter((x) => x.assignedRole === 'game').sort((a,b) => a.index - b.index);
+        const histories = selected.filter((x) => x.assignedRole === 'history').sort((a,b) => a.index - b.index);
+        const wins = selected.filter((x) => x.assignedRole === 'win').sort((a,b) => a.index - b.index);
+        if (games.length !== target || histories.length !== target || wins.length !== target) return null;
+
+        const usedGames = new Set();
+        const usedWins = new Set();
+        const usedWinContentKeys = new Set();
+        const enforceDistinctWins = lcstCanEnforceDistinctWins(wins, target);
+        const packages = [];
+        histories.forEach((history, row) => {
+            const game = lcstPickNearestUnused(games, history.index, usedGames, true);
+            const win = lcstPickNearestUnused(
+                wins, history.index, usedWins, false,
+                enforceDistinctWins ? usedWinContentKeys : null
+            );
+            if (!game || !win) return;
+            usedGames.add(game.index);
+            usedWins.add(win.index);
+            if (enforceDistinctWins) {
+                const winKey = lcstDistinctImageKey(win);
+                if (winKey) usedWinContentKeys.add(winKey);
+            }
+            packages.push({ game, history, win, row });
+        });
+        if (packages.length !== target) return null;
+
+        // V6.3.4: gambar 1 dan 4 wajib mengutamakan GAME PENUH seperti contoh pertama.
+        // Jika game penuh tidak ada, baru pakai tampilan papan permainan biasa seperti contoh kedua.
+        // Promo/intro tidak boleh mengalahkan screenshot papan permainan.
+        packages.sort((a, b) =>
+            Number(!!b.game.isPreferredFullGame) - Number(!!a.game.isPreferredFullGame) ||
+            Number(!!b.game.isBoardGameCandidate) - Number(!!a.game.isBoardGameCandidate) ||
+            Number(!!a.game.isPromoSplash) - Number(!!b.game.isPromoSplash) ||
+            (Number(b.game.fullGamePriority) || 0) - (Number(a.game.fullGamePriority) || 0) ||
+            (Number(b.game.scatterPriority) || 0) - (Number(a.game.scatterPriority) || 0) ||
+            (Number(b.game.scatterClusterCount) || 0) - (Number(a.game.scatterClusterCount) || 0) ||
+            a.row - b.row
+        );
+        return packages;
+    }
+
+    function lcstBuildLimitedSixOrder(images, analyses) {
+        const list = Array.isArray(images) ? images.slice() : [];
+        const raw = Array.isArray(analyses) ? analyses : [];
+        if (list.length <= LCST_MAX_SELECTED_IMAGES) return lcstBuildAutoArrangedOrder(list, raw);
+
+        const items = list.map((src, index) => lcstAnalysisItem(src, index, raw[index]));
+        const assigned = lcstAssignScreenshotRolesWithLimit(items, LCST_MAX_SELECTED_PACKAGES);
         if (!assigned) {
             return {
-                images: list,
-                changed: false,
-                confident: false,
-                rows,
-                reason: 'global-role-assignment-failed'
+                images: list.slice(0, LCST_MAX_SELECTED_IMAGES),
+                changed: true, confident: true, visualConfidence: false,
+                rows: 2, originalCount: list.length,
+                discarded: Math.max(0, list.length - LCST_MAX_SELECTED_IMAGES),
+                reason: 'max-six-fallback'
             };
         }
 
-        // Urutan asli di dalam masing-masing jenis dipertahankan.
-        // Dengan begitu Paket 1 tetap berpasangan dengan Paket 1 dan Paket 2
-        // tetap berpasangan dengan Paket 2, baik LiveChat mengirim urutan normal,
-        // terbalik, maupun mengelompokkan gambar berdasarkan jenis.
-        const games = assigned
-            .filter((item) => item.assignedRole === 'game')
-            .sort((a, b) => a.index - b.index);
-        const histories = assigned
-            .filter((item) => item.assignedRole === 'history')
-            .sort((a, b) => a.index - b.index);
-        const wins = assigned
-            .filter((item) => item.assignedRole === 'win')
-            .sort((a, b) => a.index - b.index);
-
-        if (games.length !== rows || histories.length !== rows || wins.length !== rows) {
+        const packages = lcstBuildPackagesFromAssigned(assigned, LCST_MAX_SELECTED_PACKAGES);
+        if (!packages) {
             return {
-                images: list,
-                changed: false,
-                confident: false,
-                rows,
-                reason: 'role-count-mismatch'
+                images: list.slice(0, LCST_MAX_SELECTED_IMAGES),
+                changed: true, confident: true, visualConfidence: false,
+                rows: 2, originalCount: list.length,
+                discarded: Math.max(0, list.length - LCST_MAX_SELECTED_IMAGES),
+                reason: 'max-six-package-fallback'
             };
         }
 
         const ordered = [];
-        for (let row = 0; row < rows; row++) {
-            ordered.push(games[row].src, histories[row].src, wins[row].src);
-        }
-
-        const changed = ordered.some((src, index) => src !== list[index]);
-        const visualConfidence = histories.every((item) =>
-            item.darkRatio >= 0.24 || item.hasHistoryMarker
-        ) && wins.every((item) =>
-            item.warmRatio >= 0.14 || item.strongWarmRatio >= 0.07 || item.paleRatio >= 0.09
+        packages.forEach((pack) => ordered.push(pack.game.src, pack.history.src, pack.win.src));
+        const visualConfidence = packages.every((pack) =>
+            (pack.history.darkRatio >= 0.24 || pack.history.hasHistoryMarker) &&
+            (pack.win.warmRatio >= 0.14 || pack.win.strongWarmRatio >= 0.07 || pack.win.paleRatio >= 0.09)
         );
 
+        return {
+            images: ordered.slice(0, LCST_MAX_SELECTED_IMAGES),
+            changed: true, confident: true, visualConfidence,
+            rows: 2, originalCount: list.length,
+            discarded: Math.max(0, list.length - LCST_MAX_SELECTED_IMAGES),
+            reason: visualConfidence ? 'max-six-exact-distinct-win' : 'max-six-deterministic-distinct-win'
+        };
+    }
+
+    function lcstBuildAutoArrangedOrder(images, analyses) {
+        const list = Array.isArray(images) ? images.slice() : [];
+        const packageSize = getPackageSizeFromImages(list);
+        if (packageSize !== 3 || list.length < 3 || list.length % 3 !== 0) {
+            return { images: list, changed: false, confident: false, rows: 0, reason: 'not-three-image-package' };
+        }
+
+        if (list.length === 3) {
+            const one = lcstArrangeSingleThreeImagePackage(list, Array.isArray(analyses) ? analyses.slice(0, 3) : []);
+            return { ...one, confident: one.images.length === 3, rows: 1 };
+        }
+
+        const rows = list.length / 3;
+        const raw = Array.isArray(analyses) ? analyses : [];
+        const items = list.map((src, index) => lcstAnalysisItem(src, index, raw[index]));
+        const assigned = lcstAssignScreenshotRolesGlobally(items, rows);
+        if (!assigned) {
+            return { images: list, changed: false, confident: false, rows, reason: 'global-role-assignment-failed' };
+        }
+
+        const packages = lcstBuildPackagesFromAssigned(assigned, rows);
+        if (!packages) {
+            return { images: list, changed: false, confident: false, rows, reason: 'package-build-failed' };
+        }
+
+        const ordered = [];
+        packages.forEach((pack) => ordered.push(pack.game.src, pack.history.src, pack.win.src));
+        const changed = ordered.some((src, index) => src !== list[index]);
+        const visualConfidence = packages.every((pack) =>
+            (pack.history.darkRatio >= 0.24 || pack.history.hasHistoryMarker) &&
+            (pack.win.warmRatio >= 0.14 || pack.win.strongWarmRatio >= 0.07 || pack.win.paleRatio >= 0.09)
+        );
         return {
             images: ordered,
             changed,
             confident: ordered.length === list.length,
             visualConfidence,
             rows,
-            reason: visualConfidence ? 'global-package-order-exact' : 'global-package-order-deterministic'
+            reason: visualConfidence ? 'strict-package-order-exact-distinct-win' : 'strict-package-order-deterministic-distinct-win'
         };
-    }
-
-    async function lcj2WarmUltraFastScanCache(src) {
-        const analysis = await getImageAnalysis(src);
-        if (!analysis || !analysis.sourceCanvas || !analysis.marker) return analysis;
-
-        const sourceCanvas = analysis.sourceCanvas;
-        const marker = analysis.marker;
-
-        // Siapkan crop utama kode dan preprocessing soft.
-        const directWindow = buildDirectMarkerCodeWindow(sourceCanvas, marker);
-        if (directWindow) {
-            renderPreparedVariant(directWindow, 'soft', false);
-        }
-
-        // Siapkan baris atas/bawah crop pertama untuk fallback cepat.
-        const rects = buildTransactionCropRects(sourceCanvas, marker);
-        if (rects && rects[0]) {
-            const cropped = cropCanvas(sourceCanvas, rects[0]);
-            const lineRects = findTwoLineRects(cropped);
-            if (lineRects && lineRects.length >= 2) {
-                const topLine = cropCanvas(cropped, lineRects[0]);
-                const bottomLine = cropCanvas(cropped, lineRects[1]);
-                renderPreparedVariant(topLine, 'soft', true);
-                renderPreparedVariant(bottomLine, 'soft', true);
-            }
-        }
-
-        // Siapkan crop tanggal/jam utama. OCR belum dijalankan sebelum tombol ditekan.
-        const timeCrops = buildClaimTimestampCropCanvases(sourceCanvas, marker);
-        if (timeCrops && timeCrops[0]) {
-            renderPreparedVariant(timeCrops[0].canvas, 'soft', false);
-        }
-
-        return analysis;
     }
 
     function prefetchTargetImages(images) {
@@ -5642,12 +6585,12 @@
         const runner = async () => {
             while (cursor < targets.length) {
                 const src = targets[cursor++];
-                try { await lcj2WarmUltraFastScanCache(src); } catch (e) {}
+                try { await getImageAnalysis(src); } catch (e) {}
             }
         };
         const prefetchConcurrency = Math.min(
             targets.length,
-            LCJ2_CPU_THREADS >= 8 ? 4 : (LCJ2_CPU_THREADS >= 4 ? 3 : 2)
+            LCST_CPU_THREADS >= 8 ? 4 : (LCST_CPU_THREADS >= 4 ? 3 : 2)
         );
         for (let i = 0; i < prefetchConcurrency; i++) runner();
     }
@@ -5857,18 +6800,63 @@
         return mapped;
     }
 
+    function lcstGetHistoryLayoutProfile(sourceCanvas, marker) {
+        const w = Math.max(1, Number(sourceCanvas && sourceCanvas.width) || 1);
+        const h = Math.max(1, Number(sourceCanvas && sourceCanvas.height) || 1);
+        const screenRatio = h / w;
+        const markerXRatio = marker && Number.isFinite(Number(marker.centerX))
+            ? Number(marker.centerX) / w
+            : null;
+
+        const compact = screenRatio <= 2.02 || (markerXRatio != null && markerXRatio <= 0.285);
+        return compact ? {
+            name: 'history-v2-compact',
+            compact: true,
+            preferredMarkerX: 0.255,
+            searchLeft: 0.115,
+            searchRight: 0.515,
+            transactionLeft: 0.135,
+            transactionRight: 0.535,
+            betLeft: 0.495,
+            betRight: 0.765,
+            timeRight: 0.255
+        } : {
+            name: 'history-v1-classic',
+            compact: false,
+            preferredMarkerX: 0.305,
+            searchLeft: 0.135,
+            searchRight: 0.545,
+            transactionLeft: 0.155,
+            transactionRight: 0.565,
+            betLeft: 0.520,
+            betRight: 0.785,
+            timeRight: 0.295
+        };
+    }
+
     function detectDoubleOrangeMarker(sourceCanvas) {
+        const cached = lcstOrangeMarkerCache.get(sourceCanvas);
+        if (cached && cached.width === sourceCanvas.width && cached.height === sourceCanvas.height) return cached.value;
+        const value = detectDoubleOrangeMarkerUncached(sourceCanvas);
+        lcstOrangeMarkerCache.set(sourceCanvas, {width:sourceCanvas.width, height:sourceCanvas.height, value});
+        return value;
+    }
+
+    function detectDoubleOrangeMarkerUncached(sourceCanvas) {
         const normalized = resizeForMarkerDetection(sourceCanvas);
         const canvas = normalized.canvas;
         const detectionScale = normalized.scale;
         const w = canvas.width;
         const h = canvas.height;
         const scaleUnit = w / 360;
+        const layout = lcstGetHistoryLayoutProfile(canvas, null);
 
-        const left = Math.max(0, Math.floor(w * 0.16));
-        const right = Math.min(w, Math.ceil(w * 0.66));
-        const top = Math.max(0, Math.floor(h * 0.09));
-        const bottom = Math.min(h, Math.ceil(h * 0.86));
+        // Area pencarian dipersempit ke kolom transaksi. Ini penting pada UI baru
+        // karena angka Taruhan/Untung juga berwarna cokelat-oranye.
+        const left = Math.max(0, Math.floor(w * layout.searchLeft));
+        const right = Math.min(w, Math.ceil(w * layout.searchRight));
+        const top = Math.max(0, Math.floor(h * 0.075));
+        const bottom = Math.min(h, Math.ceil(h * 0.865));
         const rw = right - left;
         const rh = bottom - top;
         if (rw < 40 || rh < 80) return null;
@@ -5910,15 +6898,23 @@
                     const pairHeight = Math.max(a.bottom, b.bottom) - Math.min(a.top, b.top);
                     const pairAspect = pairWidth / Math.max(1, pairHeight);
 
-                    if (yDiff > Math.max(7 * scaleUnit, (a.height + b.height) * 0.38)) continue;
-                    if (gap < Math.max(0.5, 0.5 * scaleUnit) || gap > Math.max(31 * scaleUnit, w * 0.075)) continue;
-                    if (sizeRatio < 0.34 || heightRatio < 0.34) continue;
-                    if (pairAspect < 1.35 || pairAspect > 5.2) continue;
+                    if (yDiff > Math.max(8 * scaleUnit, (a.height + b.height) * 0.42)) continue;
+                    if (gap < Math.max(0.5, 0.4 * scaleUnit) || gap > Math.max(34 * scaleUnit, w * 0.082)) continue;
+                    if (sizeRatio < 0.30 || heightRatio < 0.30) continue;
+                    if (pairAspect < 1.25 || pairAspect > 5.6) continue;
 
                     const targetX = (a.centerX + b.centerX) / 2;
-                    const xPreference = Math.max(0, 18 - Math.abs(targetX - w * 0.31) / Math.max(1, w * 0.025));
-                    const closeness = Math.max(0, 27 * scaleUnit - gap) + Math.max(0, 15 * scaleUnit - yDiff * 2);
-                    const score = a.shapeScore + b.shapeScore + closeness + (sizeRatio + heightRatio) * 14 + xPreference;
+                    const targetY = (a.centerY + b.centerY) / 2;
+                    const xPreference = Math.max(
+                        0,
+                        26 - Math.abs(targetX - w * layout.preferredMarkerX) / Math.max(1, w * 0.020)
+                    );
+                    const closeness = Math.max(0, 29 * scaleUnit - gap) + Math.max(0, 17 * scaleUnit - yDiff * 2);
+                    const headerPenalty = targetY < h * 0.165 ? 62 : 0;
+                    const footerPenalty = targetY > h * 0.82 ? 42 : 0;
+                    const transactionBandBonus = targetX >= w * 0.18 && targetX <= w * 0.39 ? 16 : 0;
+                    const score = a.shapeScore + b.shapeScore + closeness + (sizeRatio + heightRatio) * 14 +
+                        xPreference + transactionBandBonus - headerPenalty - footerPenalty;
 
                     const marker = {
                         left: Math.min(a.left, b.left),
@@ -5926,16 +6922,44 @@
                         right: Math.max(a.right, b.right),
                         bottom: Math.max(a.bottom, b.bottom),
                         score,
-                        source: 'component-pair'
+                        source: layout.compact ? 'component-pair-v2' : 'component-pair-v1',
+                        layout: layout.name
                     };
                     marker.width = marker.right - marker.left;
                     marker.height = marker.bottom - marker.top;
                     marker.centerX = (marker.left + marker.right) / 2;
                     marker.centerY = (marker.top + marker.bottom) / 2;
-                    marker.confidence = Math.max(58, Math.min(99, Math.round(58 + (score - 120) * 0.25)));
+                    marker.confidence = Math.max(58, Math.min(99, Math.round(58 + (score - 112) * 0.25)));
                     allMarkers.push(marker);
                 }
             }
+
+            // Fallback aman untuk History baru: kadang kompresi membuat salah satu
+            // dari dua icon oranye hilang. Single anchor hanya dipakai jika kandidat
+            // pair yang lebih kuat tidak ada, dan hasil OCR tetap harus lolos 9+10 digit.
+            roundParts.forEach(c => {
+                if (c.centerX < w * 0.18 || c.centerX > w * 0.40) return;
+                if (c.centerY < h * 0.17 || c.centerY > h * 0.82) return;
+                const xPreference = Math.max(
+                    0,
+                    18 - Math.abs(c.centerX - w * layout.preferredMarkerX) / Math.max(1, w * 0.024)
+                );
+                const score = 62 + c.shapeScore + xPreference;
+                allMarkers.push({
+                    left: c.left,
+                    top: c.top,
+                    right: c.right,
+                    bottom: c.bottom,
+                    width: c.width,
+                    height: c.height,
+                    centerX: c.centerX,
+                    centerY: c.centerY,
+                    score,
+                    confidence: Math.max(50, Math.min(79, Math.round(48 + score * 0.19))),
+                    source: 'single-orange-anchor',
+                    layout: layout.name
+                });
+            });
 
             // Fallback untuk dua lingkaran yang menyatu akibat kompresi/resizing.
             components.forEach(c => {
@@ -5945,11 +6969,15 @@
                 const maxWide = 72 * scaleUnit;
                 const minHigh = 5 * scaleUnit;
                 const maxHigh = 34 * scaleUnit;
+                const centerX = (c.left + c.right) / 2;
+                const centerY = (c.top + c.bottom) / 2;
                 if (c.width < minWide || c.width > maxWide || c.height < minHigh || c.height > maxHigh) return;
-                if (aspect < 1.45 || aspect > 5.4 || density < 0.045 || density > 0.78) return;
+                if (aspect < 1.35 || aspect > 5.5 || density < 0.045 || density > 0.78) return;
+                if (centerX < w * 0.18 || centerX > w * 0.42) return;
+                if (centerY < h * 0.17 || centerY > h * 0.82) return;
 
-                const limitedRight = Math.min(c.right, c.left + c.height * 3.6);
-                const score = 105 + Math.min(32, aspect * 7) + Math.min(20, c.area / Math.max(1, scaleUnit * scaleUnit) * 0.08);
+                const limitedRight = Math.min(c.right, c.left + c.height * 3.8);
+                const score = 106 + Math.min(34, aspect * 7) + Math.min(20, c.area / Math.max(1, scaleUnit * scaleUnit) * 0.08);
                 const marker = {
                     left: c.left,
                     top: c.top,
@@ -5958,10 +6986,11 @@
                     width: limitedRight - c.left,
                     height: c.height,
                     centerX: (c.left + limitedRight) / 2,
-                    centerY: (c.top + c.bottom) / 2,
+                    centerY,
                     score,
                     confidence: Math.max(55, Math.min(91, Math.round(58 + score * 0.18))),
-                    source: 'merged-orange-band'
+                    source: 'merged-orange-band',
+                    layout: layout.name
                 };
                 allMarkers.push(marker);
             });
@@ -5969,31 +6998,86 @@
 
         if (!allMarkers.length) return null;
 
-        // Deduplikasi kandidat dari tiga profil warna.
+        // Pair selalu diprioritaskan. Single anchor hanya menjadi fallback.
+        // Urutan kualitas diterapkan SEBELUM deduplikasi supaya kandidat pair tidak
+        // kalah dari single-anchor yang kebetulan mempunyai skor mentah lebih besar.
+        const markerQuality = (m) => {
+            let bonus = 0;
+            if (/component-pair/.test(m && m.source || '')) bonus = 42;
+            else if (m && m.source === 'merged-orange-band') bonus = 16;
+            return (Number(m && m.score) || 0) + bonus + (Number(m && m.confidence) || 0) * 0.08;
+        };
+
         const unique = [];
-        allMarkers.sort((a, b) => b.score - a.score);
+        allMarkers.sort((a, b) => markerQuality(b) - markerQuality(a));
         allMarkers.forEach(m => {
-            const duplicate = unique.some(u => Math.abs(u.centerX - m.centerX) < 8 * scaleUnit && Math.abs(u.centerY - m.centerY) < 7 * scaleUnit);
+            const duplicate = unique.some(u =>
+                Math.abs(u.centerX - m.centerX) < 8 * scaleUnit &&
+                Math.abs(u.centerY - m.centerY) < 7 * scaleUnit
+            );
             if (!duplicate) unique.push(m);
         });
+        unique.sort((a, b) => markerQuality(b) - markerQuality(a));
 
-        unique.sort((a, b) => {
-            const aPair = a.source === 'component-pair' ? 18 : 0;
-            const bPair = b.source === 'component-pair' ? 18 : 0;
-            return (b.score + bPair) - (a.score + aPair);
+        // Satukan kandidat yang sebenarnya masih berada pada baris transaksi yang
+        // sama. Hasil akhirnya adalah daftar target berbeda (atas -> bawah), bukan
+        // daftar variasi deteksi dari bulatan yang sama.
+        const rowCandidates = [];
+        unique.forEach((candidate) => {
+            const rowTolerance = Math.max(
+                12 * scaleUnit,
+                (Number(candidate.height) || 1) * 1.65
+            );
+            const sameRow = rowCandidates.findIndex((existing) =>
+                Math.abs(existing.centerY - candidate.centerY) <= rowTolerance
+            );
+            if (sameRow < 0) {
+                rowCandidates.push(candidate);
+            } else if (markerQuality(candidate) > markerQuality(rowCandidates[sameRow])) {
+                rowCandidates[sameRow] = candidate;
+            }
         });
-        return mapMarkerToSource(unique[0], detectionScale);
+
+        const mappedCandidates = rowCandidates
+            .slice()
+            .sort((a, b) => a.centerY - b.centerY || markerQuality(b) - markerQuality(a))
+            .map((candidate, index) => {
+                const mappedCandidate = mapMarkerToSource(candidate, detectionScale);
+                mappedCandidate.layout = candidate.layout || layout.name;
+                mappedCandidate.candidateIndex = index;
+                mappedCandidate.qualityScore = markerQuality(candidate);
+                return mappedCandidate;
+            });
+
+        const bestRaw = unique[0];
+        const mapped = mapMarkerToSource(bestRaw, detectionScale);
+        mapped.layout = bestRaw.layout || layout.name;
+        mapped.candidates = mappedCandidates;
+        mapped.candidateCount = mappedCandidates.length;
+        mapped.qualityScore = markerQuality(bestRaw);
+        return mapped;
     }
 
     function buildTransactionCropRects(sourceCanvas, marker) {
         const w = sourceCanvas.width;
         const h = sourceCanvas.height;
-        const markerH = Math.max(marker.height, w * 0.018, h * 0.010);
-        const codeBottom = Math.max(0, marker.top - Math.max(1, markerH * 0.18));
-        const codeHeight = Math.max(markerH * 3.15, h * 0.050, w * 0.090);
+        const layout = lcstGetHistoryLayoutProfile(sourceCanvas, marker);
+        const markerH = Math.max(marker.height, w * 0.016, h * 0.009);
+        const codeBottom = Math.max(0, marker.top - Math.max(1, markerH * 0.10));
+        const codeHeight = Math.max(
+            markerH * (layout.compact ? 3.55 : 3.35),
+            h * (layout.compact ? 0.058 : 0.052),
+            w * 0.082
+        );
         const tightTop = Math.max(0, codeBottom - codeHeight);
-        const tightLeft = Math.max(Math.floor(w * 0.175), Math.floor(marker.left - w * 0.045));
-        const tightRight = Math.min(Math.ceil(w * 0.585), Math.ceil(marker.right + w * 0.205));
+        const tightLeft = Math.max(
+            Math.floor(w * layout.transactionLeft),
+            Math.floor(marker.left - w * (layout.compact ? 0.050 : 0.042))
+        );
+        const tightRight = Math.min(
+            Math.ceil(w * layout.transactionRight),
+            Math.ceil(marker.right + w * (layout.compact ? 0.170 : 0.190))
+        );
 
         const variants = [
             {
@@ -6001,25 +7085,26 @@
                 top: tightTop,
                 width: tightRight - tightLeft,
                 height: codeBottom - tightTop,
-                name: 'tight'
+                name: layout.compact ? 'tight-v2' : 'tight-v1'
             },
             {
-                left: Math.max(0, tightLeft - w * 0.022),
-                top: Math.max(0, tightTop - h * 0.009),
-                width: Math.min(w, tightRight + w * 0.030) - Math.max(0, tightLeft - w * 0.022),
-                height: Math.min(h, codeBottom + h * 0.004) - Math.max(0, tightTop - h * 0.009),
-                name: 'wide'
+                left: Math.max(0, tightLeft - w * 0.028),
+                top: Math.max(0, tightTop - h * 0.010),
+                width: Math.min(w, tightRight + w * 0.040) - Math.max(0, tightLeft - w * 0.028),
+                height: Math.min(h, codeBottom + h * 0.004) - Math.max(0, tightTop - h * 0.010),
+                name: layout.compact ? 'wide-v2' : 'wide-v1'
             },
             {
-                left: Math.max(0, w * 0.17),
-                top: Math.max(0, codeBottom - Math.max(codeHeight * 1.22, h * 0.065)),
-                width: Math.min(w, w * 0.61) - Math.max(0, w * 0.17),
-                height: codeBottom - Math.max(0, codeBottom - Math.max(codeHeight * 1.22, h * 0.065)),
-                name: 'fallback-column'
+                left: Math.max(0, w * Math.max(0.11, layout.transactionLeft - 0.02)),
+                top: Math.max(0, codeBottom - Math.max(codeHeight * 1.24, h * 0.067)),
+                width: Math.min(w, w * Math.min(0.59, layout.transactionRight + 0.035)) -
+                    Math.max(0, w * Math.max(0.11, layout.transactionLeft - 0.02)),
+                height: codeBottom - Math.max(0, codeBottom - Math.max(codeHeight * 1.24, h * 0.067)),
+                name: 'fallback-column-dual'
             }
         ];
 
-        return variants.filter(r => r.width >= Math.max(55, w * 0.16) && r.height >= Math.max(22, h * 0.025));
+        return variants.filter(r => r.width >= Math.max(55, w * 0.14) && r.height >= Math.max(20, h * 0.022));
     }
 
 
@@ -6028,52 +7113,52 @@
 
         const width = sourceCanvas.width;
         const height = sourceCanvas.height;
+        const layout = lcstGetHistoryLayoutProfile(sourceCanvas, marker);
         const markerHeight = Math.max(
             8,
             Number(marker.height) || (Number(marker.bottom) - Number(marker.top)) || 0,
-            width * 0.012,
-            height * 0.007
+            width * 0.011,
+            height * 0.0065
         );
 
-        // Koordinat dibuat relatif terhadap marker dua bulatan.
-        // Batas kanan dijaga agar tidak masuk ke kolom Taruhan/Surplus.
+        // Dual-layout: kolom Transaksi UI baru sedikit lebih ke kiri.
+        // Area tetap berhenti sebelum Taruhan agar Rp/Profit tidak ikut OCR.
         const left = Math.max(
             0,
-            Math.floor(width * 0.17),
-            Math.floor(marker.left - width * 0.030)
+            Math.floor(width * layout.transactionLeft),
+            Math.floor(marker.left - width * (layout.compact ? 0.045 : 0.032))
         );
         const right = Math.min(
             width,
-            Math.ceil(width * 0.50),
-            Math.ceil(marker.right + width * 0.100)
+            Math.ceil(width * layout.transactionRight),
+            Math.ceil(marker.right + width * (layout.compact ? 0.135 : 0.125))
         );
 
-        // Ambil dua baris transaksi tepat di atas marker dan hentikan crop
-        // beberapa piksel sebelum marker agar ikon/teks 1+11 tidak ikut OCR.
+        // Ambil dua baris angka transaksi tepat di atas marker.
         const top = Math.max(
             0,
             Math.floor(
                 marker.top -
-                Math.max(markerHeight * 1.85, height * 0.030)
+                Math.max(markerHeight * (layout.compact ? 2.35 : 2.25), height * 0.036)
             )
         );
         const bottom = Math.max(
             top + 8,
             Math.floor(
                 marker.top -
-                Math.max(markerHeight * 0.15, height * 0.0025)
+                Math.max(markerHeight * 0.10, height * 0.0015)
             )
         );
 
-        if (right - left < Math.max(70, width * 0.12)) return null;
-        if (bottom - top < Math.max(18, height * 0.014)) return null;
+        if (right - left < Math.max(68, width * 0.12)) return null;
+        if (bottom - top < Math.max(18, height * 0.013)) return null;
 
         return cropCanvas(sourceCanvas, {
             left,
             top,
             width: right - left,
             height: bottom - top,
-            name: 'direct-marker-code-window'
+            name: layout.compact ? 'direct-marker-code-window-v2' : 'direct-marker-code-window-v1'
         });
     }
 
@@ -6082,19 +7167,36 @@
 
         const width = sourceCanvas.width;
         const height = sourceCanvas.height;
+        const layout = lcstGetHistoryLayoutProfile(sourceCanvas, marker);
         const markerHeight = Math.max(
             8,
             Number(marker.height) || (Number(marker.bottom) - Number(marker.top)) || 0,
-            width * 0.012,
-            height * 0.007
+            width * 0.011,
+            height * 0.0065
         );
 
-        const left = Math.max(0, Math.floor(width * 0.545), Math.floor(marker.right + width * 0.115));
-        const right = Math.min(width, Math.ceil(width * 0.765), Math.ceil(marker.right + width * 0.355));
-        const top = Math.max(0, Math.floor(marker.top - Math.max(markerHeight * 1.85, height * 0.030)));
-        const bottom = Math.max(top + 8, Math.floor(marker.top - Math.max(markerHeight * 0.15, height * 0.0025)));
+        // UI baru menambahkan prefix "Rp" dan kolom Taruhan sedikit melebar.
+        // Crop dimulai lebih ke kiri agar angka seperti Rp3,60 tidak terpotong.
+        const left = Math.max(
+            0,
+            Math.floor(width * layout.betLeft),
+            Math.floor(marker.right + width * (layout.compact ? 0.105 : 0.115))
+        );
+        const right = Math.min(
+            width,
+            Math.ceil(width * layout.betRight),
+            Math.ceil(marker.right + width * (layout.compact ? 0.420 : 0.405))
+        );
+        const top = Math.max(
+            0,
+            Math.floor(marker.top - Math.max(markerHeight * 2.35, height * 0.036))
+        );
+        const bottom = Math.max(
+            top + 8,
+            Math.floor(marker.top - Math.max(markerHeight * 0.10, height * 0.0015))
+        );
 
-        if (right - left < Math.max(45, width * 0.08)) return null;
+        if (right - left < Math.max(48, width * 0.085)) return null;
         if (bottom - top < Math.max(15, height * 0.012)) return null;
 
         return cropCanvas(sourceCanvas, {
@@ -6102,7 +7204,7 @@
             top,
             width: right - left,
             height: bottom - top,
-            name: 'bet-odds-window'
+            name: layout.compact ? 'bet-odds-window-v2' : 'bet-odds-window-v1'
         });
     }
 
@@ -6159,7 +7261,8 @@
         if (!crop) return { value: null, belowMin: false };
 
         const runPass = async (mode) => {
-            const prepared = renderPreparedVariant(crop, mode, false);
+            // Metadata taruhan tidak membutuhkan canvas besar fallback kode.
+            const prepared = renderPreparedVariant(crop, mode, false, 144);
             const result = await recognizePrepared(worker, prepared, 6);
             return parseBetOddsRecognition(result);
         };
@@ -6171,7 +7274,7 @@
         }
         if (!first) return { value: null, belowMin: false };
 
-        if (first.value >= LCJ2_MIN_BET_ODDS) {
+        if (first.value >= LCST_MIN_BET_ODDS) {
             return { value: first.value, belowMin: false };
         }
 
@@ -6181,7 +7284,7 @@
             if (second && Math.abs(second.value - first.value) < 0.011) {
                 return { value: first.value, belowMin: true };
             }
-            if (second && second.value >= LCJ2_MIN_BET_ODDS) {
+            if (second && second.value >= LCST_MIN_BET_ODDS) {
                 return { value: second.value, belowMin: false };
             }
         } catch (e) {}
@@ -6197,294 +7300,139 @@
         if (!sourceCanvas || !marker) return [];
         const width = sourceCanvas.width;
         const height = sourceCanvas.height;
-        const markerHeight = Math.max(
-            8,
-            Number(marker.height) || (Number(marker.bottom) - Number(marker.top)) || 0,
-            width * 0.012,
-            height * 0.007
-        );
-        const rowTop = Math.max(0, Math.floor(marker.top - Math.max(markerHeight * 3.25, height * 0.052)));
-        const rowBottom = Math.min(height, Math.ceil(marker.top + Math.max(markerHeight * 0.42, height * 0.008)));
-        const leftColumnRight = Math.min(
-            width,
-            Math.max(width * 0.24, Math.min(width * 0.38, marker.left + width * 0.035))
-        );
+        const markerHeight = Math.max(8, Number(marker.height) || (marker.bottom - marker.top) || 0);
+        // Bulatan berada di BAWAH kode, bukan di tengah baris waktu.
+        // Sisi kanan berhenti SEBELUM kolom transaksi; crop tinggi tidak memakai
+        // persentase tinggi screenshot karena itu mengambil baris sebelumnya.
+        const right = Math.min(width * 0.23, Math.max(width * 0.16, marker.left - width * 0.015));
         const variants = [
-            {
-                name: 'image-2-row-left',
-                left: 0,
-                top: rowTop,
-                width: leftColumnRight,
-                height: rowBottom - rowTop
-            },
-            {
-                name: 'image-2-row-wide',
-                left: 0,
-                top: Math.max(0, rowTop - height * 0.018),
-                width: Math.min(width, width * 0.58),
-                height: Math.min(height, rowBottom + height * 0.018) - Math.max(0, rowTop - height * 0.018)
-            },
-            {
-                name: 'image-2-history-upper',
-                left: 0,
-                top: Math.max(0, marker.top - height * 0.19),
-                width: Math.min(width, width * 0.62),
-                height: Math.min(height * 0.22, marker.top + height * 0.015) - Math.max(0, marker.top - height * 0.19)
-            },
-            {
-                name: 'image-2-row-full',
-                left: 0,
-                top: Math.max(0, rowTop - height * 0.025),
-                width,
-                height: Math.min(height, rowBottom + height * 0.025) - Math.max(0, rowTop - height * 0.025)
-            }
+            {name:'image-time-column', left:width * 0.015,
+             top:Math.max(0, marker.top - markerHeight * 2.5),
+             width:right - width * 0.015, height:markerHeight * 3.85},
+            {name:'image-time-column-margin', left:0,
+             top:Math.max(0, marker.top - markerHeight * 2.85),
+             width:right, height:markerHeight * 4.2}
         ];
-        return variants
-            .filter((rect) => rect.width >= 70 && rect.height >= 20)
-            .map((rect) => ({ name: rect.name, canvas: cropCanvas(sourceCanvas, rect) }));
+        return variants.filter(rect => rect.width >= 25 && rect.height >= 16)
+            .map(rect => ({name:rect.name,rect}));
     }
 
-    async function lcj2SetTimestampOcrMode(worker) {
+    function buildClaimTimezoneCropCanvases(sourceCanvas, marker) {
+        if (!sourceCanvas) return [];
+        const width = sourceCanvas.width, height = sourceCanvas.height;
+        const rects = [
+            {name:'timezone-time-column', left:0, top:height * 0.07,
+             width:width * 0.22, height:height * 0.28},
+            {name:'timezone-header-wide', left:0, top:0,
+             width:width * 0.55, height:height * 0.30}
+        ];
+        return rects.map(rect => ({name:rect.name,rect}));
+    }
+
+    async function lcstSetTimestampOcrMode(worker) {
         await worker.setParameters({
-            tessedit_char_whitelist: LCJ2_TIMESTAMP_OCR_WHITELIST,
+            tessedit_char_whitelist: LCST_TIMESTAMP_OCR_WHITELIST,
             preserve_interword_spaces: '1',
             classify_bln_numeric_mode: '0'
         });
     }
 
-    async function lcj2RestoreNumericOcrMode(worker) {
+    async function lcstRestoreNumericOcrMode(worker) {
         try {
             await worker.setParameters({
-                tessedit_char_whitelist: LCJ2_NUMERIC_OCR_WHITELIST,
+                tessedit_char_whitelist: LCST_NUMERIC_OCR_WHITELIST,
                 preserve_interword_spaces: '1',
                 classify_bln_numeric_mode: '1'
             });
         } catch (e) {}
     }
 
-    function buildTimezoneCropCanvases(sourceCanvas, marker) {
-        if (!sourceCanvas) return [];
-        const width = sourceCanvas.width;
-        const height = sourceCanvas.height;
-        const rects = [
-            // Zona waktu dapat berada pada header, kanan atas, samping, atau footer.
-            { name: 'timezone-top', left: 0, top: 0, width, height: Math.max(40, height * 0.30) },
-            { name: 'timezone-top-left', left: 0, top: 0, width: width * 0.60, height: Math.max(40, height * 0.40) },
-            { name: 'timezone-top-right', left: width * 0.36, top: 0, width: width * 0.64, height: Math.max(40, height * 0.42) },
-            { name: 'timezone-middle-right', left: width * 0.48, top: height * 0.20, width: width * 0.52, height: height * 0.48 },
-            { name: 'timezone-bottom', left: 0, top: height * 0.68, width, height: height * 0.32 },
-            { name: 'timezone-full', left: 0, top: 0, width, height }
-        ];
-
-        if (marker) {
-            const markerHeight = Math.max(8, Number(marker.height) || 0, height * 0.008);
-            const top = Math.max(0, marker.top - Math.max(markerHeight * 4.2, height * 0.075));
-            const bottom = Math.min(height, marker.top + Math.max(markerHeight * 1.2, height * 0.025));
-            rects.unshift({
-                name: 'timezone-transaction-row',
-                left: 0,
-                top,
-                width,
-                height: Math.max(30, bottom - top)
-            });
-        }
-
-        return rects
-            .filter((rect) => rect.width >= 80 && rect.height >= 25)
-            .map((rect) => ({ name: rect.name, canvas: cropCanvas(sourceCanvas, rect) }));
-    }
-
-    async function readExplicitTimezoneOffsetFromImage(sourceCanvas, marker, worker, knownRawParts) {
-        const combinedKnownText = (knownRawParts || []).join('\n');
-        const knownOffset = lcj2FindExplicitGmtOffsetMinutes(combinedKnownText);
-        if (knownOffset != null) {
-            return { offsetMinutes: knownOffset, rawText: combinedKnownText, source: 'timestamp-raw' };
-        }
-
-        if (sourceCanvas && lcj2TimezoneOffsetCache.has(sourceCanvas)) {
-            return lcj2TimezoneOffsetCache.get(sourceCanvas);
-        }
-
-        const crops = buildTimezoneCropCanvases(sourceCanvas, marker);
-        let resultInfo = null;
-
-        // Jalur cepat: satu pass soft pada area yang paling sering menyimpan GMT.
-        // Otsu dan full-image hanya dijalankan bila zona belum ditemukan.
-        const passPlan = [];
-        const preferredNames = [
-            'timezone-transaction-row',
-            'timezone-top',
-            'timezone-top-right',
-            'timezone-top-left',
-            'timezone-bottom'
-        ];
-
-        preferredNames.forEach((name) => {
-            const index = crops.findIndex((item) => item.name === name);
-            if (index >= 0) passPlan.push({ index, mode: 'soft', psm: 11 });
-        });
-
-        ['timezone-top', 'timezone-top-right', 'timezone-bottom'].forEach((name) => {
-            const index = crops.findIndex((item) => item.name === name);
-            if (index >= 0) passPlan.push({ index, mode: 'otsu', psm: 6 });
-        });
-
-        const fullIndex = crops.findIndex((item) => item.name === 'timezone-full');
-        if (fullIndex >= 0) {
-            passPlan.push({ index: fullIndex, mode: 'soft', psm: 11 });
-            passPlan.push({ index: fullIndex, mode: 'otsu', psm: 6 });
-        }
-
-        const usedPassKeys = new Set();
-        for (const pass of passPlan) {
-            if (resultInfo) break;
+    async function lcstReadExplicitTimezoneOffsetFromImage(sourceCanvas, marker, worker, knownRawParts) {
+        const knownText = (knownRawParts || []).join('\n');
+        const knownOffset = lcstFindExplicitGmtOffsetMinutes(knownText);
+        if (knownOffset != null) return {offsetMinutes:knownOffset,rawText:knownText,source:'timestamp-raw'};
+        const cached = sourceCanvas && lcstTimezoneOffsetCache.get(sourceCanvas);
+        if (cached && cached.offsetMinutes != null) return cached;
+        const crops = buildClaimTimezoneCropCanvases(sourceCanvas,marker);
+        const passes = [{index:0,mode:'soft',psm:11}, {index:1,mode:'soft',psm:11}, {index:0,mode:'otsu',psm:6}];
+        for (const pass of passes) {
             const item = crops[pass.index];
             if (!item) continue;
-            const key = item.name + '|' + pass.mode + '|' + pass.psm;
-            if (usedPassKeys.has(key)) continue;
-            usedPassKeys.add(key);
-
             try {
-                const prepared = renderPreparedVariant(item.canvas, pass.mode, false);
-                const result = await recognizePrepared(worker, prepared, pass.psm);
+                await new Promise(resolve => setTimeout(resolve, 0));
+                if (!item.canvas) item.canvas = cropCanvas(sourceCanvas,item.rect);
+                const prepared = renderPreparedVariant(item.canvas,pass.mode,false,132);
+                const result = await recognizePrepared(worker,prepared,pass.psm);
                 const raw = String(result && result.data && result.data.text || '');
-                const offset = lcj2FindExplicitGmtOffsetMinutes(raw);
-                if (offset != null) {
-                    resultInfo = {
-                        offsetMinutes: offset,
-                        rawText: raw,
-                        source: item.name + '-' + pass.mode + '-psm' + pass.psm
-                    };
+                const offsetMinutes = lcstFindExplicitGmtOffsetMinutes(raw);
+                if (offsetMinutes != null) {
+                    const info = {offsetMinutes,rawText:raw,source:item.name+'-'+pass.mode};
+                    if (sourceCanvas) lcstTimezoneOffsetCache.set(sourceCanvas,info);
+                    return info;
                 }
             } catch (e) {}
         }
-
-        if (!resultInfo) {
-            resultInfo = {
-                offsetMinutes: null,
-                rawText: combinedKnownText,
-                source: 'not-detected'
-            };
-        }
-
-        if (sourceCanvas) lcj2TimezoneOffsetCache.set(sourceCanvas, resultInfo);
-        return resultInfo;
+        // Kegagalan tidak dicache: scan ulang boleh mencoba header kembali.
+        return {offsetMinutes:null,rawText:knownText,source:'not-detected'};
     }
 
     async function readClaimTimestampFromSecondImage(sourceCanvas, marker, worker, fallbackPeriod, existingText) {
+        // existingText adalah OCR kode; jangan pasangkan angkanya dengan jam crop.
         const rawParts = [];
+        const candidates = [];
+        let timezone = null;
         let bestTimestamp = null;
-        let explicitTimezone = null;
-        let timestampModeActive = false;
-
-        const considerRawText = (raw, sourceName, confidence) => {
-            const textValue = String(raw || '');
-            if (textValue) rawParts.push((sourceName || 'ocr') + '\n' + textValue);
-
-            const zone = lcj2FindExplicitGmtOffsetMinutes(textValue);
-            if (zone != null) {
-                explicitTimezone = {
-                    offsetMinutes: zone,
-                    rawText: textValue,
-                    source: sourceName || 'ocr'
-                };
-            }
-
-            const parsed = lcj2ParseImageTimestampText(textValue, fallbackPeriod);
-            if (parsed && parsed.hasTime && parsed.source !== 'period-date-fallback') {
-                parsed.source = sourceName || parsed.source;
-                parsed.confidence = Number(confidence) || parsed.confidence || 0;
-                if (!bestTimestamp || (parsed.confidence || 0) > (bestTimestamp.confidence || 0)) {
-                    bestTimestamp = parsed;
-                }
-            }
-        };
-
-        // Teks OCR periode dapat memberi tanggal/jam, tetapi TIDAK boleh langsung
-        // dipakai sebelum zona waktu gambar diperiksa.
-        considerRawText(existingText || '', 'existing-ocr', 0);
-
         const crops = buildClaimTimestampCropCanvases(sourceCanvas, marker);
-
-        const runTimestampPass = async (item, psm, mode) => {
-            try {
-                const prepared = renderPreparedVariant(item.canvas, mode, false);
-                const result = await recognizePrepared(worker, prepared, psm);
-                const raw = String(result && result.data && result.data.text || '');
-                considerRawText(raw, item.name + '-psm' + psm, Number(result && result.data && result.data.confidence) || 0);
-                return true;
-            } catch (e) {
-                return false;
-            }
-        };
-
+        const passes = [{index:0,psm:6,mode:'soft',height:132},
+            {index:0,psm:6,mode:'soft',height:220},
+            {index:0,psm:6,mode:'otsu',height:220},
+            {index:1,psm:6,mode:'soft',height:220}];
         try {
-            await lcj2SetTimestampOcrMode(worker);
-            timestampModeActive = true;
-
-            // Jalur cepat tanggal/jam.
-            const primaryLimit = Math.min(3, crops.length);
-            for (let i = 0; i < primaryLimit; i++) {
-                await runTimestampPass(crops[i], 6, 'soft');
-                if (bestTimestamp && explicitTimezone) break;
+            // Kolom ini hanya angka tanggal/jam. Alfabet bebas membuat 09/11 terbaca na/n.
+            await worker.setParameters({tessedit_char_whitelist:'0123456789:/.,- AMPamp',
+                preserve_interword_spaces:'1',classify_bln_numeric_mode:'0'});
+            for (const pass of passes) {
+                const item = crops[pass.index];
+                if (!item) continue;
+                try {
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                    if (!item.canvas) item.canvas = cropCanvas(sourceCanvas,item.rect);
+                    const prepared = renderPreparedVariant(item.canvas,pass.mode,false,pass.height);
+                    const result = await recognizePrepared(worker,prepared,pass.psm);
+                    const raw = String(result && result.data && result.data.text || '');
+                    rawParts.push(raw);
+                    const parsed = lcstParseImageTimestampText(raw,fallbackPeriod);
+                    if (!parsed || !parsed.hasTime) continue;
+                    // Kolom history mencetak MM/DD dua digit. 09/1 bisa kehilangan
+                    // digit terakhir dari 09/11: jangan menerima sebagai 1 September.
+                    if (parsed.yearInferred && !/^\d{2}\s*[-/.]\s*\d{2}$/.test(parsed.dateText || '')) continue;
+                    parsed.confidence = Number(result.data.confidence) || 0;
+                    parsed.source = item.name+'-psm'+pass.psm;
+                    const zone = lcstFindExplicitGmtOffsetMinutes(raw);
+                    const key = JSON.stringify(parsed.originalTimestamp);
+                    candidates.push({parsed,key,zone,raw});
+                    const agreeing = candidates.filter(x => x.key === key);
+                    // Hasil lemah diperiksa ulang; satu pembacaan lemah tidak mengunci tanggal.
+                    if (parsed.confidence >= 60 || agreeing.length >= 2) {
+                        bestTimestamp = parsed;
+                        if (zone != null) timezone = {offsetMinutes:zone,rawText:raw,source:parsed.source};
+                        break;
+                    }
+                } catch (e) {}
             }
-
-            if ((!bestTimestamp || !explicitTimezone) && crops[0]) {
-                await runTimestampPass(crops[0], 11, 'otsu');
-            }
-
-            if ((!bestTimestamp || !explicitTimezone) && crops.length > 3) {
-                await runTimestampPass(crops[3], 6, 'soft');
-            }
-
-            // Pemeriksaan zona waktu wajib. Ini yang mencegah GMT+8 dianggap GMT+7.
-            if (!explicitTimezone) {
-                explicitTimezone = await readExplicitTimezoneOffsetFromImage(
-                    sourceCanvas,
-                    marker,
-                    worker,
-                    rawParts
-                );
-                if (explicitTimezone && explicitTimezone.rawText) {
-                    rawParts.push(explicitTimezone.source + '\n' + explicitTimezone.rawText);
-                }
+            if (!timezone) {
+                await lcstSetTimestampOcrMode(worker);
+                // Zona berasal dari gambar yang sedang diproses, tidak dari paket lain.
+                timezone = await lcstReadExplicitTimezoneOffsetFromImage(sourceCanvas,marker,worker,[]);
             }
         } finally {
-            if (timestampModeActive) await lcj2RestoreNumericOcrMode(worker);
+            await lcstRestoreNumericOcrMode(worker);
         }
-
-        if (!bestTimestamp) {
-            bestTimestamp = lcj2ParseImageTimestampText(rawParts.join('\n---\n'), fallbackPeriod);
+        if (!bestTimestamp) return null;
+        if (timezone && timezone.offsetMinutes != null) {
+            bestTimestamp = lcstApplySourceGmtOffset(bestTimestamp,timezone.offsetMinutes,timezone.rawText);
+            bestTimestamp.timezoneDetectionSource = timezone.source;
         }
-
-        if (!bestTimestamp) {
-            return lcj2ParseImageTimestampText('', fallbackPeriod);
-        }
-
-        if (
-            explicitTimezone &&
-            explicitTimezone.offsetMinutes != null &&
-            bestTimestamp.hasTime
-        ) {
-            lcj2ApplySourceGmtOffset(
-                bestTimestamp,
-                explicitTimezone.offsetMinutes,
-                explicitTimezone.rawText
-            );
-            bestTimestamp.timezoneDetectionSource = explicitTimezone.source;
-        }
-
-        // Jika label zona tidak berhasil dibaca, pertahankan GMT+7 sebagai fallback,
-        // tetapi tandai agar operator dapat melihat bahwa zona tidak eksplisit.
-        if (!bestTimestamp.timezoneExplicit) {
-            bestTimestamp.sourceGmtOffsetMinutes = 7 * 60;
-            bestTimestamp.sourceGmtLabel = 'GMT+7';
-            bestTimestamp.normalizedGmtLabel = 'GMT+7';
-            bestTimestamp.timezoneAdjusted = false;
-            bestTimestamp.timezoneExplicit = false;
-            bestTimestamp.timezoneDetectionSource = 'fallback-gmt7';
-        }
-
         return bestTimestamp;
     }
 
@@ -6612,33 +7560,27 @@
         }
         return out;
     }
-    function chooseUpscale(source, lineMode) {
-        // Turbo Scan:
-        // Crop kecil tetap diperbesar, tetapi gambar yang sudah besar tidak lagi
-        // dipaksa membesar 3,2x. Perubahan ini mengurangi jumlah piksel OCR secara besar.
-        const targetHeight = lineMode ? 86 : 146;
-        const sourceHeight = Math.max(1, Number(source && source.height) || 1);
-        const wantedScale = targetHeight / sourceHeight;
-        const minScale = lineMode ? 0.84 : 0.50;
-        const maxScale = lineMode ? 4.4 : 2.6;
-        return Math.max(minScale, Math.min(maxScale, wantedScale));
+    function chooseUpscale(source, lineMode, targetHeightOverride) {
+        // 95-110px tinggi baris sudah cukup untuk angka; versi lama 145-255px membebani CPU/RAM.
+        const requestedHeight = Number(targetHeightOverride);
+        const targetHeight = Number.isFinite(requestedHeight) && requestedHeight >= 96
+            ? Math.min(220, requestedHeight)
+            : (lineMode ? 108 : 188);
+        return Math.max(3.2, Math.min(7.5, targetHeight / Math.max(1, source.height)));
     }
-    function renderPreparedVariant(source, mode, lineMode) {
-        const cacheKey = lineMode ? 'line' : 'combined';
-        const variantKey = 'variant-' + cacheKey + '-' + String(mode || 'soft');
-        let cache = lcj2PreparedBaseCache.get(source);
+    function renderPreparedVariant(source, mode, lineMode, targetHeightOverride) {
+        const requestedHeight = Number(targetHeightOverride);
+        const cacheKey = (lineMode ? 'line' : 'combined') +
+            (Number.isFinite(requestedHeight) ? '-' + Math.round(requestedHeight) : '');
+        let cache = lcstPreparedBaseCache.get(source);
         if (!cache) {
             cache = {};
-            lcj2PreparedBaseCache.set(source, cache);
+            lcstPreparedBaseCache.set(source, cache);
         }
-
-        // Hasil canvas akhir disimpan. Pass berikutnya dengan crop/mode yang sama
-        // tidak perlu menghitung grayscale, threshold, dan border lagi.
-        if (cache[variantKey]) return cache[variantKey];
 
         let preparedBase = cache[cacheKey];
         if (!preparedBase) {
-            const scale = chooseUpscale(source, !!lineMode);
+            const scale = chooseUpscale(source, !!lineMode, targetHeightOverride);
             const base = upscaleCanvas(source, scale);
             const grayData = grayscaleInvertedData(base);
             preparedBase = {
@@ -6680,9 +7622,7 @@
             img.data[i + 3] = 255;
         }
         ctx.putImageData(img, 0, 0);
-        const finalCanvas = addWhiteBorder(out, lineMode ? 13 : 11);
-        cache[variantKey] = finalCanvas;
-        return finalCanvas;
+        return addWhiteBorder(out, lineMode ? 20 : 18);
     }
 
     function smoothArray(values, radius) {
@@ -7085,8 +8025,8 @@
         const seenRects = new Set();
 
         // Jalur utama: manfaatkan segmentasi 10 glyph.
-        const glyphInfo = findDigitGlyphBoxes(bottomLine, LCJ2_EXPECTED_BOTTOM_LENGTH);
-        if (glyphInfo && glyphInfo.boxes && glyphInfo.boxes.length === LCJ2_EXPECTED_BOTTOM_LENGTH) {
+        const glyphInfo = findDigitGlyphBoxes(bottomLine, LCST_EXPECTED_BOTTOM_LENGTH);
+        if (glyphInfo && glyphInfo.boxes && glyphInfo.boxes.length === LCST_EXPECTED_BOTTOM_LENGTH) {
             const minLeft = Math.min(...glyphInfo.boxes.map(b => b.left));
             const minTop = Math.min(...glyphInfo.boxes.map(b => b.top));
             const maxRight = Math.max(...glyphInfo.boxes.map(b => b.right));
@@ -7124,7 +8064,7 @@
         // Fallback: proyeksi tinta pada hasil preprocessing.
         if (!variants.length) {
             const otsu = renderPreparedVariant(bottomLine, 'otsu', true);
-            const projectedRect = detectTightDigitRowRect(otsu, LCJ2_EXPECTED_BOTTOM_LENGTH);
+            const projectedRect = detectTightDigitRowRect(otsu, LCST_EXPECTED_BOTTOM_LENGTH);
             if (projectedRect) {
                 ['soft', 'otsu', 'adaptive'].forEach(mode => {
                     const prepared = renderPreparedVariant(bottomLine, mode, true);
@@ -7162,7 +8102,7 @@
     }
 
 
-    let lcj2DigitTemplateBank = null;
+    let lcstDigitTemplateBank = null;
 
     function normalizeGlyphMask(sourceMask, sourceWidth, sourceHeight, box, outWidth, outHeight) {
         outWidth = outWidth || 32;
@@ -7268,7 +8208,7 @@
     }
 
     function getDigitTemplateBank() {
-        if (lcj2DigitTemplateBank) return lcj2DigitTemplateBank;
+        if (lcstDigitTemplateBank) return lcstDigitTemplateBank;
 
         const families = [
             '"Roboto", sans-serif',
@@ -7291,13 +8231,13 @@
                             buildRenderedDigitMask(key, fontFamily, fontWeight)
                         );
                     } catch (err) {
-                        console.warn('[LCJ2 template font gagal]', fontFamily, fontWeight, err);
+                        console.warn('[LCST template font gagal]', fontFamily, fontWeight, err);
                     }
                 });
             });
         }
 
-        lcj2DigitTemplateBank = bank;
+        lcstDigitTemplateBank = bank;
         return bank;
     }
 
@@ -7410,7 +8350,7 @@
 
     function resolveAmbiguousDigitsByTemplate(lineCanvas, recognizedDigits) {
         const digits = onlyDigits(recognizedDigits);
-        if (digits.length !== LCJ2_EXPECTED_BOTTOM_LENGTH) {
+        if (digits.length !== LCST_EXPECTED_BOTTOM_LENGTH) {
             return {
                 value: digits,
                 changed: false,
@@ -7423,13 +8363,13 @@
 
         const binary = findDigitGlyphBoxes(
             lineCanvas,
-            LCJ2_EXPECTED_BOTTOM_LENGTH
+            LCST_EXPECTED_BOTTOM_LENGTH
         );
 
         if (
             !binary ||
             !binary.boxes ||
-            binary.boxes.length !== LCJ2_EXPECTED_BOTTOM_LENGTH
+            binary.boxes.length !== LCST_EXPECTED_BOTTOM_LENGTH
         ) {
             return {
                 value: digits,
@@ -7700,7 +8640,7 @@
 
     function resolveTwoSevenByGeometry(lineCanvas, recognizedDigits) {
         const digits = onlyDigits(recognizedDigits);
-        if (digits.length !== LCJ2_EXPECTED_BOTTOM_LENGTH) {
+        if (digits.length !== LCST_EXPECTED_BOTTOM_LENGTH) {
             return {
                 value: digits,
                 changed: false,
@@ -7712,8 +8652,8 @@
             };
         }
 
-        const binary = findDigitGlyphBoxes(lineCanvas, LCJ2_EXPECTED_BOTTOM_LENGTH);
-        if (!binary || !binary.boxes || binary.boxes.length !== LCJ2_EXPECTED_BOTTOM_LENGTH) {
+        const binary = findDigitGlyphBoxes(lineCanvas, LCST_EXPECTED_BOTTOM_LENGTH);
+        if (!binary || !binary.boxes || binary.boxes.length !== LCST_EXPECTED_BOTTOM_LENGTH) {
             return {
                 value: digits,
                 changed: false,
@@ -7771,7 +8711,7 @@
 
     function resolveZeroNineByGeometry(lineCanvas, recognizedDigits) {
         const digits = onlyDigits(recognizedDigits);
-        if (digits.length !== LCJ2_EXPECTED_BOTTOM_LENGTH) {
+        if (digits.length !== LCST_EXPECTED_BOTTOM_LENGTH) {
             return {
                 value: digits,
                 changed: false,
@@ -7783,8 +8723,8 @@
             };
         }
 
-        const binary = findDigitGlyphBoxes(lineCanvas, LCJ2_EXPECTED_BOTTOM_LENGTH);
-        if (!binary || !binary.boxes || binary.boxes.length !== LCJ2_EXPECTED_BOTTOM_LENGTH) {
+        const binary = findDigitGlyphBoxes(lineCanvas, LCST_EXPECTED_BOTTOM_LENGTH);
+        if (!binary || !binary.boxes || binary.boxes.length !== LCST_EXPECTED_BOTTOM_LENGTH) {
             return {
                 value: digits,
                 changed: false,
@@ -7854,10 +8794,10 @@
         digits = onlyDigits(digits);
         const out = [];
         if (!digits) return out;
-        if (digits.length === LCJ2_EXPECTED_TOP_LENGTH && /^20\d{7}$/.test(digits)) out.push({ value: digits, correction: 0 });
-        for (let i = 0; i + LCJ2_EXPECTED_TOP_LENGTH <= digits.length; i++) {
-            const part = digits.slice(i, i + LCJ2_EXPECTED_TOP_LENGTH);
-            if (/^20\d{7}$/.test(part)) out.push({ value: part, correction: digits.length === LCJ2_EXPECTED_TOP_LENGTH ? 0 : 1 });
+        if (digits.length === LCST_EXPECTED_TOP_LENGTH && /^20\d{7}$/.test(digits)) out.push({ value: digits, correction: 0 });
+        for (let i = 0; i + LCST_EXPECTED_TOP_LENGTH <= digits.length; i++) {
+            const part = digits.slice(i, i + LCST_EXPECTED_TOP_LENGTH);
+            if (/^20\d{7}$/.test(part)) out.push({ value: part, correction: digits.length === LCST_EXPECTED_TOP_LENGTH ? 0 : 1 });
         }
         return out;
     }
@@ -7867,18 +8807,18 @@
         const out = [];
         if (!digits) return out;
 
-        if (digits.length === LCJ2_EXPECTED_BOTTOM_LENGTH) {
+        if (digits.length === LCST_EXPECTED_BOTTOM_LENGTH) {
             out.push({ value: digits, correction: 0 });
-        } else if (digits.length === LCJ2_EXPECTED_BOTTOM_LENGTH - 1) {
+        } else if (digits.length === LCST_EXPECTED_BOTTOM_LENGTH - 1) {
             // Tesseract sangat sering membuang angka nol pertama pada baris kedua.
             out.push({ value: '0' + digits, correction: 1 });
-        } else if (digits.length === LCJ2_EXPECTED_BOTTOM_LENGTH - 2) {
+        } else if (digits.length === LCST_EXPECTED_BOTTOM_LENGTH - 2) {
             out.push({ value: '00' + digits, correction: 2 });
         }
 
-        if (digits.length > LCJ2_EXPECTED_BOTTOM_LENGTH) {
-            for (let i = 0; i + LCJ2_EXPECTED_BOTTOM_LENGTH <= digits.length; i++) {
-                const part = digits.slice(i, i + LCJ2_EXPECTED_BOTTOM_LENGTH);
+        if (digits.length > LCST_EXPECTED_BOTTOM_LENGTH) {
+            for (let i = 0; i + LCST_EXPECTED_BOTTOM_LENGTH <= digits.length; i++) {
+                const part = digits.slice(i, i + LCST_EXPECTED_BOTTOM_LENGTH);
                 out.push({ value: part, correction: 1 + Math.min(2, i) });
             }
         }
@@ -7912,11 +8852,11 @@
     }
     async function recognizePrepared(worker, canvas, psm) {
         const psmValue = String(psm);
-        const currentPsm = lcj2WorkerPsmByWorker.get(worker);
+        const currentPsm = lcstWorkerPsmByWorker.get(worker);
         if (currentPsm !== psmValue) {
             await worker.setParameters({ tessedit_pageseg_mode: psmValue });
-            lcj2WorkerPsmByWorker.set(worker, psmValue);
-            if (worker === lcj2SharedWorker) lcj2WorkerPsm = psmValue;
+            lcstWorkerPsmByWorker.set(worker, psmValue);
+            if (worker === lcstSharedWorker) lcstWorkerPsm = psmValue;
         }
         return worker.recognize(canvas);
     }
@@ -7932,59 +8872,17 @@
             bottomCandidatesFromDigits(line).forEach(c => addVote(bottomVotes, c, confidence, sourceWeight * 0.92, label));
         });
 
-        if (compact.length >= LCJ2_EXPECTED_FULL_LENGTH) {
-            for (let i = 0; i + LCJ2_EXPECTED_FULL_LENGTH <= compact.length; i++) {
-                const full = compact.slice(i, i + LCJ2_EXPECTED_FULL_LENGTH);
-                const top = full.slice(0, LCJ2_EXPECTED_TOP_LENGTH);
-                const bottom = full.slice(LCJ2_EXPECTED_TOP_LENGTH);
+        if (compact.length >= LCST_EXPECTED_FULL_LENGTH) {
+            for (let i = 0; i + LCST_EXPECTED_FULL_LENGTH <= compact.length; i++) {
+                const full = compact.slice(i, i + LCST_EXPECTED_FULL_LENGTH);
+                const top = full.slice(0, LCST_EXPECTED_TOP_LENGTH);
+                const bottom = full.slice(LCST_EXPECTED_TOP_LENGTH);
                 if (/^20\d{7}$/.test(top)) {
                     addVote(topVotes, { value: top, correction: 0 }, confidence, sourceWeight + 0.35, label + '-full');
                     addVote(bottomVotes, { value: bottom, correction: 0 }, confidence, sourceWeight + 0.35, label + '-full');
                 }
             }
         }
-    }
-
-    function lcj2ExtractExactDirectPeriod(result) {
-        const data = result && result.data ? result.data : {};
-        const confidence = Number(data.confidence) || 0;
-        const lines = String(data.text || '')
-            .split(/\r?\n/)
-            .map(onlyDigits)
-            .filter(Boolean);
-
-        const topValues = [];
-        const bottomValues = [];
-
-        lines.forEach((digits) => {
-            if (/^20\d{7}$/.test(digits)) topValues.push(digits);
-            if (/^\d{10}$/.test(digits)) bottomValues.push(digits);
-        });
-
-        // Cadangan ketika Tesseract menyatukan dua baris menjadi 19 digit.
-        const compact = onlyDigits(data.text || '');
-        for (let i = 0; i + LCJ2_EXPECTED_FULL_LENGTH <= compact.length; i++) {
-            const full = compact.slice(i, i + LCJ2_EXPECTED_FULL_LENGTH);
-            const top = full.slice(0, LCJ2_EXPECTED_TOP_LENGTH);
-            const bottom = full.slice(LCJ2_EXPECTED_TOP_LENGTH);
-            if (/^20\d{7}$/.test(top) && /^\d{10}$/.test(bottom)) {
-                topValues.push(top);
-                bottomValues.push(bottom);
-            }
-        }
-
-        const uniqueTop = uniqueStrings(topValues);
-        const uniqueBottom = uniqueStrings(bottomValues);
-
-        // Satu-pass hanya boleh dipakai bila tidak ada kandidat lain yang bersaing.
-        if (uniqueTop.length !== 1 || uniqueBottom.length !== 1) return null;
-
-        return {
-            top: uniqueTop[0],
-            bottom: uniqueBottom[0],
-            period: uniqueTop[0] + uniqueBottom[0],
-            confidence
-        };
     }
 
     function collectLineVotes(result, kind, votes, label, sourceWeight) {
@@ -8023,13 +8921,194 @@
     }
 
     function yieldToDashboard(force) {
-        // Turbo Stabil: Tesseract sudah berjalan di Web Worker. Browser hanya diberi
-        // kesempatan render setiap enam tahap agar tidak ada jeda pada setiap pass.
-        lcj2DashboardYieldCounter++;
-        if (lcj2DashboardYieldCounter % 12 !== 0) return Promise.resolve();
+        // Tesseract berjalan di Web Worker, jadi tidak perlu menunggu satu frame
+        // sebelum setiap pass. Beri kesempatan render setiap tiga pass saja.
+        lcstDashboardYieldCounter++;
+        if (!force && lcstDashboardYieldCounter % 3 !== 0) return Promise.resolve();
         return new Promise(resolve => setTimeout(resolve, 0));
     }
-    async function ocrMarkerLockedCode(sourceCanvas, marker, worker, onProgress) {
+    // ULTRA FAST: satu pass OCR dahulu pada area transaksi terkunci.
+    // Jika 9+10 digit sudah valid, langsung selesai. Mesin multi-pass lama hanya fallback.
+    function lcstRenderHyperFastPrepared(source, mode) {
+        // Khusus jalur pertama: gambar OCR dibuat jauh lebih kecil dari fallback PATEN.
+        // Jika gagal, mesin lama tetap mengambil alih dengan preprocessing penuh.
+        // Sedikit lebih tinggi meningkatkan keberhasilan 1-pass dan menghindari
+        // dua hingga belasan fallback yang jauh lebih mahal.
+        const targetHeight = 112;
+        const scale = Math.max(1.15, Math.min(2.45, targetHeight / Math.max(1, source.height)));
+        const base = upscaleCanvas(source, scale);
+        const grayData = grayscaleInvertedData(base);
+        const stretched = stretchGray(grayData.gray, grayData.hist);
+        let pixels = new Uint8Array(stretched.length);
+        if (mode === 'otsu') {
+            const threshold = otsuThreshold(stretched);
+            for (let i = 0; i < stretched.length; i++) pixels[i] = stretched[i] < threshold ? 0 : 255;
+        } else {
+            for (let i = 0; i < stretched.length; i++) {
+                pixels[i] = Math.max(0, Math.min(255, Math.round((stretched[i] - 10) * 1.16)));
+            }
+        }
+        const out = createCanvas(base.width, base.height);
+        const ctx = out.getContext('2d');
+        const img = ctx.createImageData(base.width, base.height);
+        for (let i = 0, p = 0; p < pixels.length; p++, i += 4) {
+            const v = pixels[p];
+            img.data[i] = v;
+            img.data[i + 1] = v;
+            img.data[i + 2] = v;
+            img.data[i + 3] = 255;
+        }
+        ctx.putImageData(img, 0, 0);
+        return addWhiteBorder(out, 8);
+    }
+
+    function lcstTopPeriodDateValid(value) {
+        const digits = onlyDigits(value);
+        if (!/^20\d{7}$/.test(digits)) return false;
+        return !!lcstValidDateParts(
+            Number(digits.slice(0, 4)),
+            Number(digits.slice(4, 6)),
+            Number(digits.slice(6, 8))
+        );
+    }
+
+    function lcstFastPeriodReliable(picked, minOcrConfidence) {
+        if (!picked || !picked.period || !picked.top || !picked.bottom) return false;
+        if (!/^20\d{7}\d{10}$/.test(picked.period)) return false;
+        if (!lcstTopPeriodDateValid(picked.top.value)) return false;
+        if (picked.top.correction !== 0 || picked.bottom.correction !== 0) return false;
+        const minConf = Number(minOcrConfidence) || 55;
+        return (picked.top.avgConfidence || 0) >= minConf &&
+            (picked.bottom.avgConfidence || 0) >= minConf;
+    }
+
+    async function lcstQuickRowsFromLockedMarker(sourceCanvas, marker, worker, helperWorker, onProgress) {
+        const rects = buildTransactionCropRects(sourceCanvas, marker);
+        const rect = rects && rects.length ? rects[0] : null;
+        if (!rect || !worker) return null;
+
+        try {
+            if (onProgress) onProgress('FAST STRICT • mengunci baris 9 + 10 digit');
+            const cropped = cropCanvas(sourceCanvas, rect);
+            const lineRects = findTwoLineRects(cropped);
+            if (!lineRects || lineRects.length < 2) return null;
+            const topLine = cropCanvas(cropped, lineRects[0]);
+            const bottomLine = cropCanvas(cropped, lineRects[1]);
+            const topVotes = new Map();
+            const bottomVotes = new Map();
+            const rawTexts = [];
+            let topResult = null;
+            let bottomResult = null;
+
+            const run = async (activeWorker, canvas, kind, label) => {
+                const prepared = lcstRenderHyperFastPrepared(canvas, 'soft');
+                const result = await recognizePrepared(activeWorker, prepared, 7);
+                rawTexts.push('[' + label + ']\n' + String(result && result.data && result.data.text || ''));
+                collectLineVotes(
+                    result,
+                    kind,
+                    kind === 'top' ? topVotes : bottomVotes,
+                    label,
+                    5.8
+                );
+                return result;
+            };
+
+            const secondWorker = helperWorker && helperWorker !== worker ? helperWorker : null;
+            if (secondWorker) {
+                const results = await Promise.all([
+                    run(worker, topLine, 'top', 'fast-strict-top'),
+                    run(secondWorker, bottomLine, 'bottom', 'fast-strict-bottom')
+                ]);
+                topResult = results[0] || null;
+                bottomResult = results[1] || null;
+            } else {
+                topResult = await run(worker, topLine, 'top', 'fast-strict-top');
+                bottomResult = await run(worker, bottomLine, 'bottom', 'fast-strict-bottom');
+            }
+
+            const picked = chooseFinalPeriod(topVotes, bottomVotes, 2);
+            const rowMinConfidence = (marker.confidence || 0) >= 82 ? 48 : 53;
+            if (!lcstFastPeriodReliable(picked, rowMinConfidence) || (marker.confidence || 0) < 50) {
+                return {
+                    period: '',
+                    confidence: 0,
+                    text: rawTexts.join('\n'),
+                    passes: 2,
+                    quickSeed: {
+                        topResult,
+                        bottomResult,
+                        passCount: 2
+                    }
+                };
+            }
+
+            return {
+                period: picked.period,
+                confidence: Math.max(86, Number(picked.confidence) || 0),
+                text: rawTexts.join('\n'),
+                preview: '',
+                passes: 2,
+                debugTop: picked.top ? picked.top.value : '',
+                debugBottom: picked.bottom ? picked.bottom.value : '',
+                ultraFast: true,
+                fastStrictRows: true
+            };
+        } catch (e) {
+            return null;
+        }
+    }
+
+    async function lcstQuickPeriodFromLockedMarker(sourceCanvas, marker, worker, onProgress) {
+        const directWindow = buildDirectMarkerCodeWindow(sourceCanvas, marker);
+        const rects = buildTransactionCropRects(sourceCanvas, marker);
+        const rect = rects && rects.length ? rects[0] : null;
+        if (!directWindow && !rect) return null;
+
+        // V6.4.3: pass pertama memakai window marker yang paling kecil.
+        // Lebih sedikit piksel masuk Tesseract = jauh lebih cepat. Bila window ini
+        // tidak tersedia, baru gunakan crop transaksi lama sebagai fallback.
+        try {
+            if (onProgress) onProgress('ULTRA SCAN • 1-pass kode');
+            const canvas = directWindow || cropCanvas(sourceCanvas, rect);
+            const prepared = lcstRenderHyperFastPrepared(canvas, 'soft');
+            const result = await recognizePrepared(worker, prepared, 6);
+            const topVotes = new Map();
+            const bottomVotes = new Map();
+            collectCombinedVotes(result, topVotes, bottomVotes, 'hyper-fast-soft', 5.2);
+            const picked = chooseFinalPeriod(topVotes, bottomVotes, 1);
+
+            const instantMinConfidence = (marker.confidence || 0) >= 82
+                ? 40
+                : ((marker.confidence || 0) >= 65 ? 44 : 48);
+            if (lcstFastPeriodReliable(picked, instantMinConfidence) && (marker.confidence || 0) >= 48) {
+                return {
+                    period: picked.period,
+                    confidence: Math.max(80, Number(picked.confidence) || 0),
+                    text: String(result && result.data && result.data.text || ''),
+                    preview: '',
+                    passes: 1,
+                    debugTop: picked.top ? picked.top.value : '',
+                    debugBottom: picked.bottom ? picked.bottom.value : '',
+                    ultraFast: true,
+                    hyperFast: true
+                };
+            }
+            return {
+                period: '',
+                confidence: 0,
+                text: String(result && result.data && result.data.text || ''),
+                passes: 1,
+                quickSeed: {
+                    combinedResult: result,
+                    passCount: 1
+                }
+            };
+        } catch (e) {}
+        return null;
+    }
+
+    async function ocrMarkerLockedCode(sourceCanvas, marker, worker, onProgress, quickSeed) {
         const rects = buildTransactionCropRects(sourceCanvas, marker);
         const topVotes = new Map();
         const bottomVotes = new Map();
@@ -8038,15 +9117,44 @@
         const zeroNineCorrections = [];
         const tightBottomConsensusLog = [];
         const directMarkerLockLog = [];
+        const seed = quickSeed && typeof quickSeed === 'object' ? quickSeed : {};
+        const seededCombinedResult = seed.combinedResult || null;
+        const seededTopResult = seed.topResult || null;
+        const seededBottomResult = seed.bottomResult || null;
         let lockedBottomValue = '';
-        let singlePassFastPeriod = null;
-        let usedPasses = 0;
+        let usedPasses = Math.max(0, Math.min(
+            LCST_MAX_CODE_FALLBACK_PASSES,
+            Number(seed.passCount) || 0
+        ));
+        const canRunFallbackPass = () => usedPasses < LCST_MAX_CODE_FALLBACK_PASSES;
 
         const logResult = (label, result) => {
             rawTexts.push('[' + label + ']\n' + ((result && result.data && result.data.text) || ''));
         };
 
+        // Gunakan ulang seluruh hasil jalur cepat. Versi sebelumnya membuang
+        // hasil ini lalu meng-OCR crop soft yang sama sekali lagi.
+        if (seededCombinedResult) {
+            logResult('seed/hyper-fast-soft', seededCombinedResult);
+            collectCombinedVotes(
+                seededCombinedResult,
+                topVotes,
+                bottomVotes,
+                'seed-hyper-fast-soft',
+                5.2
+            );
+        }
+        if (seededTopResult) {
+            logResult('seed/fast-strict-top', seededTopResult);
+            collectLineVotes(seededTopResult, 'top', topVotes, 'seed-fast-strict-top', 5.8);
+        }
+        if (seededBottomResult) {
+            logResult('seed/fast-strict-bottom', seededBottomResult);
+            collectLineVotes(seededBottomResult, 'bottom', bottomVotes, 'seed-fast-strict-bottom', 5.8);
+        }
+
         const runLine = async (canvas, kind, mode, label, weight) => {
+            if (!canRunFallbackPass()) return null;
             await yieldToDashboard();
             if (onProgress) onProgress('Baris terkunci • ' + label + ' • ' + mode);
             try {
@@ -8057,12 +9165,13 @@
                 collectLineVotes(result, kind, kind === 'top' ? topVotes : bottomVotes, label + '-' + mode, weight);
                 return result;
             } catch (err) {
-                console.warn('[LCJ2 line OCR gagal]', err);
+                console.warn('[LCST line OCR gagal]', err);
                 return null;
             }
         };
 
         const runCombined = async (canvas, mode, label, weight) => {
+            if (!canRunFallbackPass()) return null;
             await yieldToDashboard();
             if (onProgress) onProgress('Baris terkunci • ' + label + ' • gabungan ' + mode);
             try {
@@ -8073,7 +9182,7 @@
                 collectCombinedVotes(result, topVotes, bottomVotes, label + '-' + mode, weight);
                 return result;
             } catch (err) {
-                console.warn('[LCJ2 combined OCR gagal]', err);
+                console.warn('[LCST combined OCR gagal]', err);
                 return null;
             }
         };
@@ -8095,14 +9204,31 @@
             }
 
             const passes = [
-                { mode: 'soft', psm: 6, weight: 1 },
+                // Soft sudah dijalankan oleh hyper-fast seed; jangan ulang crop sama.
+                ...(!seededCombinedResult ? [{ mode: 'soft', psm: 6, weight: 1 }] : []),
+                { mode: 'strong', psm: 6, weight: 1 },
                 { mode: 'otsu', psm: 6, weight: 1 }
             ];
 
             const reads = [];
             const passWinners = [];
 
+            if (seededCombinedResult) {
+                const seededExact = exactTenDigitLinesFromRecognition(seededCombinedResult);
+                seededExact.forEach((item) => {
+                    const read = {
+                        value: item.value,
+                        confidence: item.confidence,
+                        mode: 'seed-soft',
+                        psm: 6
+                    };
+                    reads.push(read);
+                    passWinners.push(read);
+                });
+            }
+
             for (const pass of passes) {
+                if (!canRunFallbackPass()) break;
                 await yieldToDashboard();
 
                 if (onProgress) {
@@ -8141,56 +9267,23 @@
                         2.65
                     );
 
-                    // ULTRA FAST ONE-PASS:
-                    // Bila satu pembacaan menghasilkan tepat satu kode 9 digit dan
-                    // satu kode 10 digit tanpa kandidat pesaing, hasil langsung dikunci.
-                    const onePass = lcj2ExtractExactDirectPeriod(result);
+                    // V6.4.3 ONE-PASS DIRECT LOCK: bila satu OCR pada crop marker sudah
+                    // memberi 9+10 digit tanpa koreksi, tanggal valid, confidence tinggi,
+                    // dan marker kuat, jangan paksa consensus pass ke-2. Fallback lama
+                    // tetap dipakai untuk hasil yang sedikit saja meragukan.
+                    const onePassPicked = chooseFinalPeriod(topVotes, bottomVotes, usedPasses);
                     if (
-                        onePass &&
-                        onePass.confidence >= 72 &&
-                        (marker.confidence || 0) >= 64
+                        pass.mode === 'soft' &&
+                        (marker.confidence || 0) >= 60 &&
+                        lcstFastPeriodReliable(onePassPicked, 72)
                     ) {
-                        singlePassFastPeriod = onePass;
-                        lockedBottomValue = onePass.bottom;
-
-                        // Tambahkan vote dominan dari satu crop direct yang sangat jelas.
-                        for (let voteIndex = 0; voteIndex < 3; voteIndex++) {
-                            addVote(
-                                topVotes,
-                                { value: onePass.top, correction: 0 },
-                                onePass.confidence,
-                                14.0,
-                                'direct-one-pass-top-' + (voteIndex + 1)
-                            );
-                            addVote(
-                                bottomVotes,
-                                { value: onePass.bottom, correction: 0 },
-                                onePass.confidence,
-                                14.0,
-                                'direct-one-pass-bottom-' + (voteIndex + 1)
-                            );
-                        }
-
-                        reads.push({
-                            value: onePass.bottom,
-                            confidence: onePass.confidence,
-                            mode: pass.mode,
-                            psm: pass.psm
+                        directMarkerLockLog.push({
+                            locked: true,
+                            reason: 'one-pass-full-period',
+                            period: onePassPicked.period,
+                            confidence: onePassPicked.confidence
                         });
-                        passWinners.push({
-                            value: onePass.bottom,
-                            confidence: onePass.confidence,
-                            mode: pass.mode,
-                            psm: pass.psm
-                        });
-
-                        rawTexts.push(
-                            '[ULTRA FAST ONE PASS]\n' +
-                            onePass.period +
-                            ' | confidence=' + Math.round(onePass.confidence) + '%' +
-                            ' | marker=' + Math.round(marker.confidence || 0) + '%'
-                        );
-                        break;
+                        return { fastPicked: onePassPicked, singlePass: true };
                     }
 
                     const exactItems = exactTenDigitLinesFromRecognition(result);
@@ -8216,7 +9309,7 @@
                     }
                 } catch (err) {
                     console.warn(
-                        '[LCJ2 direct marker OCR gagal]',
+                        '[LCST direct marker OCR gagal]',
                         pass.mode,
                         err
                     );
@@ -8231,24 +9324,6 @@
                 ) {
                     break;
                 }
-            }
-
-            if (singlePassFastPeriod) {
-                directMarkerLockLog.push({
-                    locked: true,
-                    singlePass: true,
-                    value: singlePassFastPeriod.bottom,
-                    top: singlePassFastPeriod.top,
-                    period: singlePassFastPeriod.period,
-                    avgConfidence: singlePassFastPeriod.confidence,
-                    sources: ['direct-one-pass']
-                });
-                return {
-                    value: singlePassFastPeriod.bottom,
-                    count: 1,
-                    avgConfidence: singlePassFastPeriod.confidence,
-                    singlePass: true
-                };
             }
 
             if (!reads.length) {
@@ -8358,6 +9433,7 @@
             const maxPasses = Math.min(3, variants.length);
 
             for (let i = 0; i < maxPasses; i++) {
+                if (!canRunFallbackPass()) break;
                 const variant = variants[i];
                 await yieldToDashboard();
 
@@ -8388,7 +9464,7 @@
                         });
                     }
                 } catch (err) {
-                    console.warn('[LCJ2 tight bottom OCR gagal]', err);
+                    console.warn('[LCST tight bottom OCR gagal]', err);
                 }
 
                 // Progressive fast path: bila dua pembacaan pertama sama,
@@ -8590,44 +9666,34 @@
             return exact && votesOkay && confOkay && picked.confidence >= (strict ? 72 : 66);
         };
 
-        const isSoftPairFastReliable = (picked) => {
-            if (!picked || !picked.period || !picked.top || !picked.bottom) return false;
-            if (picked.top.correction !== 0 || picked.bottom.correction !== 0) return false;
-            if (!/^20\d{7}$/.test(picked.top.value || '')) return false;
-            if (!/^\d{10}$/.test(picked.bottom.value || '')) return false;
-            return (
-                (picked.top.avgConfidence || 0) >= 64 &&
-                (picked.bottom.avgConfidence || 0) >= 64 &&
-                (marker.confidence || 0) >= 62 &&
-                picked.confidence >= 73
-            );
-        };
-
         const isDirectLockFastReliable = (picked) => {
             if (!lockedBottomValue || !picked.period || !picked.top || !picked.bottom) return false;
             if (picked.bottom.value !== lockedBottomValue) return false;
             if (picked.top.correction !== 0 || picked.bottom.correction !== 0) return false;
             if (!/^20\d{7}$/.test(picked.top.value || '')) return false;
             return (
-                (picked.top.avgConfidence || 0) >= 62 &&
-                (marker.confidence || 0) >= 58 &&
-                picked.confidence >= 66
+                (picked.top.avgConfidence || 0) >= 72 &&
+                (marker.confidence || 0) >= 64 &&
+                picked.confidence >= 68
             );
         };
 
-        await runDirectMarkerBottomLock();
+        // Gabungan tiga pass awal (window + atas + bawah) sering sudah cukup.
+        // Nilai ini dulu dibuang sehingga fallback selalu mulai dari nol.
+        const seededPicked = chooseFinalPeriod(topVotes, bottomVotes, usedPasses);
+        if (isReliable(seededPicked, false) && lcstTopPeriodDateValid(seededPicked.top.value)) {
+            return makeReturn(seededPicked);
+        }
+
+        const directLockResult = await runDirectMarkerBottomLock();
+        if (directLockResult && directLockResult.fastPicked) {
+            return makeReturn(directLockResult.fastPicked);
+        }
 
         // TURBO FAST PATH: dua pass direct-marker sudah membaca dua baris.
         // Bila 10 digit bawah terkunci dan 9 digit atas juga sepakat kuat,
         // langsung selesai tanpa OCR crop baris atas tambahan.
         let directFast = chooseFinalPeriod(topVotes, bottomVotes, usedPasses);
-        if (
-            singlePassFastPeriod &&
-            directFast.period === singlePassFastPeriod.period
-        ) {
-            return makeReturn(directFast);
-        }
-
         if (
             lockedBottomValue &&
             directFast.top &&
@@ -8647,25 +9713,17 @@
             // FAST PATH PATEN:
             // - Bila 10 digit bawah sudah dikunci langsung dari marker, OCR bawah tidak diulang.
             // - Hasil sangat jelas berhenti cepat; hasil ragu tetap masuk seluruh fallback lama.
-            await runLine(topLine, 'top', 'soft', rect.name + '/atas', 1.90);
-            if (!lockedBottomValue) {
+            if (rectIndex !== 0 || !seededTopResult) {
+                await runLine(topLine, 'top', 'soft', rect.name + '/atas', 1.90);
+            }
+            if (!lockedBottomValue && (rectIndex !== 0 || !seededBottomResult)) {
                 await runLine(bottomLine, 'bottom', 'soft', rect.name + '/bawah', 2.00);
             }
-
+            await runTightBottomConsensus(bottomLine, rect.name + '/bawah-10-digit');
             let current = chooseFinalPeriod(topVotes, bottomVotes, usedPasses);
             current = applyAmbiguousDigitGeometry(bottomLine, current, rect.name + '/soft');
 
-            // Bila dua baris soft sudah exact dan jelas, jangan jalankan 2–3 pass
-            // tight consensus tambahan.
-            if (isDirectLockFastReliable(current) || isSoftPairFastReliable(current)) {
-                return makeReturn(current);
-            }
-
-            await runTightBottomConsensus(bottomLine, rect.name + '/bawah-10-digit');
-            current = chooseFinalPeriod(topVotes, bottomVotes, usedPasses);
-            current = applyAmbiguousDigitGeometry(bottomLine, current, rect.name + '/tight');
-
-            if (isDirectLockFastReliable(current) || isSoftPairFastReliable(current)) {
+            if (isDirectLockFastReliable(current)) {
                 return makeReturn(current);
             }
 
@@ -8723,180 +9781,349 @@
         return makeReturn(chooseFinalPeriod(topVotes, bottomVotes, usedPasses));
     }
 
-    async function ocrImagePeriod(src, onProgress) {
-        const cacheKey = String(src || '');
-        const cachedResult = lcj2PeriodResultCache.get(cacheKey);
+    function lcstSelectOcrMarker(analysis, markerSelection) {
+        const fallback = analysis && analysis.marker ? analysis.marker : null;
+        const candidates = analysis && Array.isArray(analysis.markerCandidates)
+            ? analysis.markerCandidates.filter(Boolean)
+            : (fallback ? [fallback] : []);
+        const selection = markerSelection && typeof markerSelection === 'object'
+            ? markerSelection
+            : null;
+        const total = Math.max(1, Number(selection && selection.totalOccurrences) || 1);
+        const ordinal = Math.max(0, Number(selection && selection.ordinal) || 0);
+
+        // Satu gambar target: tetap gunakan kandidat dengan kualitas tertinggi seperti
+        // versi sebelumnya. Pemilihan atas/bawah hanya aktif bila screenshot yang sama
+        // dipakai oleh lebih dari satu paket.
+        if (total <= 1) return fallback;
+
+        const quality = (marker) => Number(marker && marker.qualityScore) ||
+            (Number(marker && marker.score) || 0) + (Number(marker && marker.confidence) || 0) * 0.08;
+        const robust = candidates.filter((marker) =>
+            /component-pair/.test(marker && marker.source || '') ||
+            (marker && marker.source === 'merged-orange-band')
+        );
+        const pool = robust.length >= total ? robust : candidates;
+
+        // Ambil N baris terkuat, kemudian urutkan dari atas ke bawah. Paket pertama
+        // mengambil target atas; paket berikutnya wajib mengambil target berbeda.
+        const selectedRows = pool
+            .slice()
+            .sort((a, b) => quality(b) - quality(a))
+            .slice(0, total)
+            .sort((a, b) => Number(a.centerY) - Number(b.centerY));
+        const marker = selectedRows[ordinal] || null;
+        if (!marker) return null;
+        return {
+            ...marker,
+            selectedOccurrence: ordinal,
+            selectedOccurrenceCount: total
+        };
+    }
+
+    async function ocrImagePeriod(src, onProgress, workerOverrides) {
+        const overrides = workerOverrides && typeof workerOverrides === 'object'
+            ? workerOverrides
+            : null;
+        const markerSelection = overrides && overrides.markerSelection
+            ? overrides.markerSelection
+            : null;
+        const cacheKey = String(src || '') + (markerSelection
+            ? '::marker-' + Math.max(0, Number(markerSelection.ordinal) || 0) + '-of-' +
+                Math.max(1, Number(markerSelection.totalOccurrences) || 1)
+            : '::marker-best');
+        const cachedResult = lcstPeriodResultCache.get(cacheKey);
         if (cachedResult && cachedResult.period) {
-            lcj2PeriodResultCache.delete(cacheKey);
-            lcj2PeriodResultCache.set(cacheKey, cachedResult);
+            lcstPeriodResultCache.delete(cacheKey);
+            lcstPeriodResultCache.set(cacheKey, cachedResult);
             if (onProgress) onProgress('Hasil periode tersedia di cache cepat.');
             return { ...cachedResult, cached: true };
         }
 
-        // Muat gambar/marker dan kedua worker secara paralel.
-        // Worker metadata bersifat opsional; perangkat ringan tetap memakai jalur lama.
-        const [analysis, worker, metadataWorker, timestampWorker] = await Promise.all([
-            getImageAnalysis(src),
-            getSharedOCRWorker(onProgress),
-            getMetadataOCRWorker().catch(() => null),
-            getTimestampOCRWorker().catch(() => null)
-        ]);
+        const hasOverride = (key) => !!overrides && Object.prototype.hasOwnProperty.call(overrides, key);
+
+        // Mulai semua pekerjaan bersamaan, tetapi PERIODE hanya menunggu image + worker utama.
+        const analysisPromise = getImageAnalysis(src);
+        const workerPromise = hasOverride('worker')
+            ? Promise.resolve(overrides.worker)
+            : getSharedOCRWorker(onProgress);
+        const metadataWorkerPromise = hasOverride('metadataWorker')
+            ? Promise.resolve(overrides.metadataWorker)
+            : getMetadataOCRWorker().catch(() => null);
+        const timestampWorkerPromise = hasOverride('timestampWorker')
+            ? Promise.resolve(overrides.timestampWorker)
+            : getTimestampOCRWorker().catch(() => null);
+        const helperPeriodWorkerPromise = hasOverride('helperPeriodWorker')
+            ? Promise.resolve(overrides.helperPeriodWorker).catch(() => null)
+            : Promise.resolve(null);
+
+        const [analysis, worker] = await Promise.all([analysisPromise, workerPromise]);
+        if (!worker) throw new Error('Worker OCR periode tidak tersedia.');
         const sourceCanvas = analysis.sourceCanvas;
-        const marker = analysis.marker;
+        const marker = lcstSelectOcrMarker(analysis, markerSelection);
 
         if (!marker) {
+            const requestedTarget = markerSelection && Number(markerSelection.totalOccurrences) > 1
+                ? 'Target bulatan ke-' + (Math.max(0, Number(markerSelection.ordinal) || 0) + 1) +
+                    ' tidak tersedia. Paket ini dilarang memakai bulatan paket sebelumnya.'
+                : 'Dua tanda bulat belum terdeteksi.';
             return {
-                period: '',
-                text: '',
-                confidence: 0,
-                markerFound: false,
+                period: '', text: '', confidence: 0, markerFound: false,
                 source: 'strict-double-marker-v55',
-                error: 'Dua tanda bulat belum terdeteksi. Versi ini sudah menormalkan gambar besar, tetapi marker tetap tidak ditemukan.'
+                markerCandidateCount: analysis && analysis.markerCandidates
+                    ? analysis.markerCandidates.length
+                    : 0,
+                error: requestedTarget + ' Periksa Gambar 2/5 atau gunakan screenshot target lain.'
             };
         }
 
         if (onProgress) {
             onProgress(
-                'Dua tanda bulat ditemukan • metode ' + marker.source +
-                ' • posisi Y ' + Math.round(marker.centerY) +
-                ' • lock ' + marker.confidence + '%'
+                'Marker ' + (marker.selectedOccurrenceCount > 1
+                    ? ((marker.selectedOccurrence || 0) + 1) + '/' + marker.selectedOccurrenceCount + ' '
+                    : '') +
+                'terkunci ' + marker.confidence + '% • ULTRA FAST membaca periode...'
             );
         }
 
-        // V5.7.7 TURBO: metadata dimulai bersamaan dengan OCR periode.
-        // Ini tidak mengubah sumber gambar atau aturan validasi; hanya menghilangkan
-        // antrean berurutan antara periode, taruhan, dan tanggal/jam.
-        const focusedPromise = ocrMarkerLockedCode(sourceCanvas, marker, worker, onProgress);
-        const metadataPromise = metadataWorker
-            ? (async () => {
-                // CPU kuat: taruhan dan timestamp diproses benar-benar bersamaan.
-                // CPU ringan: tetap berurutan pada satu worker seperti versi lama.
-                if (timestampWorker) {
-                    const [betInfo, claimTimestamp] = await Promise.all([
-                        readBetOddsForNotification(sourceCanvas, marker, metadataWorker),
-                        readClaimTimestampFromSecondImage(sourceCanvas, marker, timestampWorker, '', '')
-                    ]);
-                    return { betInfo, claimTimestamp };
-                }
-                const betInfo = await readBetOddsForNotification(sourceCanvas, marker, metadataWorker);
-                const claimTimestamp = await readClaimTimestampFromSecondImage(
-                    sourceCanvas, marker, metadataWorker, '', ''
-                );
-                return { betInfo, claimTimestamp };
-            })().catch(() => ({
-                betInfo: { value: null, belowMin: false },
-                claimTimestamp: null
-            }))
-            : null;
+        // V7.6: taruhan tetap dimulai paralel, tetapi timestamp menunggu date-key
+        // tepercaya dari kode. Versi lama membaca tanggal lengkap tanpa periode,
+        // lalu sering mengulang 2-4 pass sebelum akhirnya memakai tanggal kode juga.
+        let resolvePeriodForMetadata = null;
+        let periodMetadataResolved = false;
+        const periodForMetadataPromise = new Promise((resolve) => {
+            resolvePeriodForMetadata = resolve;
+        });
+        const signalPeriodForMetadata = (period) => {
+            if (periodMetadataResolved) return;
+            periodMetadataResolved = true;
+            resolvePeriodForMetadata(String(period || '').trim());
+        };
 
-        const focused = await focusedPromise;
-        let betInfo;
-        let claimTimestamp;
-
-        if (metadataPromise) {
-            const metadata = await metadataPromise;
-            betInfo = metadata.betInfo || { value: null, belowMin: false };
-            claimTimestamp = metadata.claimTimestamp || null;
-
-            // Gunakan periode/teks worker utama sebagai fallback tanpa OCR tambahan.
-            if (!claimTimestamp || !claimTimestamp.hasTime) {
-                const parsedFallback = lcj2ParseImageTimestampText(
-                    focused.text || '',
-                    focused.period || ''
-                );
-                if (parsedFallback) claimTimestamp = parsedFallback;
+        const earlyMetadataPromise = (async () => {
+            let betInfo = { value: null, belowMin: false };
+            let claimTimestamp = null;
+            let betAttempted = false;
+            let timestampAttempted = false;
+            const metadataWorker = await metadataWorkerPromise;
+            const timestampWorker = await timestampWorkerPromise;
+            if (!metadataWorker) {
+                return { betInfo, claimTimestamp, betAttempted, timestampAttempted };
             }
 
-            // Jalur aman: hanya bila worker turbo tidak memperoleh metadata lengkap,
-            // ulangi bagian yang gagal dengan worker utama setelah periode selesai.
-            // Dengan demikian hasil V5.7.6 tetap dipertahankan pada gambar yang sulit.
-            if (focused.period && (!betInfo || betInfo.value == null)) {
-                betInfo = await readBetOddsForNotification(sourceCanvas, marker, worker);
+            const readTimestampAfterCode = async (activeWorker) => {
+                const trustedPeriod = await periodForMetadataPromise;
+                if (!trustedPeriod || !activeWorker) return null;
+                timestampAttempted = true;
+                return readClaimTimestampFromSecondImage(
+                    sourceCanvas,
+                    marker,
+                    activeWorker,
+                    trustedPeriod,
+                    ''
+                ).catch(() => null);
+            };
+
+            if (timestampWorker && timestampWorker !== metadataWorker) {
+                betAttempted = true;
+                const meta = await Promise.all([
+                    readBetOddsForNotification(sourceCanvas, marker, metadataWorker).catch(() => null),
+                    readTimestampAfterCode(timestampWorker)
+                ]);
+                betInfo = meta[0] || betInfo;
+                claimTimestamp = meta[1] || null;
+            } else {
+                // Pada perangkat dua-worker, waktu/GMT diprioritaskan segera setelah
+                // kode siap. Sebelumnya pembacaan ini harus menunggu OCR taruhan.
+                claimTimestamp = await readTimestampAfterCode(metadataWorker);
+                betAttempted = true;
+                betInfo = await readBetOddsForNotification(sourceCanvas, marker, metadataWorker)
+                    .catch(() => betInfo);
             }
-            if (!claimTimestamp || !claimTimestamp.hasTime) {
-                const safeTimestamp = await readClaimTimestampFromSecondImage(
+            return { betInfo, claimTimestamp, betAttempted, timestampAttempted };
+        })();
+
+        // Satu pass paling kecil dahulu. Jika belum terbaca dan marker cukup kuat,
+        // coba dua baris crop kecil. Jalur ini jauh lebih ringan daripada fallback penuh;
+        // fallback lama tetap dipakai bila hasil cepat tidak benar-benar meyakinkan.
+        let focused = null;
+        const progressiveSeed = {
+            combinedResult: null,
+            topResult: null,
+            bottomResult: null,
+            passCount: 0
+        };
+        const mergeQuickSeed = (value) => {
+            const seed = value && value.quickSeed;
+            if (!seed) return;
+            if (seed.combinedResult) progressiveSeed.combinedResult = seed.combinedResult;
+            if (seed.topResult) progressiveSeed.topResult = seed.topResult;
+            if (seed.bottomResult) progressiveSeed.bottomResult = seed.bottomResult;
+            progressiveSeed.passCount += Math.max(0, Number(seed.passCount) || 0);
+        };
+        try {
+            focused = await lcstQuickPeriodFromLockedMarker(sourceCanvas, marker, worker, onProgress);
+            mergeQuickSeed(focused);
+            if ((!focused || !focused.period) && Number(marker.confidence || 0) >= 52) {
+                const helperPeriodWorker = await helperPeriodWorkerPromise;
+                focused = await lcstQuickRowsFromLockedMarker(
                     sourceCanvas,
                     marker,
                     worker,
+                    helperPeriodWorker,
+                    onProgress
+                );
+                mergeQuickSeed(focused);
+            }
+            if (!focused || !focused.period) {
+                focused = await ocrMarkerLockedCode(
+                    sourceCanvas,
+                    marker,
+                    worker,
+                    onProgress,
+                    progressiveSeed
+                );
+            }
+        } finally {
+            signalPeriodForMetadata(focused && focused.period ? focused.period : '');
+        }
+
+        // V7.6 PRIORITY RESULT: tampilkan kode segera setelah terkunci. Validasi
+        // taruhan dan tanggal semalam tetap berjalan, tetapi tidak lagi menahan
+        // input periode sehingga pengguna tidak merasa scanner macet.
+        if (focused && focused.period && overrides && typeof overrides.onCodeReady === 'function') {
+            const earlySource = focused.fastStrictRows
+                ? 'fast-strict-row-v760'
+                : (focused.ultraFast ? 'ultra-scan-direct-v760' : 'double-marker-row-lock-v45');
+            try {
+                overrides.onCodeReady({
+                    period: focused.period,
+                    text: focused.text || '',
+                    confidence: focused.confidence || 0,
+                    markerFound: true,
+                    markerConfidence: marker.confidence || 0,
+                    markerCandidateCount: analysis && analysis.markerCandidates
+                        ? analysis.markerCandidates.length
+                        : 0,
+                    markerOccurrence: Number(marker.selectedOccurrence) || 0,
+                    markerOccurrenceCount: Number(marker.selectedOccurrenceCount) || 1,
+                    source: earlySource,
+                    passes: focused.passes || 0,
+                    error: ''
+                });
+            } catch (e) {}
+        }
+
+        // Kode, tanggal, jam, dan GMT diselesaikan sebagai satu hasil. Pembacaan
+        // metadata tetap sudah dimulai paralel sejak OCR kode berjalan, jadi bagian
+        // ini biasanya tinggal mengambil hasil worker yang hampir selesai.
+        const completedMetadata = await (async () => {
+            const earlyMetadata = await earlyMetadataPromise;
+            let betInfo = earlyMetadata && earlyMetadata.betInfo
+                ? earlyMetadata.betInfo
+                : { value: null, belowMin: false };
+            let claimTimestamp = earlyMetadata ? (earlyMetadata.claimTimestamp || null) : null;
+
+            // Bila kode sendiri gagal, jangan jalankan fallback waktu tambahan pada
+            // worker utama. Pengguna dapat scan ulang tanpa menunggu pass yang tidak
+            // akan menghasilkan output valid.
+            if (!focused.period) {
+                return {
+                    betOdds: betInfo ? betInfo.value : null,
+                    betBelowMin: !!(betInfo && betInfo.belowMin),
+                    claimTimestamp: claimTimestamp || null,
+                    claimTimestampText: claimTimestamp ? lcstFormatClaimTimestamp(claimTimestamp) : ''
+                };
+            }
+
+            // Fallback kompatibilitas: hanya bagian metadata yang belum berhasil.
+            if (focused.period && (!betInfo || betInfo.value == null) &&
+                !(earlyMetadata && earlyMetadata.betAttempted)) {
+                betInfo = await readBetOddsForNotification(sourceCanvas, marker, worker);
+            }
+            if ((!claimTimestamp || !claimTimestamp.hasTime) && lcstLooksLikeTimestampText(focused.text || '')) {
+                const parsedFallback = lcstParseImageTimestampText(
+                    focused.text || '',
                     focused.period || '',
-                    focused.text || ''
+                    null,
+                    LCST_HISTORY_DEFAULT_GMT_OFFSET_MINUTES
+                );
+                if (parsedFallback && parsedFallback.hasTime) claimTimestamp = parsedFallback;
+            }
+            if ((!claimTimestamp || !claimTimestamp.hasTime) &&
+                !(earlyMetadata && earlyMetadata.timestampAttempted)) {
+                const safeTimestamp = await readClaimTimestampFromSecondImage(
+                    sourceCanvas, marker, worker, focused.period || '', focused.text || ''
                 );
                 if (safeTimestamp) claimTimestamp = safeTimestamp;
             }
-        } else {
-            // Jalur kompatibilitas perangkat ringan: sama seperti versi sebelumnya.
-            betInfo = focused.period
-                ? await readBetOddsForNotification(sourceCanvas, marker, worker)
-                : { value: null, belowMin: false };
-            claimTimestamp = await readClaimTimestampFromSecondImage(
-                sourceCanvas,
-                marker,
-                worker,
-                focused.period || '',
-                focused.text || ''
-            );
-        }
+
+            return {
+                betOdds: betInfo ? betInfo.value : null,
+                betBelowMin: !!(betInfo && betInfo.belowMin),
+                claimTimestamp: claimTimestamp || null,
+                claimTimestampText: claimTimestamp ? lcstFormatClaimTimestamp(claimTimestamp) : ''
+            };
+        })();
 
         let finalResult;
-        if (!focused.period && LCJ2_STRICT_DOUBLE_MARKER) {
+        if (!focused.period && LCST_STRICT_DOUBLE_MARKER) {
             const topInfo = focused.debugTop ? ' atas=' + focused.debugTop : '';
             const bottomInfo = focused.debugBottom ? ' bawah=' + focused.debugBottom : '';
             finalResult = {
-                period: '',
-                text: focused.text || '',
-                confidence: 0,
-                markerFound: true,
-                markerConfidence: marker.confidence,
-                marker,
-                preview: focused.preview || '',
-                passes: focused.passes || 0,
+                period: '', text: focused.text || '', confidence: 0,
+                markerFound: true, markerConfidence: marker.confidence, marker,
+                preview: focused.preview || '', passes: focused.passes || 0,
                 source: 'strict-double-marker-v55',
                 error: 'Marker terkunci, tetapi pasangan 9+10 digit belum lengkap.' + topInfo + bottomInfo
             };
         } else {
             finalResult = {
-                period: focused.period || '',
-                text: focused.text || '',
+                period: focused.period || '', text: focused.text || '',
                 confidence: focused.confidence || 0,
-                markerFound: true,
-                markerConfidence: marker.confidence,
-                marker,
-                preview: focused.preview || '',
-                passes: focused.passes || 0,
-                source: 'double-marker-row-lock-v45',
+                markerFound: true, markerConfidence: marker.confidence, marker,
+                preview: focused.preview || '', passes: focused.passes || 0,
+                source: focused.fastStrictRows
+                    ? 'fast-strict-row-v760'
+                    : (focused.ultraFast
+                        ? 'ultra-scan-direct-v760'
+                        : 'double-marker-row-lock-v45'),
                 error: focused.period ? '' : 'Kode belum terbaca.'
             };
         }
 
-        finalResult.betOdds = betInfo.value;
-        finalResult.betBelowMin = !!betInfo.belowMin;
-        finalResult.claimTimestamp = claimTimestamp || null;
-        finalResult.claimTimestampText = claimTimestamp ? lcj2FormatClaimTimestamp(claimTimestamp) : '';
-
+        finalResult.betOdds = completedMetadata ? completedMetadata.betOdds : null;
+        finalResult.betBelowMin = !!(completedMetadata && completedMetadata.betBelowMin);
+        finalResult.claimTimestamp = completedMetadata ? (completedMetadata.claimTimestamp || null) : null;
+        finalResult.claimTimestampText = completedMetadata ? (completedMetadata.claimTimestampText || '') : '';
+        finalResult.markerCandidateCount = analysis && analysis.markerCandidates
+            ? analysis.markerCandidates.length
+            : 0;
+        finalResult.markerOccurrence = Number(marker.selectedOccurrence) || 0;
+        finalResult.markerOccurrenceCount = Number(marker.selectedOccurrenceCount) || 1;
+        finalResult.markerCenterY = Number(marker.centerY) || 0;
         if (finalResult.period) {
-            lcj2PeriodResultCache.set(cacheKey, finalResult);
-            trimFastCache(lcj2PeriodResultCache, LCJ2_RESULT_CACHE_LIMIT);
+            lcstPeriodResultCache.set(cacheKey, finalResult);
+            trimFastCache(lcstPeriodResultCache, LCST_RESULT_CACHE_LIMIT);
         }
         return finalResult;
     }
 
     function openTool() {
-        const dailyAccess = lcj2GetDailyAccessState();
-        if (!dailyAccess.active) {
-            lcj2RefreshDailyLamp();
-            lcj2ShowLampMessage('KEMBALI LAGI BESOK', 3200);
-            return;
-        }
-
         injectStyle();
-        const old = document.getElementById('lcj2-panel-fixed');
+        const old = document.getElementById('lcst-panel-fixed');
         if (old) old.remove();
 
         const scan = scanPage();
         const db = getAccountDB();
-        const saved = db[scan.userId] || { nama: '', rek: '' };
-        const defaultNama = lcj2CleanAccountName(saved.nama) || 'NAMA USER';
-        const defaultRek = saved.rek || 'NO REKENING';
+        const scanUid = lcstValidLookupUserId(scan.userId);
+        const savedKey = Object.keys(db || {}).find(key => String(key).toLowerCase() === scanUid.toLowerCase());
+        const savedRaw = savedKey ? db[savedKey] : null;
+        const savedFresh = !!(savedRaw && Number(savedRaw.updatedAt) > 0 &&
+            Date.now() - Number(savedRaw.updatedAt) < LCST_ADMIN_LOCAL_DB_TTL);
+        const saved = savedFresh ? savedRaw : { nama: '', rek: '' };
+        const defaultNama = lcstCleanAccountName(saved.nama) || 'NAMA USER';
+        const defaultRek = lcstCleanAccountNumber(saved.rek) || 'NO REKENING';
         const initialSetCount = Math.max(1, Math.ceil((scan.images || []).length / getPackageSizeFromImages(scan.images || [])));
 
         function placeholderForRow(row) {
@@ -8911,162 +10138,205 @@
             for (let i = 0; i < count; i++) {
                 const val = values[i] || (scan.ocrPeriods && scan.ocrPeriods[i]) || placeholderForRow(i);
                 const hasError = scan.ocrMeta && scan.ocrMeta[i] && scan.ocrMeta[i].error && !(scan.ocrPeriods && scan.ocrPeriods[i]);
-                const inputPlaceholder = hasError ? 'OCR BELUM BERHASIL - KLIK SCAN DISINI ULANG' : ('Periode Paket ' + (i + 1));
-                html += '<input class="lcj2-input lcj2-period-input" id="lcj2-prd-' + i + '" data-lcj2-period-row="' + i + '" placeholder="' + cssEscapeText(inputPlaceholder) + '" value="' + cssEscapeText(val) + '"' + (hasError ? ' style="border-color:rgba(251,79,104,.45);color:#ffb7c5"' : '') + '>';
+                const inputPlaceholder = hasError ? 'OCR BELUM BERHASIL - KLIK SCAN CEPAT ULANG' : ('Periode Paket ' + (i + 1));
+                html += '<input class="lcst-input lcst-period-input" id="lcst-prd-' + i + '" data-lcst-period-row="' + i + '" placeholder="' + cssEscapeText(inputPlaceholder) + '" value="' + cssEscapeText(val) + '"' + (hasError ? ' style="border-color:rgba(251,79,104,.45);color:#ffb7c5"' : '') + '>';
             }
-            return html || '<input class="lcj2-input lcj2-period-input" id="lcj2-prd-0" data-lcj2-period-row="0" placeholder="Periode Paket 1" value="MENUNGGU OCR 1">';
+            return html || '<input class="lcst-input lcst-period-input" id="lcst-prd-0" data-lcst-period-row="0" placeholder="Periode Paket 1" value="MENUNGGU OCR 1">';
         }
 
         const panel = document.createElement('div');
-        panel.id = 'lcj2-panel-fixed';
+        panel.id = 'lcst-panel-fixed';
         panel.innerHTML = `
-            <div class="lcj2-wrap lcj2-nova-shell">
-                <header class="lcj2-topbar lcj2-nova-topbar">
-                    <div class="lcj2-brand">
-                        <div class="lcj2-brand-logo lcj2-nova-logo" aria-hidden="true">
-                            <svg viewBox="0 0 56 56" fill="none">
-                                <path d="M15 22v-6a3 3 0 0 1 3-3h6M32 13h6a3 3 0 0 1 3 3v6M41 34v6a3 3 0 0 1-3 3h-6M24 43h-6a3 3 0 0 1-3-3v-6"/>
-                                <circle cx="28" cy="28" r="9"/>
-                                <circle cx="28" cy="28" r="3"/>
-                                <path d="M18 28h20"/>
-                            </svg>
+            <div class="lcst-wrap lcst-nova-shell">
+                <header class="lcst-topbar lcst-nova-topbar">
+                    <div class="lcst-brand">
+                        <div class="lcst-brand-logo lcst-nova-logo" aria-hidden="true">
+                            <span class="lcst-header-logo-fallback">LT</span>
+                            <img id="lcst-header-logo-img" alt="" aria-hidden="true" decoding="async">
                         </div>
-                        <div class="lcj2-nova-brand-copy">
-                            <div class="lcj2-nova-eyebrow">OCR CLAIM JAM 2 • SCRIPT TERPISAH</div>
-                            <h3 class="lcj2-title">OCR Claim Jam 2 <span class="lcj2-version">1.5.0</span></h3>
-                            <div class="lcj2-subtitle">Ultra Fast Scan • aktif setiap hari pukul 23.50–02.00 WIB</div>
+                        <div class="lcst-nova-brand-copy">
+                            <div class="lcst-nova-eyebrow">LINETOGEL • SCAN STUDIO</div>
+                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.8.0</span></h3>
+                            <div class="lcst-subtitle">Periode, tanggal & waktu dalam satu ruang kerja</div>
                         </div>
                     </div>
-                    <div class="lcj2-nova-top-actions">
-                        <div class="lcj2-nova-live-chip"><span></span> AKTIF 23.50–02.00 WIB</div>
-                        <button class="lcj2-btn red lcj2-nova-close" id="lcj2-close" type="button">TUTUP <b>×</b></button>
+                    <div class="lcst-nova-top-actions">
+                        <div class="lcst-nova-live-chip"><span></span> TURBO READY</div>
+                        <button class="lcst-btn red lcst-nova-close" id="lcst-close" type="button">TUTUP <b>×</b></button>
                     </div>
                 </header>
 
-                <section class="lcj2-nova-hero">
-                    <div class="lcj2-status-card lcj2-nova-status" id="lcj2-status-card">
-                        <div class="lcj2-status-icon lcj2-nova-status-icon">
+                <section class="lcst-nova-hero">
+                    <div class="lcst-status-card lcst-nova-status" id="lcst-status-card">
+                        <div class="lcst-status-icon lcst-nova-status-icon">
                             <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
                                 <path d="M7 12V8a1 1 0 0 1 1-1h4M20 7h4a1 1 0 0 1 1 1v4M25 20v4a1 1 0 0 1-1 1h-4M12 25H8a1 1 0 0 1-1-1v-4"/>
                                 <path d="M10 16h12"/><circle cx="13" cy="13" r="1"/><circle cx="19" cy="13" r="1"/>
                             </svg>
                         </div>
-                        <div class="lcj2-status-content">
-                            <div class="lcj2-status-title">Aktivitas Pemindaian • Mode Jam 2</div>
-                            <div class="lcj2-ocr-box" id="lcj2-ocr-status">Menyiapkan pemindaian chat aktif...</div>
+                        <div class="lcst-status-content">
+                            <div class="lcst-status-title">Aktivitas Pemindaian</div>
+                            <div class="lcst-ocr-box" id="lcst-ocr-status">Menyiapkan pemindaian chat aktif...</div>
                         </div>
-                        <div class="lcj2-progress"><span id="lcj2-progress-bar"></span></div>
+                        <div class="lcst-progress"><span id="lcst-progress-bar"></span></div>
                     </div>
-                    <div class="lcj2-nova-identity">
-                        <div class="lcj2-nova-stat ${scan.marker ? 'ok' : 'bad'}">
-                            <span class="lcj2-nova-stat-label">CHAT MARKER</span>
-                            <strong id="lcj2-marker-text">${cssEscapeText(scan.markerText)}</strong>
+                    <div class="lcst-nova-identity">
+                        <div class="lcst-nova-stat ${scan.marker ? 'ok' : 'bad'}">
+                            <span class="lcst-nova-stat-label">CHAT MARKER</span>
+                            <strong id="lcst-marker-text">${cssEscapeText(scan.markerText)}</strong>
                         </div>
-                        <div class="lcj2-nova-stat user">
-                            <span class="lcj2-nova-stat-label">USER ID</span>
-                            <div class="lcj2-nova-user-line">
-                                <input class="lcj2-user-edit" id="lcj2-user-text" type="text" value="${cssEscapeText(scan.userId)}" autocomplete="off" spellcheck="false" aria-label="Edit User ID">
-                                <button class="lcj2-inline-copy" id="lcj2-copy-user" type="button" title="Copy User ID" aria-label="Copy User ID">
+                        <div class="lcst-nova-stat user">
+                            <span class="lcst-nova-stat-label">USER ID</span>
+                            <div class="lcst-nova-user-line">
+                                <input class="lcst-user-edit" id="lcst-user-text" type="text" value="${cssEscapeText(scan.userId)}" autocomplete="off" spellcheck="false" aria-label="Edit User ID">
+                                <button class="lcst-inline-copy" id="lcst-copy-user" type="button" title="Copy User ID" aria-label="Copy User ID">
                                     <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 7V5.75A2.75 2.75 0 0 1 10.75 3h7.5A2.75 2.75 0 0 1 21 5.75v7.5A2.75 2.75 0 0 1 18.25 16H17v1.25A2.75 2.75 0 0 1 14.25 20h-7.5A2.75 2.75 0 0 1 4 17.25v-7.5A2.75 2.75 0 0 1 6.75 7H8Zm2 0h4.25A2.75 2.75 0 0 1 17 9.75V14h1.25c.414 0 .75-.336.75-.75v-7.5a.75.75 0 0 0-.75-.75h-7.5a.75.75 0 0 0-.75.75V7Zm-3.25 2a.75.75 0 0 0-.75.75v7.5c0 .414.336.75.75.75h7.5a.75.75 0 0 0 .75-.75v-7.5a.75.75 0 0 0-.75-.75h-7.5Z"/></svg>
                                 </button>
                             </div>
                             ${scan.allIds.length > 1 ? `<small>${scan.allIds.length} ID ditemukan • memakai ID terakhir</small>` : '<small>ID chat aktif terdeteksi</small>'}
                         </div>
-                        <div class="lcj2-nova-stat mode">
-                            <span class="lcj2-nova-stat-label">OCR MODE</span>
-                            <strong>ROW LOCK 9+10</strong>
-                            <small>Turbo OCR • gambar 2 & 4 • GMT-12 sampai GMT+14 → GMT+7</small>
+                        <div class="lcst-nova-stat mode">
+                            <span class="lcst-nova-stat-label">OCR MODE</span>
+                            <strong>FAST ROW LOCK 9+10</strong>
+                            <small>Pass awal dipakai ulang • fallback anti-lag</small>
                         </div>
-                        <div class="lcj2-nova-stat live">
-                            <span class="lcj2-nova-stat-label">WAKTU ONLINE WIB</span>
-                            <strong id="lcj2-live-time">${cssEscapeText(lcj2FormatCurrentWib(lcj2NowDate()))}</strong>
-                            <small>Mode pergantian hari • 23.00-02.00 WIB • sebelum 02.00 memakai tanggal semalam</small>
+                        <div class="lcst-nova-stat live">
+                            <span class="lcst-nova-stat-label">WAKTU ONLINE WIB</span>
+                            <strong id="lcst-live-time">${cssEscapeText(lcstFormatCurrentWib(lcstNowDate()))}</strong>
+                            <small>Patokan WIB • tanggal semalam 23.00–23.59 hanya sampai sebelum 02.00</small>
                         </div>
                     </div>
                 </section>
 
-                <div class="lcj2-nova-workspace">
-                    <aside class="lcj2-nova-sidebar">
-                        <section class="lcj2-card lcj2-nova-control-card">
-                            <div class="lcj2-nova-section-head lcj2-bank-head">
-                                <div class="lcj2-bank-head-main">
-                                    <span class="lcj2-nova-step">01</span>
+                <div class="lcst-nova-workspace">
+                    <aside class="lcst-nova-sidebar">
+                        <section class="lcst-card lcst-nova-control-card">
+                            <div class="lcst-nova-section-head lcst-bank-head">
+                                <div class="lcst-bank-head-main">
+                                    <span class="lcst-nova-step">01</span>
                                     <div><b>Data Rekening Otomatis</b><small>Diambil dari admin sesuai User ID LiveChat</small></div>
                                 </div>
-                                <button class="lcj2-btn lcj2-bank-refresh" id="lcj2-bank-refresh" type="button">↻ AMBIL REKENING</button>
+                                <button class="lcst-btn lcst-bank-refresh" id="lcst-bank-refresh" type="button">↻ AMBIL REKENING</button>
                             </div>
-                            <input class="lcj2-input" id="lcj2-rek-all" placeholder="Nama, Nomor Rekening" value="${cssEscapeText(defaultNama + ',' + defaultRek)}">
-                            <div class="lcj2-scan-state lcj2-account-scan-state lcj2-bank-lookup-state waiting" id="lcj2-bank-state" aria-live="polite">
-                                <span class="lcj2-scan-state-dot"></span>
-                                <span class="lcj2-scan-state-copy">
-                                    <span class="lcj2-scan-state-label">REKENING OTOMATIS</span>
-                                    <strong class="lcj2-scan-state-text" id="lcj2-bank-state-text">MENUNGGU USER ID</strong>
-                                    <span class="lcj2-scan-state-detail" id="lcj2-bank-state-detail">Nama pemilik dan nomor rekening dicari otomatis dari halaman admin</span>
+                            <input class="lcst-input" id="lcst-rek-all" placeholder="Nama, Nomor Rekening" value="${cssEscapeText(defaultNama + ',' + defaultRek)}">
+                            <div class="lcst-scan-state lcst-account-scan-state lcst-bank-lookup-state waiting" id="lcst-bank-state" aria-live="polite">
+                                <span class="lcst-scan-state-dot"></span>
+                                <span class="lcst-scan-state-copy">
+                                    <span class="lcst-scan-state-label">REKENING OTOMATIS</span>
+                                    <strong class="lcst-scan-state-text" id="lcst-bank-state-text">MENUNGGU USER ID</strong>
+                                    <span class="lcst-scan-state-detail" id="lcst-bank-state-detail">Nama pemilik dan nomor rekening dicari otomatis dari halaman admin</span>
                                 </span>
                             </div>
-                            <div class="lcj2-scan-state lcj2-account-scan-state waiting" id="lcj2-scan-state" aria-live="polite">
-                                <span class="lcj2-scan-state-dot"></span>
-                                <span class="lcj2-scan-state-copy">
-                                    <span class="lcj2-scan-state-label">STATUS SCAN</span>
-                                    <strong class="lcj2-scan-state-text" id="lcj2-scan-state-text">MENUNGGU SCAN</strong>
-                                    <span class="lcj2-scan-state-detail" id="lcj2-scan-state-detail">Menunggu susunan otomatis</span>
+                            <div class="lcst-scan-state lcst-account-scan-state waiting" id="lcst-scan-state" aria-live="polite">
+                                <span class="lcst-scan-state-dot"></span>
+                                <span class="lcst-scan-state-copy">
+                                    <span class="lcst-scan-state-label">STATUS SCAN</span>
+                                    <strong class="lcst-scan-state-text" id="lcst-scan-state-text">MENUNGGU SCAN</strong>
+                                    <span class="lcst-scan-state-detail" id="lcst-scan-state-detail">Menunggu susunan otomatis</span>
                                 </span>
                             </div>
                         </section>
 
-                        <section class="lcj2-card lcj2-nova-control-card">
-                            <div class="lcj2-nova-section-head orange">
-                                <span class="lcj2-nova-step">02</span>
+                        <section class="lcst-card lcst-nova-control-card">
+                            <div class="lcst-nova-section-head orange">
+                                <span class="lcst-nova-step">02</span>
                                 <div><b>Hasil Periode</b><small>OCR otomatis atau koreksi manual</small></div>
                             </div>
-                            <div id="lcj2-period-fields">${buildPeriodInputsHTML(initialSetCount)}</div>
+                            <div id="lcst-period-fields">${buildPeriodInputsHTML(initialSetCount)}</div>
                         </section>
 
-                        <section class="lcj2-card lcj2-nova-guide">
-                            <div class="lcj2-nova-guide-title">PANDUAN CEPAT</div>
-                            <div class="lcj2-nova-guide-row"><span>↕</span><div><b>Susun otomatis</b><small>Permainan → Riwayat → Kemenangan Total</small></div></div>
-                            <div class="lcj2-nova-guide-row"><span>◎</span><div><b>Target OCR</b><small>Gambar ke-2: periode, tanggal, dan jam</small></div></div>
-                            <div class="lcj2-nova-guide-row"><span>⌫</span><div><b>Hapus gambar</b><small>Shift + klik atau tombol hapus</small></div></div>
+                        <section class="lcst-card lcst-nova-guide">
+                            <div class="lcst-nova-guide-title">PANDUAN CEPAT</div>
+                            <div class="lcst-nova-guide-row"><span>↕</span><div><b>Susun otomatis</b><small>Permainan → Riwayat → Kemenangan Total</small></div></div>
+                            <div class="lcst-nova-guide-row"><span>◎</span><div><b>Target OCR</b><small>Gambar target: periode, tanggal, jam, WIB/WITA/WIT • dinormalisasi ke WIB</small></div></div>
+                            <div class="lcst-nova-guide-row"><span>⌫</span><div><b>Hapus gambar</b><small>Shift + klik atau tombol hapus</small></div></div>
                         </section>
                     </aside>
 
-                    <main class="lcj2-nova-main">
-                        <section class="lcj2-card lcj2-nova-gallery-card">
-                            <div class="lcj2-nova-gallery-head">
+                    <main class="lcst-nova-main">
+                        <section class="lcst-card lcst-nova-gallery-card">
+                            <div class="lcst-nova-gallery-head">
                                 <div>
-                                    <span class="lcj2-nova-kicker">WORKSPACE</span>
+                                    <span class="lcst-nova-kicker">WORKSPACE</span>
                                     <h4>Susunan Screenshot</h4>
                                     <p>Screenshot otomatis disusun; Riwayat Permainan menjadi target OCR periode, tanggal, dan jam claim.</p>
                                 </div>
-                                <button class="lcj2-btn primary lcj2-nova-scan-btn" id="lcj2-ocr-period" type="button">
-                                    <span class="lcj2-nova-btn-icon">⌁</span>
-                                    <span><b>SCAN PERIODE</b><small>Turbo OCR siap</small></span>
+                                <button class="lcst-btn primary lcst-nova-scan-btn" id="lcst-ocr-period" type="button">
+                                    <span class="lcst-nova-btn-icon">⌁</span>
+                                    <span><b>SCAN CEPAT</b><small>Baca gambar target</small></span>
                                 </button>
                             </div>
-                            <div id="lcj2-empty-box" class="lcj2-empty" style="display:${scan.images.length ? 'none' : 'block'}">
-                                <div class="lcj2-nova-empty-icon">▧</div>
+                            <div class="lcst-mobile-picker">
+                                <button class="lcst-btn blue" id="lcst-pick-phone" type="button">＋ AMBIL DARI HP</button>
+                                <button class="lcst-btn" id="lcst-clear-phone" type="button">HAPUS SEMUA</button>
+                                <span class="lcst-mobile-picker-note">Galeri atau Kamera • maksimal 6 gambar • tahan tombol GESER untuk memindahkan</span>
+                                <input id="lcst-phone-files" type="file" accept="image/*" multiple hidden>
+                            </div>
+                            <div id="lcst-empty-box" class="lcst-empty" style="display:${scan.images.length ? 'none' : 'block'}">
+                                <div class="lcst-nova-empty-icon">▧</div>
                                 <b>Belum ada screenshot pada chat aktif</b>
                                 <span>Pastikan chat yang benar terbuka, lalu tutup dan buka kembali panel OCR.</span>
                             </div>
-                            <div id="lcj2-image-grid"></div>
+                            <div id="lcst-image-grid"></div>
                         </section>
 
-                        <section class="lcj2-card lcj2-nova-output-card">
-                            <div class="lcj2-output-head">
+                        <section class="lcst-card lcst-nova-output-card">
+                            <div class="lcst-output-head">
                                 <div>
-                                    <span class="lcj2-nova-kicker">READY TO PASTE</span>
+                                    <span class="lcst-nova-kicker">READY TO PASTE</span>
                                     <h4>Output Excel 7 Kolom</h4>
                                     <p>User ID • Gambar 1 • Gambar 2 • Gambar 3 • Rekening • Nama • Periode</p>
                                 </div>
-                                <button class="lcj2-btn green lcj2-copy-btn" id="lcj2-copy" type="button" title="Salin output saat ini">COPY OUTPUT</button>
+                                <button class="lcst-btn green lcst-copy-btn" id="lcst-copy" type="button" title="Salin output saat ini">COPY OUTPUT</button>
                             </div>
-                            <textarea id="lcj2-output" readonly spellcheck="false" aria-label="Output yang dapat disalin"></textarea>
+                            <textarea id="lcst-output" readonly spellcheck="false" aria-label="Output yang dapat disalin"></textarea>
                         </section>
                     </main>
                 </div>
             </div>
         `;
+
+        const dashboardBrand = document.createElement('div');
+        dashboardBrand.id = 'lcst-dashboard-brand-bg';
+        dashboardBrand.setAttribute('aria-hidden', 'true');
+
+        const dashboardLogo = document.createElement('img');
+        dashboardLogo.id = 'lcst-dashboard-logo-bg';
+        dashboardLogo.alt = '';
+        dashboardLogo.setAttribute('aria-hidden', 'true');
+        dashboardLogo.decoding = 'async';
+
+        const dashboardFallback = document.createElement('div');
+        dashboardFallback.id = 'lcst-dashboard-logo-fallback';
+        dashboardFallback.innerHTML = 'LINETOGEL<small>AURORA PERFORMANCE</small>';
+
+        dashboardLogo.addEventListener('load', function () {
+            panel.classList.add('lcst-dashboard-logo-loaded');
+            panel.classList.remove('lcst-dashboard-logo-error');
+        });
+        dashboardLogo.addEventListener('error', function () {
+            panel.classList.remove('lcst-dashboard-logo-loaded');
+            panel.classList.add('lcst-dashboard-logo-error');
+        });
+
+        dashboardBrand.appendChild(dashboardFallback);
+        dashboardBrand.appendChild(dashboardLogo);
+        panel.prepend(dashboardBrand);
         document.body.appendChild(panel);
+        lcstApplyDashboardLogo(dashboardLogo);
+
+        const headerLogo = panel.querySelector('#lcst-header-logo-img');
+        if (headerLogo) {
+            headerLogo.addEventListener('load', function () {
+                panel.classList.add('lcst-header-logo-loaded');
+                panel.classList.remove('lcst-header-logo-error');
+            });
+            headerLogo.addEventListener('error', function () {
+                panel.classList.remove('lcst-header-logo-loaded');
+                panel.classList.add('lcst-header-logo-error');
+            });
+            lcstApplyDashboardLogo(headerLogo);
+        }
 
         scan.ocrPeriods = scan.ocrPeriods || [];
         scan.ocrTexts = scan.ocrTexts || [];
@@ -9076,6 +10346,7 @@
         scan.claimExpiredRows = scan.claimExpiredRows || [];
         scan.claimDeadlineByRow = scan.claimDeadlineByRow || [];
         scan.claimTimestampByRow = scan.claimTimestampByRow || [];
+        scan.metadataPendingRows = scan.metadataPendingRows || [];
         const state = {
             scan,
             dragIdx: -1,
@@ -9095,14 +10366,15 @@
             dragOverCard: null,
             pendingDragOverCard: null,
             dragFrame: 0,
-            fastReorderFrame: 0,
             arrangePrefetchTimer: null,
             arrangePrefetchIdle: null,
             autoArrangeRunning: false,
             autoArrangeSeq: 0,
             claimDeadlineTimer: null,
             claimExpiredNotified: new Set(),
-            dragGhost: null
+            dragGhost: null,
+            localObjectUrls: new Set(),
+            touchSort: null
         };
 
         // Drag image transparan 1px yang benar-benar terpasang di DOM.
@@ -9132,13 +10404,13 @@
         function closePanel() {
             if (state.closed) return;
             state.closed = true;
-            const z = document.getElementById('lcj2-zoom');
+            hideClaimNotification();
+            const z = document.getElementById('lcst-zoom');
             if (z) z.remove();
             document.removeEventListener('keydown', escClose, true);
             document.removeEventListener('selectionchange', flushPendingStatusWhenPossible, true);
             if (state.statusTimer) { clearTimeout(state.statusTimer); state.statusTimer = null; }
             if (state.dragFrame) { cancelAnimationFrame(state.dragFrame); state.dragFrame = 0; }
-            if (state.fastReorderFrame) { cancelAnimationFrame(state.fastReorderFrame); state.fastReorderFrame = 0; }
             if (state.arrangePrefetchTimer) { clearTimeout(state.arrangePrefetchTimer); state.arrangePrefetchTimer = null; }
             if (state.arrangePrefetchIdle && typeof cancelIdleCallback === 'function') {
                 try { cancelIdleCallback(state.arrangePrefetchIdle); } catch (e) {}
@@ -9149,6 +10421,8 @@
                 state.claimDeadlineTimer = null;
             }
             destroySharedOCRWorker().catch(() => {});
+            state.localObjectUrls.forEach((url) => { try { URL.revokeObjectURL(url); } catch (e) {} });
+            state.localObjectUrls.clear();
             panel.remove();
         }
 
@@ -9172,12 +10446,12 @@
             return rows;
         }
 
-        function updateCopyAvailability() {
-            const copyBtn = panel.querySelector('#lcj2-copy');
+        function updateCopyAvailability(precomputedOutput) {
+            const copyBtn = panel.querySelector('#lcst-copy');
             if (!copyBtn) return;
 
             // makeOutput juga menyegarkan status batas claim berdasarkan waktu WIB saat ini.
-            const output = makeOutput(state.scan).trim();
+            const output = (typeof precomputedOutput === 'string' ? precomputedOutput : makeOutput(state.scan)).trim();
             const betBlockedRows = getBlockedBetRows();
             const claimBlockedRows = getBlockedClaimRows();
             const allRowsBlocked = (betBlockedRows.length > 0 || claimBlockedRows.length > 0) && !output;
@@ -9187,34 +10461,35 @@
             copyBtn.disabled = allRowsBlocked && claimBlockedRows.length === 0;
             copyBtn.title = allRowsBlocked
                 ? (claimBlockedRows.length
-                    ? 'Klik untuk melihat alasan paket tidak memenuhi aturan claim 23.00-02.00 WIB'
-                    : 'TIDAK CAPAI MINBET: semua paket memiliki Taruhan di bawah 1,60')
+                    ? 'Klik untuk melihat alasan paket tidak memenuhi aturan tanggal/jam claim'
+                    : 'Tidak dapat dicopy: semua paket memiliki Taruhan di bawah 1,60')
                 : (claimBlockedRows.length
-                    ? 'Paket yang tidak memenuhi aturan claim 23.00-02.00 WIB otomatis tidak ikut dicopy'
+                    ? 'Paket yang tidak memenuhi aturan tanggal semalam 23.00–02.00 WIB otomatis tidak ikut dicopy'
                     : (betBlockedRows.length
-                        ? 'TIDAK CAPAI MINBET: paket di bawah 1,60 otomatis tidak ikut dicopy'
+                        ? 'Paket di bawah 1,60 otomatis tidak ikut dicopy'
                         : 'Salin output saat ini'));
         }
 
         function updateOutput() {
-            const out = panel.querySelector('#lcj2-output');
-            if (out) out.value = makeOutput(state.scan);
-            const empty = panel.querySelector('#lcj2-empty-box');
+            const out = panel.querySelector('#lcst-output');
+            const output = makeOutput(state.scan);
+            if (out && out.value !== output) out.value = output;
+            const empty = panel.querySelector('#lcst-empty-box');
             if (empty) empty.style.display = state.scan.images.length ? 'none' : 'block';
-            updateCopyAvailability();
+            updateCopyAvailability(output);
         }
 
         function setProgress(percent) {
-            const bar = panel.querySelector('#lcj2-progress-bar');
+            const bar = panel.querySelector('#lcst-progress-bar');
             if (bar) bar.style.width = Math.max(0, Math.min(100, Number(percent) || 0)) + '%';
         }
 
         function updateLiveTimeDisplay() {
-            const liveEl = panel.querySelector('#lcj2-live-time');
-            const currentText = lcj2FormatCurrentWib(lcj2NowDate());
-            const sourceText = lcj2GetOnlineTimeSourceLabel();
+            const liveEl = panel.querySelector('#lcst-live-time');
+            const currentText = lcstFormatCurrentWib(lcstNowDate());
+            const sourceText = lcstGetOnlineTimeSourceLabel();
             if (liveEl) liveEl.textContent = currentText + ' • ' + sourceText;
-            const detailEl = panel.querySelector('#lcj2-scan-state-detail');
+            const detailEl = panel.querySelector('#lcst-scan-state-detail');
             if (detailEl) {
                 const baseDetail = detailEl.getAttribute('data-base-detail') || '';
                 const onlineNow = 'WIB sekarang ' + currentText + ' (' + sourceText + ')';
@@ -9223,14 +10498,14 @@
         }
 
         function setScanState(type, textValue, detailValue) {
-            const box = panel.querySelector('#lcj2-scan-state');
-            const textEl = panel.querySelector('#lcj2-scan-state-text');
-            const detailEl = panel.querySelector('#lcj2-scan-state-detail');
+            const box = panel.querySelector('#lcst-scan-state');
+            const textEl = panel.querySelector('#lcst-scan-state-text');
+            const detailEl = panel.querySelector('#lcst-scan-state-detail');
             if (!box || !textEl || !detailEl || state.closed) return;
 
             const allowed = ['waiting', 'scanning', 'success', 'partial', 'failed'];
             const safeType = allowed.includes(type) ? type : 'waiting';
-            box.className = 'lcj2-scan-state ' + safeType;
+            box.className = 'lcst-scan-state ' + safeType;
             textEl.textContent = textValue || 'MENUNGGU SCAN';
             detailEl.setAttribute('data-base-detail', detailValue || '');
             updateLiveTimeDisplay();
@@ -9238,209 +10513,218 @@
 
 
         function showTidakCapaiNotification(row, odds) {
-            const old = panel.querySelector('#lcj2-tidak-capai-only');
+            // Betting dan tanggal memakai satu notifikasi agar hasil tiap paket tetap terlihat.
+            const old = panel.querySelector('#lcst-tidak-capai-only');
             if (old) old.remove();
-
-            const overlay = document.createElement('div');
-            overlay.id = 'lcj2-tidak-capai-only';
-            overlay.setAttribute('role', 'alert');
-            overlay.setAttribute('aria-live', 'assertive');
-            overlay.style.cssText = [
-                'position:fixed',
-                'inset:0',
-                'z-index:2147483647',
-                'display:flex',
-                'align-items:center',
-                'justify-content:center',
-                'padding:24px',
-                'background:rgba(69,10,10,.58)',
-                'backdrop-filter:blur(8px)',
-                'pointer-events:none'
-            ].join(';');
-
-            const value = Number(odds);
-            const oddsText = Number.isFinite(value) ? value.toFixed(2).replace('.', ',') : '-';
-            overlay.innerHTML =
-                '<div style="width:min(760px,94vw);padding:34px 28px;border-radius:26px;' +
-                'border:4px solid #ef4444;background:linear-gradient(145deg,#fff 0%,#fff1f2 100%);' +
-                'color:#7f1d1d;text-align:center;box-shadow:0 30px 100px rgba(0,0,0,.55),0 0 55px rgba(239,68,68,.50);' +
-                'font-family:Inter,Segoe UI,Arial,sans-serif">' +
-                    '<div style="font-size:22px;font-weight:1000;letter-spacing:5px;color:#dc2626;margin-bottom:6px">DANGER</div>' +
-                    '<div style="font-size:clamp(30px,5vw,58px);line-height:1.05;font-weight:1000;color:#991b1b;text-shadow:0 2px 0 #fff">TIDAK CAPAI MINBET</div>' +
-                    '<div style="width:120px;height:5px;margin:20px auto;border-radius:999px;background:#ef4444;box-shadow:0 0 18px rgba(239,68,68,.65)"></div>' +
-                    '<div style="font-size:18px;font-weight:1000">PAKET ' + (row + 1) + ' • TARUHAN ' + cssEscapeText(oddsText) + '</div>' +
-                    '<div style="margin-top:8px;font-size:15px;font-weight:900;color:#b91c1c">DI BAWAH 1,60 • DATA PAKET INI TIDAK DAPAT DI-COPY</div>' +
-                '</div>';
-
-            panel.appendChild(overlay);
-            setTimeout(() => {
-                if (overlay.isConnected) overlay.remove();
-            }, 7500);
+            showClaimExpiredNotification(row);
         }
 
         function showManualScanNotification(failedRows) {
-            const old = panel.querySelector('#lcj2-manual-scan-only');
+            const old = panel.querySelector('#lcst-manual-scan-only');
             if (old) old.remove();
 
             const rows = Array.isArray(failedRows)
-                ? failedRows.filter((row) => Number.isInteger(row) && row >= 0)
+                ? [...new Set(failedRows.filter((row) => Number.isInteger(row) && row >= 0))]
                 : [];
             const packageText = rows.length
-                ? 'PAKET ' + rows.map((row) => row + 1).join(', ')
-                : 'KODE TIDAK DITEMUKAN';
+                ? 'Paket ' + rows.map((row) => row + 1).join(' & ')
+                : 'Kode belum ditemukan';
 
+            // Kartu ringan tanpa lapisan layar, blur, atau animasi.
             const overlay = document.createElement('div');
-            overlay.id = 'lcj2-manual-scan-only';
-            overlay.setAttribute('role', 'alert');
-            overlay.setAttribute('aria-live', 'assertive');
+            overlay.id = 'lcst-manual-scan-only';
+            overlay.setAttribute('role', 'status');
+            overlay.setAttribute('aria-live', 'polite');
             overlay.style.cssText = [
-                'position:fixed',
-                'inset:0',
-                'z-index:2147483647',
-                'display:flex',
-                'align-items:center',
-                'justify-content:center',
-                'padding:24px',
-                'background:rgba(55,30,4,.62)',
-                'backdrop-filter:blur(8px)',
-                'pointer-events:none'
+                'position:fixed','inset:0','z-index:2147483647',
+                'display:flex','align-items:center','justify-content:center',
+                'padding:16px','box-sizing:border-box','pointer-events:none',
+                'font-family:Segoe UI,Arial,sans-serif','line-height:1.5'
             ].join(';');
 
             overlay.innerHTML =
-                '<div style="width:min(780px,94vw);padding:36px 28px;border-radius:26px;' +
-                'border:4px solid #f59e0b;background:linear-gradient(145deg,#fff 0%,#fffbeb 100%);' +
-                'color:#78350f;text-align:center;box-shadow:0 30px 100px rgba(0,0,0,.58),0 0 55px rgba(245,158,11,.48);' +
-                'font-family:Inter,Segoe UI,Arial,sans-serif">' +
-                    '<div style="font-size:21px;font-weight:1000;letter-spacing:4px;color:#d97706;margin-bottom:8px">SCAN TIDAK DITEMUKAN</div>' +
-                    '<div style="font-size:clamp(30px,5vw,56px);line-height:1.08;font-weight:1000;color:#92400e">SILAKAN CATAT MANUAL YA</div>' +
-                    '<div style="width:130px;height:5px;margin:20px auto;border-radius:999px;background:#f59e0b;box-shadow:0 0 18px rgba(245,158,11,.65)"></div>' +
-                    '<div style="font-size:18px;font-weight:1000;color:#b45309">' + cssEscapeText(packageText) + '</div>' +
-                    '<div style="margin-top:8px;font-size:15px;font-weight:900;color:#92400e">Periksa kode pada gambar lalu isi kolom periode secara manual.</div>' +
+                '<div style="width:min(440px,100%);max-height:calc(100vh - 32px);overflow:auto;box-sizing:border-box;padding:0;border-radius:18px;border:1px solid #655746;background:#1d202b;color:#f2edf4;text-align:left;pointer-events:auto;overscroll-behavior:contain">' +
+                    '<div style="display:flex;align-items:center;gap:12px;padding:18px 20px;background:#2c2930;border-bottom:1px solid #49414a">' +
+                        '<span style="display:grid;place-items:center;width:40px;height:40px;flex:0 0 40px;border-radius:12px;border:1px solid #796447;background:#3a322b;color:#ebc48b">' +
+                            '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 4H6a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M14 5l5 5M10 14l1-4 7-7a2.1 2.1 0 0 1 3 3l-7 7-4 1ZM8 17h7"/></svg>' +
+                        '</span>' +
+                        '<div style="flex:1;min-width:0"><div style="font-size:9px;font-weight:700;letter-spacing:1.4px;color:#d9b988">PERLU DILENGKAPI</div>' +
+                            '<div style="font-size:19px;font-weight:700;line-height:1.35;margin-top:3px;color:#fff1dc">Silakan catat manual</div></div>' +
+                        '<button type="button" aria-label="Tutup notifikasi catat manual" style="display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;border:1px solid #756354;border-radius:9px;background:#211f27;color:#f6dfbe;font-size:21px;line-height:1;cursor:pointer">×</button>' +
+                    '</div>' +
+                    '<div style="padding:18px 20px 20px">' +
+                        '<span style="display:inline-block;padding:5px 10px;border:1px solid #655746;border-radius:7px;background:#302c2b;color:#eac996;font-size:11px;font-weight:600;overflow-wrap:anywhere">' + cssEscapeText(packageText) + '</span>' +
+                        '<p style="margin:12px 0 16px;font-size:13px;line-height:1.7;color:#ccc8d7">Kode periode belum berhasil terbaca otomatis. Lengkapi dari gambar agar pencatatan bisa dilanjutkan.</p>' +
+                        '<div style="display:grid;gap:12px;padding:14px;border:1px solid #444351;border-radius:11px;background:#171a23">' +
+                            '<div style="display:flex;gap:10px;align-items:center"><span style="display:grid;place-items:center;flex:0 0 24px;height:24px;border-radius:7px;background:#33303a;color:#ebca98;font-size:11px;font-weight:700">1</span><span style="font-size:12px;color:#e4deec">Periksa kode periode pada gambar.</span></div>' +
+                            '<div style="display:flex;gap:10px;align-items:center"><span style="display:grid;place-items:center;flex:0 0 24px;height:24px;border-radius:7px;background:#33303a;color:#ebca98;font-size:11px;font-weight:700">2</span><span style="font-size:12px;color:#e4deec">Isi kolom periode pada paket terkait.</span></div>' +
+                        '</div>' +
+                        '<div style="margin-top:12px;font-size:10px;line-height:1.6;color:#aaa6b8">Pastikan angka yang dicatat sama dengan kode pada gambar.</div>' +
+                    '</div>' +
                 '</div>';
 
-            panel.appendChild(overlay);
-            setTimeout(() => {
+            let dismissTimer;
+            const dismiss = () => {
+                clearTimeout(dismissTimer);
                 if (overlay.isConnected) overlay.remove();
-            }, 8000);
+            };
+            overlay.querySelector('button').addEventListener('click', dismiss);
+            panel.appendChild(overlay);
+            dismissTimer = setTimeout(dismiss, 8000);
+        }
+
+        function hideClaimNotification() {
+            if (state.claimNoticeTimer) clearTimeout(state.claimNoticeTimer);
+            state.claimNoticeTimer = null;
+            const notice = panel.querySelector('#lcst-claim-expired-only');
+            if (notice) notice.remove();
         }
 
         function showClaimExpiredNotification(row, claimStatus) {
-            if (state.claimExpiredNotified) state.claimExpiredNotified.add(row);
-            const old = panel.querySelector('#lcj2-claim-expired-only');
-            if (old) old.remove();
-
-            const status = claimStatus || (state.scan.claimDeadlineByRow && state.scan.claimDeadlineByRow[row]) || {};
-            const imageTimeText = lcj2FormatClaimTimestamp(status.imageTimestamp || status.claimDate);
-            const deadlineText = lcj2FormatClaimDeadline(status);
-            const yesterdayDateText = status && status.claimDate
-                ? lcj2FormatClaimDate(status.claimDate)
-                : '-';
-            const deadlineDisplayText = status && Number(status.dayDifference) === 1
-                ? 'Tanggal semalam: ' + yesterdayDateText + ' • 23:00 - 02:00 WIB'
-                : deadlineText;
-            const onlineNowText = lcj2FormatCurrentWib(lcj2NowDate()) + ' • ' + lcj2GetOnlineTimeSourceLabel();
-            const blockReasonText = lcj2ClaimStatusMessage(status);
-            const ruleText = status.ruleText ||
-                'Tanggal hari ini dapat claim; tanggal semalam hanya transaksi 23.00–23.59 GMT+7 sebelum pukul 02.00 WIB.';
-
-            const overlay = document.createElement('div');
-            overlay.id = 'lcj2-claim-expired-only';
-            overlay.setAttribute('role', 'alert');
-            overlay.setAttribute('aria-live', 'assertive');
-            overlay.style.cssText = [
-                'position:fixed',
-                'inset:0',
-                'z-index:2147483647',
-                'display:flex',
-                'align-items:center',
-                'justify-content:center',
-                'padding:28px',
-                'background:rgba(8,2,2,.80)',
-                'backdrop-filter:blur(10px)',
-                'pointer-events:none'
+            if (state.closed) return;
+            hideClaimNotification();
+            const count = getPackageCount();
+            let pendingCount = 0;
+            let rejectedCount = 0;
+            const minimumText = LCST_MIN_BET_ODDS.toFixed(2).replace('.', ',');
+            const cards = [];
+            for (let index = 0; index < count; index++) {
+                const pending = !!(state.scan.metadataPendingRows || [])[index];
+                const status = index === row && claimStatus ? claimStatus : lcstCheckClaimDeadline(
+                    (state.scan.claimTimestampByRow || [])[index] || null,
+                    (state.scan.ocrPeriods || [])[index] || ''
+                );
+                const rejected = !pending && !!status.expired;
+                const readable = !pending && !!status.hasDate;
+                const rawBet = (state.scan.betOddsByRow || [])[index];
+                const betValue = typeof rawBet === 'number' ? rawBet : NaN;
+                const betReadable = !pending && Number.isFinite(betValue) && betValue >= 0;
+                const betBlocked = !pending && !!(state.scan.betBelowMinRows || [])[index];
+                const betPassed = betReadable && !betBlocked && betValue >= LCST_MIN_BET_ODDS;
+                const betAccent = pending ? '#f1ce8a' : betBlocked ? '#ffb5c2' : betPassed ? '#a2dfc6' : '#f1ce8a';
+                const betLabel = pending ? 'SEDANG MEMBACA BETTING' : betBlocked ? 'BELUM MENCAPAI MINIMAL BETTING' :
+                    betPassed ? 'SUDAH MENCAPAI MINIMAL BETTING' : 'BETTING PERLU DIPERIKSA';
+                const betText = betReadable ? betValue.toFixed(2).replace('.', ',') : pending ? 'Sedang dibaca…' : 'Belum terbaca';
+                const betReason = pending ? 'Menunggu hasil pembacaan betting paket ini.' : betBlocked ?
+                    'Betting paket ini di bawah minimum ' + minimumText + '. Data paket ini tidak ikut disalin.' : betPassed ?
+                    'Betting paket ini memenuhi minimum ' + minimumText + '. Status tanggal tetap mengikuti pemeriksaan di bawah.' :
+                    'Nilai betting belum dapat dipastikan. Periksa nominal pada gambar paket ini.';
+                if (!pending && (rejected || betBlocked)) rejectedCount++;
+                const cardAccent = rejected || betBlocked ? '#ffb5c2' : pending || !readable || !betPassed ? '#f1ce8a' : '#a2dfc6';
+                if (pending) pendingCount++;
+                if (rejected) {
+                    if (state.claimExpiredNotified) state.claimExpiredNotified.add(index);
+                }
+                const accent = pending || !readable ? '#f1ce8a' : rejected ? '#ffb5c2' : '#a2dfc6';
+                const label = pending ? 'SEDANG MEMBACA' : rejected ? 'TIDAK DAPAT CLAIM' :
+                    readable ? 'TANGGAL MEMENUHI ATURAN' : 'PERIKSA TANGGAL';
+                const time = pending ? 'Menunggu hasil pembacaan…' :
+                    readable ? lcstFormatClaimTimestamp(status.imageTimestamp || status.claimDate) : 'Tanggal belum terbaca';
+                const deadline = pending ? 'Menunggu hasil pembacaan…' :
+                    readable ? lcstFormatClaimDeadline(status) : 'Belum dapat ditentukan';
+                const reason = pending ? 'Tanggal dan waktu paket ini sedang diperiksa.' : rejected ?
+                    lcstClaimStatusMessage(status) : readable ? status.ruleText :
+                    'Periksa tanggal pada gambar paket ini secara manual.';
+                cards.push(
+                    '<section style="padding:14px;border:1px solid #454455;border-left:3px solid ' + cardAccent + ';border-radius:12px;background:#242431">' +
+                        '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:space-between;margin-bottom:12px">' +
+                            '<strong style="font-size:12px;letter-spacing:.5px;color:#f2edf8">PAKET ' + (index + 1) + '</strong>' +
+                            '<span style="padding:4px 7px;border-radius:6px;background:#171922;color:' + accent + ';font-size:9px;font-weight:700;letter-spacing:.4px">' + label + '</span>' +
+                        '</div>' +
+                        '<div style="padding:12px;margin-bottom:13px;border:1px solid #454455;border-radius:10px;background:#191b26">' +
+                            '<div style="font-size:9px;font-weight:700;letter-spacing:.35px;color:' + betAccent + ';line-height:1.6">' + betLabel + '</div>' +
+                            '<div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:6px 12px;margin-top:8px">' +
+                                '<div><span style="font-size:10px;color:#b9b5c9">BETTING TERBACA</span><div style="font-size:21px;font-weight:700;font-variant-numeric:tabular-nums;color:' + betAccent + '">' + cssEscapeText(betText) + '</div></div>' +
+                                '<div style="font-size:11px;color:#c9c4d5">Minimum <strong style="color:#f2edf8">' + minimumText + '</strong></div>' +
+                            '</div>' +
+                            '<div style="margin-top:8px;font-size:11px;line-height:1.6;color:#cbc6d6">' + cssEscapeText(betReason) + '</div>' +
+                        '</div>' +
+                        '<div style="font-size:10px;color:#b9b5c9;margin-bottom:4px">TANGGAL &amp; WAKTU TRANSAKSI</div>' +
+                        '<div style="font-size:13px;font-weight:600;color:#f5f1fa;font-variant-numeric:tabular-nums">' + cssEscapeText(time) + '</div>' +
+                        '<div style="margin-top:10px;padding-top:10px;border-top:1px solid #41404e;display:flex;flex-wrap:wrap;gap:5px 12px;justify-content:space-between">' +
+                            '<span style="font-size:10px;color:#b9b5c9">BATAS CLAIM</span>' +
+                            '<strong style="font-size:12px;color:' + accent + ';font-variant-numeric:tabular-nums">' + cssEscapeText(deadline) + '</strong>' +
+                        '</div>' +
+                        '<div style="margin-top:10px;font-size:11px;line-height:1.6;color:' + accent + '">' + cssEscapeText(reason || '') + '</div>' +
+                    '</section>'
+                );
+            }
+            const toast = document.createElement('div');
+            toast.id = 'lcst-claim-expired-only';
+            toast.setAttribute('role', 'status');
+            toast.setAttribute('aria-live', 'polite');
+            toast.setAttribute('aria-atomic', 'true');
+            toast.style.cssText = [
+                'position:fixed','top:16px','right:16px','z-index:2147483647',
+                'width:min(440px,calc(100vw - 32px))','max-height:calc(100vh - 32px)',
+                'border:1px solid #605064','border-radius:17px','background:#191a24',
+                'color:#f5edf1','box-shadow:none','overflow:auto','box-sizing:border-box',
+                'font-family:Segoe UI,Arial,sans-serif','line-height:1.5','pointer-events:auto',
+                'overscroll-behavior:contain','overflow-wrap:anywhere'
             ].join(';');
-
-            overlay.innerHTML =
-                '<div style="width:min(860px,95vw);position:relative;overflow:hidden;padding:0;border-radius:30px;' +
-                'border:2px solid rgba(239,68,68,.36);background:linear-gradient(160deg,#030303 0%,#100404 54%,#1b0606 100%);' +
-                'color:#fff5f5;box-shadow:0 30px 100px rgba(0,0,0,.66),0 0 0 1px rgba(255,255,255,.02),0 0 60px rgba(239,68,68,.12);' +
-                'font-family:Inter,Segoe UI,Arial,sans-serif">' +
-
-                    '<div style="position:absolute;inset:auto auto 0 0;width:240px;height:240px;border-radius:50%;background:radial-gradient(circle,rgba(239,68,68,.10),transparent 68%);transform:translate(-32%,34%)"></div>' +
-                    '<div style="position:absolute;right:-60px;top:-70px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(185,28,28,.12),transparent 70%)"></div>' +
-
-                    '<div style="position:relative;padding:26px 30px 18px;border-bottom:1px solid rgba(248,113,113,.10);display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">' +
-                        '<div>' +
-                            '<div style="display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.18);color:#fecaca;font-size:11px;font-weight:1000;letter-spacing:1.2px">STATUS CLAIM • PAKET ' + (row + 1) + '</div>' +
-                            '<div style="margin-top:14px;font-size:clamp(28px,4.4vw,48px);line-height:1.04;font-weight:1000;letter-spacing:.3px;color:#fff7f7">TIDAK DAPAT CLAIM</div>' +
-                            '<div style="margin-top:8px;font-size:15px;line-height:1.55;color:#e6bcbc;max-width:560px">' + cssEscapeText(blockReasonText) + '</div>' +
-                        '</div>' +
-                        '<div style="min-width:140px;padding:16px 18px;border-radius:18px;background:linear-gradient(145deg,rgba(35,10,10,.98),rgba(12,5,5,.96));border:1px solid rgba(239,68,68,.16);box-shadow:inset 0 1px 0 rgba(255,255,255,.03)">' +
-                            '<div style="font-size:10px;color:#d1a1a1;font-weight:900;letter-spacing:1.3px">BATAS AKSES</div>' +
-                            '<div style="margin-top:7px;font-size:26px;font-weight:1000;color:#f87171">02:00</div>' +
-                            '<div style="margin-top:4px;font-size:12px;color:#ffe4e6">GMT+7 / WIB</div>' +
-                        '</div>' +
-                    '</div>' +
-
-                    '<div style="position:relative;padding:22px 30px 28px">' +
-                        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">' +
-
-                            '<div style="padding:16px 16px 15px;border-radius:20px;background:linear-gradient(155deg,rgba(28,10,10,.96),rgba(8,5,5,.98));border:1px solid rgba(248,113,113,.08)">' +
-                                '<div style="font-size:10px;font-weight:1000;letter-spacing:1.2px;color:#d1a1a1">WAKTU TRANSAKSI</div>' +
-                                '<div style="margin-top:9px;font-size:18px;line-height:1.4;font-weight:1000;color:#fff7f7">' + cssEscapeText(imageTimeText) + '</div>' +
-                            '</div>' +
-
-                            '<div style="padding:16px 16px 15px;border-radius:20px;background:linear-gradient(155deg,rgba(28,10,10,.96),rgba(8,5,5,.98));border:1px solid rgba(248,113,113,.08)">' +
-                                '<div style="font-size:11px;font-weight:1000;letter-spacing:1.2px;color:#ff9c9c">BATAS TERAKHIR</div>' +
-                                '<div style="margin-top:9px;font-size:18px;line-height:1.45;font-weight:1000;color:#ffffff;text-shadow:0 0 10px rgba(239,68,68,.18)">' + cssEscapeText(deadlineDisplayText) + '</div>' +
-                            '</div>' +
-
-                            '<div style="padding:16px 16px 15px;border-radius:20px;background:linear-gradient(155deg,rgba(28,10,10,.96),rgba(8,5,5,.98));border:1px solid rgba(248,113,113,.08)">' +
-                                '<div style="font-size:10px;font-weight:1000;letter-spacing:1.2px;color:#d1a1a1">WAKTU SEKARANG</div>' +
-                                '<div style="margin-top:9px;font-size:18px;line-height:1.4;font-weight:1000;color:#ffe4e6">' + cssEscapeText(onlineNowText) + '</div>' +
-                            '</div>' +
-
-                        '</div>' +
-
-                        '<div style="margin-top:16px;padding:18px 18px;border-radius:22px;background:linear-gradient(145deg,rgba(42,10,10,.76),rgba(18,7,7,.94));border:1px solid rgba(239,68,68,.16);box-shadow:inset 0 1px 0 rgba(255,255,255,.03)">' +
-                            '<div style="font-size:11px;font-weight:1000;letter-spacing:1.25px;color:#fca5a5">ATURAN CLAIM</div>' +
-                            '<div style="margin-top:10px;font-size:15px;line-height:1.6;color:#f1d1d1">' + cssEscapeText(ruleText) + '</div>' +
-                        '</div>' +
-
-                        '<div style="margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
-                            '<div style="display:inline-flex;align-items:center;gap:10px;padding:10px 14px;border-radius:999px;background:rgba(239,68,68,.10);border:1px solid rgba(239,68,68,.16);color:#ffe4e6;font-size:12px;font-weight:900">' +
-                                '<span style="width:10px;height:10px;border-radius:50%;background:#ef4444;box-shadow:0 0 12px rgba(239,68,68,.82)"></span>' +
-                                'Periksa tanggal, jam, dan zona waktu pada gambar 2 / 4.' +
-                            '</div>' +
-                            '<div style="font-size:12px;color:#d1a1a1;font-weight:800">Notifikasi ini akan menutup otomatis.</div>' +
-                        '</div>' +
-                    '</div>' +
-                '</div>';
-
-            panel.appendChild(overlay);
-            setTimeout(() => {
-                if (overlay.isConnected) overlay.remove();
-            }, 9000);
+            toast.innerHTML =
+                '<div style="display:flex;align-items:center;gap:12px;padding:16px;background:#302532;border-bottom:1px solid #514050">' +
+                    '<span style="display:grid;place-items:center;flex:0 0 38px;height:38px;border:1px solid #85566b;border-radius:12px;background:#432d3e;color:#ffbacb">' +
+                        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4M17 3v4M3 10h18M12 13v3l2 1"/></svg>' +
+                    '</span>' +
+                    '<div style="flex:1;min-width:0"><div style="font-size:9px;letter-spacing:1.4px;color:#d4afc1;font-weight:700">PEMERIKSAAN BETTING &amp; TANGGAL</div>' +
+                        '<div style="font-size:18px;font-weight:700;color:#fff0f5;margin-top:2px">Status pemeriksaan paket</div>' +
+                        '<div style="font-size:11px;color:#d8becd;margin-top:3px">' + rejectedCount + ' dari ' + count + ' paket tidak dapat claim' +
+                        (pendingCount ? ' • ' + pendingCount + ' masih dibaca' : '') + '</div></div>' +
+                    '<button type="button" aria-label="Tutup notifikasi" style="display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;border:1px solid #84647a;border-radius:9px;background:#211c2a;color:#ffe4f0;cursor:pointer;font-size:21px;line-height:1">×</button>' +
+                '</div>' +
+                '<div style="display:grid;gap:10px;padding:14px">' + cards.join('') + '</div>' +
+                '<div style="padding:0 16px 15px;font-size:10px;color:#b9b5c9;line-height:1.6">Betting dan tanggal diperiksa per paket. Memenuhi minimum betting tidak otomatis memenuhi aturan tanggal. Acuan waktu: WIB.</div>';
+            toast.querySelector('button').addEventListener('click', hideClaimNotification);
+            panel.appendChild(toast);
+            // Tunggu semua paket selesai agar hasil paket kedua sempat terlihat.
+            if (!pendingCount) state.claimNoticeTimer = setTimeout(hideClaimNotification, 12000);
         }
 
         function setBankState(type, textValue, detailValue) {
-            const box = panel.querySelector('#lcj2-bank-state');
-            const textEl = panel.querySelector('#lcj2-bank-state-text');
-            const detailEl = panel.querySelector('#lcj2-bank-state-detail');
+            const box = panel.querySelector('#lcst-bank-state');
+            const textEl = panel.querySelector('#lcst-bank-state-text');
+            const detailEl = panel.querySelector('#lcst-bank-state-detail');
             if (!box || !textEl || !detailEl || state.closed) return;
             const allowed = ['waiting', 'scanning', 'success', 'partial', 'failed'];
             const safeType = allowed.includes(type) ? type : 'waiting';
-            box.className = 'lcj2-scan-state lcj2-account-scan-state lcj2-bank-lookup-state ' + safeType;
+            box.className = 'lcst-scan-state lcst-account-scan-state lcst-bank-lookup-state ' + safeType;
             textEl.textContent = textValue || 'MENUNGGU USER ID';
             detailEl.textContent = detailValue || '';
         }
 
         async function fillAccountFromAdmin(userId, forceRefresh) {
-            const uid = lcj2ValidLookupUserId(userId);
-            const refreshBtn = panel.querySelector('#lcj2-bank-refresh');
+            const uid = lcstValidLookupUserId(userId);
+            const refreshBtn = panel.querySelector('#lcst-bank-refresh');
             if (!uid) {
                 setBankState('waiting', 'USER ID BELUM TERDETEKSI', 'Isi atau tampilkan USER ID pada chat aktif');
                 return;
+            }
+
+            // V6.4.2: cache lokal hanya dianggap final bila masih baru. Entry versi lama
+            // tanpa updatedAt otomatis diverifikasi ke Admin agar data yang pernah salah/stale
+            // tidak dipakai selamanya.
+            if (!forceRefresh) {
+                try {
+                    const dbNow = getAccountDB();
+                    const exactKey = Object.keys(dbNow || {}).find(k => String(k).toLowerCase() === uid.toLowerCase());
+                    const saved = exactKey ? dbNow[exactKey] : null;
+                    const savedName = lcstCleanAccountName(saved && saved.nama);
+                    const savedRek = lcstCleanAccountNumber(saved && saved.rek);
+                    const savedAt = Number(saved && saved.updatedAt) || 0;
+                    const cacheFresh = savedAt > 0 && Date.now() - savedAt < LCST_ADMIN_LOCAL_DB_TTL;
+                    if (savedName && savedRek && cacheFresh) {
+                        const input = panel.querySelector('#lcst-rek-all');
+                        if (input) input.value = savedName + ',' + savedRek;
+                        lcstBankMemoryCache.set(uid.toLowerCase(), {
+                            time: savedAt,
+                            value: { nama: savedName, rek: savedRek, userId: uid, source: 'local-db-fresh' }
+                        });
+                        updateOutput();
+                        setBankState('success', 'DATA REKENING TERISI', savedName + ' • ' + savedRek + ' • cache terverifikasi');
+                        return;
+                    }
+                } catch (e) {}
             }
 
             if (state.bankLookupRunning && !forceRefresh && state.bankLookupUserId.toLowerCase() === uid.toLowerCase()) return;
@@ -9448,35 +10732,40 @@
             state.bankLookupRunning = true;
             state.bankLookupUserId = uid;
             if (refreshBtn) refreshBtn.disabled = true;
-            setBankState('scanning', 'MENCARI DATA REKENING', 'User ID: ' + uid);
+            setBankState('scanning', 'MENCARI DATA REKENING', 'Exact User ID: ' + uid + ' • jalur Admin tercepat');
 
             try {
-                const bank = await lcj2LookupBankFromAdmin(uid, !!forceRefresh);
+                const bank = await lcstLookupBankFromAdmin(uid, !!forceRefresh);
                 if (state.closed || sequence !== state.bankLookupSeq) return;
 
-                const accountName = lcj2CleanAccountName(bank.nama);
-                const accountNumber = lcj2CleanAccountNumber(bank.rek);
+                const accountName = lcstCleanAccountName(bank.nama);
+                const accountNumber = lcstCleanAccountNumber(bank.rek);
                 if (!accountName || !accountNumber) {
-                    throw lcj2CreateLookupError('BANK_NOT_FOUND', 'Nama pemilik atau nomor rekening tidak valid.');
+                    throw lcstCreateLookupError('BANK_NOT_FOUND', 'Nama pemilik atau nomor rekening tidak valid.');
                 }
-                const input = panel.querySelector('#lcj2-rek-all');
+                const input = panel.querySelector('#lcst-rek-all');
                 if (input) input.value = accountName + ',' + accountNumber;
                 const dbNow = getAccountDB();
-                dbNow[uid] = { nama: accountName, rek: accountNumber };
+                dbNow[uid] = {
+                    nama: accountName,
+                    rek: accountNumber,
+                    updatedAt: Date.now(),
+                    source: 'admin-exact-user'
+                };
                 setAccountDB(dbNow);
                 updateOutput();
-                setBankState('success', '✓ DATA REKENING BERHASIL DITEMUKAN', accountName + ' • ' + accountNumber);
+                setBankState('success', 'DATA REKENING TERISI', accountName + ' • ' + accountNumber);
             } catch (err) {
                 if (state.closed || sequence !== state.bankLookupSeq) return;
                 const code = err && err.code ? err.code : '';
                 if (code === 'ADMIN_LOGIN_REQUIRED') {
                     setBankState('failed', 'LOGIN ADMIN DIPERLUKAN', 'Login dahulu ke halaman admin pada browser yang sama');
                 } else if (code === 'BANK_NOT_FOUND') {
-                    setBankState('partial', '✕ DATA REKENING TIDAK DITEMUKAN', 'User ID ' + uid + ' tidak ditemukan atau data rekening kosong');
+                    setBankState('partial', 'DATA REKENING TIDAK DITEMUKAN', 'User ID ' + uid + ' tidak ditemukan atau data rekening kosong');
                 } else if (code === 'NO_USER_ID') {
                     setBankState('waiting', 'USER ID BELUM TERDETEKSI', 'Pastikan member mengisi USER ID di chat aktif');
                 } else {
-                    setBankState('failed', '✕ GAGAL MENGAMBIL DATA REKENING', err && err.message ? err.message : 'Terjadi kesalahan pada halaman admin');
+                    setBankState('failed', 'GAGAL MENGAMBIL REKENING', err && err.message ? err.message : 'Terjadi kesalahan pada halaman admin');
                 }
             } finally {
                 if (sequence === state.bankLookupSeq) {
@@ -9489,7 +10778,7 @@
         function applyPendingStatus(force) {
             if (!state.pendingStatus || state.closed) return;
             if (!force && hasDashboardSelection()) return;
-            const box = panel.querySelector('#lcj2-ocr-status');
+            const box = panel.querySelector('#lcst-ocr-status');
             if (!box) return;
             box.innerHTML = state.pendingStatus.msg;
             if (state.pendingStatus.progress != null) setProgress(state.pendingStatus.progress);
@@ -9513,7 +10802,7 @@
             // Jangan mengganti isi status ketika pengguna sedang menyeleksi teks untuk dicopy.
             if (hasDashboardSelection()) return;
 
-            const wait = Math.max(0, 700 - (Date.now() - state.lastStatusAt));
+            const wait = Math.max(0, 90 - (Date.now() - state.lastStatusAt));
             if (state.statusTimer) clearTimeout(state.statusTimer);
             state.statusTimer = setTimeout(() => {
                 state.statusTimer = null;
@@ -9523,19 +10812,19 @@
 
         function collectPeriodInputValues() {
             const values = {};
-            panel.querySelectorAll('[data-lcj2-period-row]').forEach((input) => {
-                const row = parseInt(input.getAttribute('data-lcj2-period-row') || '0', 10);
+            panel.querySelectorAll('[data-lcst-period-row]').forEach((input) => {
+                const row = parseInt(input.getAttribute('data-lcst-period-row') || '0', 10);
                 values[row] = input.value || '';
             });
             return values;
         }
 
         function renderPeriodInputs(preserveValues) {
-            const box = panel.querySelector('#lcj2-period-fields');
+            const box = panel.querySelector('#lcst-period-fields');
             if (!box) return;
             const values = preserveValues ? collectPeriodInputValues() : {};
             box.innerHTML = buildPeriodInputsHTML(getPackageCount(), values);
-            box.querySelectorAll('[data-lcj2-period-row]').forEach((input) => {
+            box.querySelectorAll('[data-lcst-period-row]').forEach((input) => {
                 input.addEventListener('input', () => {
                     updateOutput();
                     updateClaimPeriodInputState(input);
@@ -9546,20 +10835,31 @@
 
         function updateClaimPeriodInputState(input) {
             if (!input) return;
-            const row = parseInt(input.getAttribute('data-lcj2-period-row') || '0', 10);
+            const row = parseInt(input.getAttribute('data-lcst-period-row') || '0', 10);
+            if (state.scan.metadataPendingRows && state.scan.metadataPendingRows[row]) {
+                state.scan.claimExpiredRows = state.scan.claimExpiredRows || [];
+                state.scan.claimDeadlineByRow = state.scan.claimDeadlineByRow || [];
+                state.scan.claimExpiredRows[row] = false;
+                state.scan.claimDeadlineByRow[row] = null;
+                input.title = 'Kode sudah terkunci. Validasi taruhan dan tanggal semalam sedang berjalan.';
+                input.style.borderColor = 'rgba(6,182,212,.58)';
+                input.style.color = '#0891b2';
+                input.style.background = 'rgba(236,254,255,.92)';
+                return;
+            }
             const imageTimestamp = state.scan.claimTimestampByRow && state.scan.claimTimestampByRow[row]
                 ? state.scan.claimTimestampByRow[row]
                 : null;
-            const status = lcj2CheckClaimDeadline(imageTimestamp, input.value);
+            const status = lcstCheckClaimDeadline(imageTimestamp, input.value);
             state.scan.claimExpiredRows = state.scan.claimExpiredRows || [];
             state.scan.claimDeadlineByRow = state.scan.claimDeadlineByRow || [];
             state.scan.claimExpiredRows[row] = !!status.expired;
             state.scan.claimDeadlineByRow[row] = status;
             input.title = status.expired
-                ? lcj2ClaimStatusMessage(status) + ' • Waktu gambar target ' +
-                    lcj2FormatClaimTimestamp(status.imageTimestamp || status.claimDate)
+                ? lcstClaimStatusMessage(status) + ' • Waktu gambar target: ' +
+                    lcstFormatClaimTimestamp(status.imageTimestamp || status.claimDate)
                 : (status.imageTimestamp
-                    ? 'Waktu gambar 2/4: ' + lcj2FormatClaimTimestamp(status.imageTimestamp) + ' • deadline ' + lcj2FormatClaimDeadline(status)
+                    ? 'Waktu gambar ke-2: ' + lcstFormatClaimTimestamp(status.imageTimestamp) + ' • deadline ' + lcstFormatClaimDeadline(status)
                     : '');
             if (status.expired) {
                 input.style.borderColor = 'rgba(220,38,38,.72)';
@@ -9581,13 +10881,13 @@
         }
         function syncPeriodInputsFromOcr() {
             const expected = getPackageCount();
-            const existing = panel.querySelectorAll('[data-lcj2-period-row]').length;
+            const existing = panel.querySelectorAll('[data-lcst-period-row]').length;
             if (existing !== expected) renderPeriodInputs(true);
             for (let i = 0; i < expected; i++) syncSinglePeriodInput(i);
         }
 
         function syncSinglePeriodInput(i) {
-            const input = panel.querySelector('#lcj2-prd-' + i);
+            const input = panel.querySelector('#lcst-prd-' + i);
             if (!input) return;
             input.style.borderColor = '';
             input.style.color = '';
@@ -9598,7 +10898,7 @@
                 input.style.color = '#91f5b7';
             } else if (state.scan.ocrMeta[i] && state.scan.ocrMeta[i].error) {
                 input.value = '';
-                input.placeholder = 'OCR BELUM BERHASIL - KLIK SCAN DISINI ULANG';
+                input.placeholder = 'OCR BELUM BERHASIL - KLIK SCAN CEPAT ULANG';
                 input.style.borderColor = 'rgba(251,79,104,.45)';
                 input.style.color = '#ffb7c5';
             }
@@ -9614,44 +10914,22 @@
             state.scan.claimExpiredRows = [];
             state.scan.claimDeadlineByRow = [];
             state.scan.claimTimestampByRow = [];
+            state.scan.metadataPendingRows = [];
             if (state.claimExpiredNotified) state.claimExpiredNotified.clear();
+            hideClaimNotification();
+            const outputAtScanStart = panel.querySelector('#lcst-output');
+            if (outputAtScanStart) outputAtScanStart.value = '';
             renderPeriodInputs(false);
-            setScanState('waiting', 'MENUNGGU SCAN', 'Gambar otomatis disusun • klik SCAN DISINI');
+            setScanState('waiting', 'MENUNGGU SCAN', 'Gambar otomatis disusun • klik SCAN CEPAT');
             if (reason) setOcrStatus(cssEscapeText(reason), 0);
         }
 
-        function clearOcrResultsAfterFastReorder(reason) {
-            // Kosongkan data OCR langsung, tetapi tunda pekerjaan DOM yang lebih berat
-            // sampai pertukaran kartu sudah selesai digambar oleh browser.
-            state.scan.ocrPeriods = [];
-            state.scan.ocrTexts = [];
-            state.scan.ocrMeta = [];
-            state.scan.betOddsByRow = [];
-            state.scan.betBelowMinRows = [];
-            state.scan.claimExpiredRows = [];
-            state.scan.claimDeadlineByRow = [];
-            state.scan.claimTimestampByRow = [];
-            if (state.claimExpiredNotified) state.claimExpiredNotified.clear();
-
-            setScanState('waiting', 'SIAP DI SCAN', 'Posisi gambar sudah dipindahkan');
-            if (state.fastReorderFrame) cancelAnimationFrame(state.fastReorderFrame);
-            state.fastReorderFrame = requestAnimationFrame(() => {
-                state.fastReorderFrame = 0;
-                if (state.closed) return;
-                refreshImageCardPositions();
-                renderPeriodInputs(false);
-                if (reason) setOcrStatus(cssEscapeText(reason), 0);
-                updateOutput();
-                scheduleArrangePrefetch();
-            });
-        }
-
         function applyAutoArrangedCardsWithoutReload(originalImages, orderedImages) {
-            const grid = panel.querySelector('#lcj2-image-grid');
+            const grid = panel.querySelector('#lcst-image-grid');
             if (!grid) return false;
 
             const cards = Array.from(grid.children).filter((node) =>
-                node && node.classList && node.classList.contains('lcj2-img-card')
+                node && node.classList && node.classList.contains('lcst-img-card')
             );
             const original = Array.isArray(originalImages) ? originalImages : [];
             const ordered = Array.isArray(orderedImages) ? orderedImages : [];
@@ -9685,34 +10963,56 @@
                 return { changed: false, confident: false, rows: 0, reason: 'not-ready' };
             }
 
+            const originalCount = state.scan.images.length;
             const packageSize = getPackageSizeFromImages(state.scan.images);
-            if (packageSize !== 3 || state.scan.images.length % 3 !== 0) {
+
+            // 3/6 disusun. Jika lebih dari 6, tetap proses walaupun jumlahnya 7, 8, 10, dst.
+            if (originalCount <= LCST_MAX_SELECTED_IMAGES && (packageSize !== 3 || originalCount % 3 !== 0)) {
                 return { changed: false, confident: false, rows: 0, reason: 'not-three-image-package' };
             }
 
             const sequence = ++state.autoArrangeSeq;
             state.autoArrangeRunning = true;
-            setOcrStatus('Mengenali jenis screenshot dan menyusun otomatis...', 27);
+            setOcrStatus(
+                originalCount > LCST_MAX_SELECTED_IMAGES
+                    ? 'Menganalisa <b>' + originalCount + '</b> screenshot dan memilih hanya <b>6 gambar</b>...'
+                    : 'Mengenali jenis screenshot dan menyusun otomatis...',
+                27
+            );
 
             try {
                 const original = state.scan.images.slice();
-                const analyses = await lcj2AnalyzeScreenshotsForAutoArrange(original, (done, total) => {
-                    if (state.closed || sequence !== state.autoArrangeSeq) return;
-                    const progress = 27 + Math.round((done / Math.max(1, total)) * 5);
-                    setOcrStatus(
-                        'Menyusun otomatis screenshot <b>' + done + '/' + total + '</b>.<br>' +
-                        'Urutan: <b>Permainan → Riwayat Permainan → Kemenangan Total</b>.',
-                        progress
-                    );
-                });
 
-                if (state.closed || sequence !== state.autoArrangeSeq) {
-                    return { changed: false, confident: false, rows: 0, reason: 'cancelled' };
+                // Selalu klasifikasi semua slot. Riwayat di posisi 2/5 saja tidak
+                // membuktikan Permainan dan Kemenangan sudah berada di tempatnya.
+                // Cache visual tetap dipakai agar pemeriksaan tidak menghitung ulang piksel.
+                let result = null;
+
+                if (!result) {
+                    const analyses = await lcstAnalyzeScreenshotsForAutoArrange(original, (done, total) => {
+                        if (state.closed || sequence !== state.autoArrangeSeq) return;
+                        const progress = 27 + Math.round((done / Math.max(1, total)) * 5);
+                        setOcrStatus(
+                            (original.length > LCST_MAX_SELECTED_IMAGES
+                                ? 'Memilih 6 gambar terbaik <b>' + done + '/' + total + '</b>.<br>'
+                                : 'Menyusun otomatis screenshot <b>' + done + '/' + total + '</b>.<br>') +
+                            'Urutan wajib: <b>Scatter/Permainan → Riwayat → Kemenangan Total</b>.',
+                            progress
+                        );
+                    });
+
+                    if (state.closed || sequence !== state.autoArrangeSeq) {
+                        return { changed: false, confident: false, rows: 0, reason: 'cancelled' };
+                    }
+
+                    result = original.length > LCST_MAX_SELECTED_IMAGES
+                        ? lcstBuildLimitedSixOrder(original, analyses)
+                        : lcstBuildAutoArrangedOrder(original, analyses);
                 }
 
-                const result = lcj2BuildAutoArrangedOrder(original, analyses);
                 if (result.confident) {
-                    state.scan.images = result.images.slice();
+                    // HARD LIMIT: setelah koreksi, maksimum hanya 6 gambar.
+                    state.scan.images = result.images.slice(0, LCST_MAX_SELECTED_IMAGES);
                     state.scan.ocrPeriods = [];
                     state.scan.ocrTexts = [];
                     state.scan.ocrMeta = [];
@@ -9721,22 +11021,25 @@
                     state.scan.claimExpiredRows = [];
                     state.scan.claimDeadlineByRow = [];
                     state.scan.claimTimestampByRow = [];
+                    state.scan.metadataPendingRows = [];
                     if (state.claimExpiredNotified) state.claimExpiredNotified.clear();
+            hideClaimNotification();
 
-                    // Pindahkan kartu yang sudah tampil tanpa membuat ulang elemen <img>.
-                    // Fallback ke render lama hanya bila struktur kartu tidak cocok.
-                    if (!applyAutoArrangedCardsWithoutReload(original, result.images)) {
+                    // Jika jumlah berubah (>6 menjadi 6), render ulang agar kartu ekstra benar-benar hilang.
+                    if (!applyAutoArrangedCardsWithoutReload(original, state.scan.images)) {
                         renderImages();
                     }
                     setScanState(
                         'waiting',
                         'SIAP DI SCAN',
-                        'Otomatis: Permainan • Riwayat/Target OCR • Kemenangan Total'
+                        original.length > LCST_MAX_SELECTED_IMAGES
+                            ? 'MAX 6 UNIK: Scatter • Riwayat/Target OCR • Kemenangan Total × 2 paket'
+                            : 'Otomatis: Scatter • Riwayat/Target OCR • Kemenangan Total'
                     );
                 }
                 return result;
             } catch (err) {
-                console.warn('[LCJ2 AUTO ARRANGE]', err);
+                console.warn('[LCST AUTO ARRANGE]', err);
                 return {
                     changed: false,
                     confident: false,
@@ -9749,7 +11052,7 @@
         }
 
         function applyNewScan(newScan) {
-            state.scan.userId = newScan.userId;
+            state.scan.userId = String(newScan.userId || '').trim().toLowerCase();
             state.scan.allIds = newScan.allIds;
             state.scan.marker = newScan.marker;
             state.scan.markerText = newScan.markerText;
@@ -9762,14 +11065,16 @@
             state.scan.claimExpiredRows = [];
             state.scan.claimDeadlineByRow = [];
             state.scan.claimTimestampByRow = [];
+            state.scan.metadataPendingRows = [];
             if (state.claimExpiredNotified) state.claimExpiredNotified.clear();
-            panel.querySelector('#lcj2-marker-text').textContent = newScan.markerText;
-            panel.querySelector('#lcj2-user-text').value = newScan.userId;
-            setScanState('waiting', 'MENUNGGU SCAN', 'Gambar otomatis disusun • klik SCAN DISINI');
+            hideClaimNotification();
+            panel.querySelector('#lcst-marker-text').textContent = newScan.markerText;
+            panel.querySelector('#lcst-user-text').value = String(newScan.userId || '').trim().toLowerCase();
+            setScanState('waiting', 'MENUNGGU SCAN', 'Gambar otomatis disusun • klik SCAN CEPAT');
             renderPeriodInputs(false);
             renderImages();
             updateOutput();
-            fillAccountFromAdmin(newScan.userId, false);
+            fillAccountFromAdmin(String(newScan.userId || '').trim().toLowerCase(), false);
         }
 
         async function runDeepScan() {
@@ -9778,8 +11083,8 @@
             // dan penyusunan gambar. Tombol SCAN tidak perlu menunggu startup OCR.
             warmupOCRWorker();
             state.scanRunning = true;
-            panel.classList.add('lcj2-performance-mode');
-            const ocrBtn = panel.querySelector('#lcj2-ocr-period');
+            panel.classList.add('lcst-performance-mode');
+            const ocrBtn = panel.querySelector('#lcst-ocr-period');
             if (ocrBtn) ocrBtn.disabled = true;
             setOcrStatus('Menelusuri seluruh scroll chat aktif untuk mengumpulkan screenshot. OCR belum dijalankan...', 8);
             try {
@@ -9800,7 +11105,7 @@
                         setOcrStatus(
                             '<b>' + state.scan.images.length + '</b> screenshot ditemukan dan otomatis disusun menjadi <b>' + rows + '</b> paket.<br>' +
                             '<span style="color:#15803d"><b>Urutan siap:</b> Permainan → Riwayat Permainan/Target OCR → Kemenangan Total.</span><br>' +
-                            'Sekarang langsung klik <b>SCAN DISINI</b>; tidak perlu menyusun gambar lagi.',
+                            'Sekarang langsung klik <b>SCAN CEPAT</b>; tidak perlu menyusun gambar lagi.',
                             34,
                             true
                         );
@@ -9819,14 +11124,14 @@
                 setOcrStatus('Deep scan gagal: ' + cssEscapeText(err && err.message ? err.message : err), 0);
             } finally {
                 state.scanRunning = false;
-                if (!state.ocrRunning) panel.classList.remove('lcj2-performance-mode');
+                if (!state.ocrRunning) panel.classList.remove('lcst-performance-mode');
                 if (ocrBtn) ocrBtn.disabled = false;
             }
         }
 
         function getCardImageIndex(card) {
             if (!card) return -1;
-            const value = parseInt(card.dataset.lcj2ImageIndex || '-1', 10);
+            const value = parseInt(card.dataset.lcstImageIndex || '-1', 10);
             return Number.isFinite(value) ? value : -1;
         }
 
@@ -9849,9 +11154,9 @@
 
             // Analisis marker baru dijalankan setelah browser selesai menggambar posisi kartu.
             if (typeof requestIdleCallback === 'function') {
-                state.arrangePrefetchIdle = requestIdleCallback(run, { timeout: 180 });
+                state.arrangePrefetchIdle = requestIdleCallback(run, { timeout: 900 });
             } else {
-                state.arrangePrefetchTimer = setTimeout(run, 30);
+                state.arrangePrefetchTimer = setTimeout(run, 260);
             }
         }
 
@@ -9887,13 +11192,13 @@
             if (state.dragCard) state.dragCard.classList.remove('dragging');
             state.dragCard = null;
             state.dragIdx = -1;
-            panel.classList.remove('lcj2-reorder-mode');
+            panel.classList.remove('lcst-reorder-mode');
         }
 
         function swapCardNodes(first, second) {
             if (!first || !second || first === second || first.parentNode !== second.parentNode) return;
             const parent = first.parentNode;
-            const marker = document.createComment('lcj2-swap');
+            const marker = document.createComment('lcst-swap');
             parent.insertBefore(marker, first);
             parent.insertBefore(first, second);
             parent.insertBefore(second, marker);
@@ -9902,7 +11207,7 @@
 
         function refreshImageCardPositions() {
             const packageSize = getPackageSizeFromImages(state.scan.images || []);
-            const cards = Array.from(panel.querySelectorAll('#lcj2-image-grid > .lcj2-img-card'));
+            const cards = Array.from(panel.querySelectorAll('#lcst-image-grid > .lcst-img-card'));
 
             cards.forEach((card, idx) => {
                 const rowIdx = Math.floor(idx / packageSize);
@@ -9910,52 +11215,45 @@
                 const meta = state.scan.ocrMeta && state.scan.ocrMeta[rowIdx];
                 const period = state.scan.ocrPeriods && state.scan.ocrPeriods[rowIdx];
 
-                card.dataset.lcj2Row = String(rowIdx);
-                card.dataset.lcj2ImageIndex = String(idx);
+                card.dataset.lcstRow = String(rowIdx);
+                card.dataset.lcstImageIndex = String(idx);
                 card.classList.toggle('target', isTarget);
 
-                const indexTag = card.querySelector('.lcj2-img-index');
+                const indexTag = card.querySelector('.lcst-img-index');
                 if (indexTag) {
-                    indexTag.innerHTML = 'GAMBAR ' + (idx + 1) + (isTarget ? ' <span class="lcj2-target-tag">• TARGET OCR</span>' : '');
+                    indexTag.innerHTML = 'GAMBAR ' + (idx + 1) + (isTarget ? ' <span class="lcst-target-tag">• TARGET OCR</span>' : '');
                 }
 
-                const badge = card.querySelector('.lcj2-ocr-badge');
+                const badge = card.querySelector('.lcst-ocr-badge');
                 if (!badge) return;
-                badge.dataset.lcj2OcrBadgeRow = String(rowIdx);
+                badge.dataset.lcstOcrBadgeRow = String(rowIdx);
                 if (period) {
                     const claimTime = state.scan.claimTimestampByRow && state.scan.claimTimestampByRow[rowIdx];
-                    const claimStatus = lcj2CheckClaimDeadline(claimTime || null, period);
+                    const claimStatus = lcstCheckClaimDeadline(claimTime || null, period);
                     state.scan.claimExpiredRows = state.scan.claimExpiredRows || [];
                     state.scan.claimDeadlineByRow = state.scan.claimDeadlineByRow || [];
                     state.scan.claimExpiredRows[rowIdx] = !!claimStatus.expired;
                     state.scan.claimDeadlineByRow[rowIdx] = claimStatus;
 
-                    const betValue = state.scan.betOddsByRow && state.scan.betOddsByRow[rowIdx];
-                    const betBelowMin = !!(state.scan.betBelowMinRows && state.scan.betBelowMinRows[rowIdx]);
-                    const betText = lcj2FormatBetOdds(betValue);
-
-                    if (betBelowMin) {
-                        badge.className = 'lcj2-ocr-badge error';
-                        badge.textContent = '✕ TIDAK CAPAI MINBET • TARUHAN ' + betText +
-                            ' • MINIMAL 1,60 • PAKET TIDAK DAPAT CLAIM';
-                    } else if (claimStatus.expired) {
-                        badge.className = 'lcj2-ocr-badge error';
-                        badge.textContent = '✕ TIDAK DAPAT CLAIM • TARUHAN ' + betText + ' • ' + lcj2ClaimStatusMessage(claimStatus) +
-                            ' • TRANSAKSI ' +
-                            (claimTime ? lcj2FormatClaimTimestamp(claimTime) : lcj2FormatClaimDate(claimStatus.claimDate)) +
-                            ' • SEKARANG ' + lcj2FormatCurrentWib(lcj2NowDate());
+                    if (claimStatus.expired) {
+                        badge.className = 'lcst-ocr-badge error';
+                        badge.textContent = '✕ TIDAK DAPAT CLAIM • ' + lcstClaimStatusMessage(claimStatus) + ' • TRANSAKSI ' +
+                            (claimTime ? lcstFormatClaimTimestamp(claimTime) : lcstFormatClaimDate(claimStatus.claimDate)) +
+                            ' • DEADLINE ' + lcstFormatClaimDeadline(claimStatus) +
+                            ' • SEKARANG ' + lcstFormatCurrentWib(lcstNowDate());
                     } else {
-                        badge.className = 'lcj2-ocr-badge success';
-                        badge.textContent = '✓ MINBET OK • TARUHAN ' + betText + ' • ' +
-                            (meta && meta.confidence ? meta.confidence + '% • ' : '') + period +
-                            (claimTime ? ' • TRANSAKSI ' + lcj2FormatClaimTimestamp(claimTime) : ' • WAKTU BELUM TERBACA') +
-                            (claimStatus.ruleText ? ' • ' + claimStatus.ruleText : '');
+                        badge.className = 'lcst-ocr-badge success';
+                        badge.textContent = '✓ CLAIM MASIH BERLAKU • ' + (meta && meta.markerOccurrenceCount > 1
+                            ? 'TARGET ' + (Number(meta.markerOccurrence || 0) + 1) + '/' + meta.markerOccurrenceCount + ' • '
+                            : '') + (meta && meta.confidence ? meta.confidence + '% • ' : '') + period +
+                            (claimTime ? ' • TRANSAKSI ' + lcstFormatClaimTimestamp(claimTime) : ' • WAKTU BELUM TERBACA') +
+                            (claimStatus.hasDate ? ' • DEADLINE ' + lcstFormatClaimDeadline(claimStatus) : '');
                     }
                 } else if (meta && meta.error && isTarget) {
-                    badge.className = 'lcj2-ocr-badge error';
+                    badge.className = 'lcst-ocr-badge error';
                     badge.textContent = '! ' + meta.error;
                 } else {
-                    badge.className = 'lcj2-ocr-badge empty';
+                    badge.className = 'lcst-ocr-badge empty';
                     badge.textContent = isTarget ? 'Menunggu lock dua bulatan' : 'Bukan target OCR periode';
                 }
             });
@@ -9964,15 +11262,100 @@
         function removeImageAt(index, reason) {
             if (state.ocrRunning || state.scanRunning || state.closed) return;
             if (index < 0 || index >= state.scan.images.length) return;
-            state.scan.images.splice(index, 1);
+            const removed = state.scan.images.splice(index, 1)[0];
+            if (removed && state.localObjectUrls.has(removed)) {
+                try { URL.revokeObjectURL(removed); } catch (e) {}
+                state.localObjectUrls.delete(removed);
+            }
             clearOcrResults(reason || 'Gambar dihapus. OCR lama dibersihkan agar hasil tidak tertukar.');
             renderImages();
             updateOutput();
             prefetchTargetImages(state.scan.images);
         }
 
+        async function preparePhoneImage(file) {
+            if (!file || !/^image\//i.test(file.type || '')) throw new Error('File bukan gambar');
+            const source = await createImageBitmap(file);
+            const maxSide = 1800;
+            const scale = Math.min(1, maxSide / Math.max(source.width, source.height));
+            const width = Math.max(1, Math.round(source.width * scale));
+            const height = Math.max(1, Math.round(source.height * scale));
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d', { alpha: false });
+            ctx.drawImage(source, 0, 0, width, height);
+            if (source.close) source.close();
+            const blob = await new Promise((resolve, reject) => canvas.toBlob(
+                (value) => value ? resolve(value) : reject(new Error('Gagal memproses gambar')),
+                'image/jpeg', .88
+            ));
+            canvas.width = canvas.height = 1;
+            return URL.createObjectURL(blob);
+        }
+
+        async function addPhoneFiles(fileList) {
+            if (state.ocrRunning || state.scanRunning || state.closed) return;
+            const room = Math.max(0, LCST_MAX_SELECTED_IMAGES - state.scan.images.length);
+            const files = Array.from(fileList || []).filter((file) => /^image\//i.test(file.type || '')).slice(0, room);
+            if (!room) { setOcrStatus('Maksimal <b>6 gambar</b>. Hapus gambar lama sebelum menambah.', 0, true); return; }
+            if (!files.length) return;
+            setOcrStatus('Menyiapkan <b>' + files.length + '</b> gambar dari HP...', 12);
+            const urls = [];
+            for (const file of files) {
+                try {
+                    const url = await preparePhoneImage(file);
+                    urls.push(url);
+                    state.localObjectUrls.add(url);
+                } catch (err) {}
+            }
+            if (!urls.length) { setOcrStatus('Gambar dari HP gagal dibaca. Coba pilih JPG atau PNG.', 0, true); return; }
+            state.scan.images.push(...urls);
+            clearOcrResults('Gambar dari HP berhasil dimasukkan. Susun gambar lalu tekan SCAN CEPAT.');
+            renderImages();
+            setOcrStatus('<b>' + urls.length + '</b> gambar berhasil diambil dari HP. Tahan tombol <b>GESER</b> untuk memindahkan.', 18);
+        }
+
+        function bindTouchSort(handle, card) {
+            handle.addEventListener('pointerdown', (event) => {
+                if (state.ocrRunning || state.scanRunning || state.closed) return;
+                event.preventDefault();
+                const from = getCardImageIndex(card);
+                if (from < 0) return;
+                state.touchSort = { from, card, pointerId: event.pointerId, target: null };
+                card.classList.add('lcst-touch-moving');
+                try { handle.setPointerCapture(event.pointerId); } catch (e) {}
+            });
+            handle.addEventListener('pointermove', (event) => {
+                if (!state.touchSort || state.touchSort.pointerId !== event.pointerId) return;
+                event.preventDefault();
+                const hit = document.elementFromPoint(event.clientX, event.clientY);
+                const target = hit && hit.closest ? hit.closest('#lcst-image-grid > .lcst-img-card') : null;
+                if (state.touchSort.target && state.touchSort.target !== target) state.touchSort.target.classList.remove('lcst-touch-target');
+                state.touchSort.target = target && target !== card ? target : null;
+                if (state.touchSort.target) state.touchSort.target.classList.add('lcst-touch-target');
+            });
+            const finishTouchSort = (event) => {
+                const sort = state.touchSort;
+                if (!sort || sort.pointerId !== event.pointerId) return;
+                const target = sort.target;
+                const to = getCardImageIndex(target);
+                sort.card.classList.remove('lcst-touch-moving');
+                if (target) target.classList.remove('lcst-touch-target');
+                state.touchSort = null;
+                try { handle.releasePointerCapture(event.pointerId); } catch (e) {}
+                if (to < 0 || to === sort.from) return;
+                const moved = state.scan.images.splice(sort.from, 1)[0];
+                state.scan.images.splice(to, 0, moved);
+                clearOcrResults('Susunan gambar dipindahkan dari HP. Tekan SCAN CEPAT untuk membaca ulang.');
+                renderImages();
+            };
+            handle.addEventListener('pointerup', finishTouchSort);
+            handle.addEventListener('pointercancel', finishTouchSort);
+        }
+
         function renderImages() {
-            const grid = panel.querySelector('#lcj2-image-grid');
+            const grid = panel.querySelector('#lcst-image-grid');
             grid.innerHTML = '';
             const packageSize = getPackageSizeFromImages(state.scan.images || []);
 
@@ -9983,20 +11366,20 @@
                 const period = state.scan.ocrPeriods && state.scan.ocrPeriods[rowIdx];
 
                 const card = document.createElement('div');
-                card.className = 'lcj2-img-card' + (isTarget ? ' target' : '');
-                card.dataset.lcj2Row = String(rowIdx);
-                card.dataset.lcj2ImageIndex = String(idx);
+                card.className = 'lcst-img-card' + (isTarget ? ' target' : '');
+                card.dataset.lcstRow = String(rowIdx);
+                card.dataset.lcstImageIndex = String(idx);
                 card.draggable = true;
 
                 const media = document.createElement('div');
-                media.className = 'lcj2-img-media';
+                media.className = 'lcst-img-media';
 
                 const indexTag = document.createElement('div');
-                indexTag.className = 'lcj2-img-index';
-                indexTag.innerHTML = 'GAMBAR ' + (idx + 1) + (isTarget ? ' <span class="lcj2-target-tag">• TARGET OCR</span>' : '');
+                indexTag.className = 'lcst-img-index';
+                indexTag.innerHTML = 'GAMBAR ' + (idx + 1) + (isTarget ? ' <span class="lcst-target-tag">• TARGET OCR</span>' : '');
 
                 const del = document.createElement('button');
-                del.className = 'lcj2-del';
+                del.className = 'lcst-del';
                 del.type = 'button';
                 del.textContent = '✕';
                 del.addEventListener('click', (e) => {
@@ -10018,21 +11401,30 @@
                 });
 
                 const label = document.createElement('div');
-                label.className = 'lcj2-img-label';
+                label.className = 'lcst-img-label';
                 label.textContent = src.split('/').pop().split('?')[0] || 'screenshot';
 
                 const ocrBadge = document.createElement('div');
-                ocrBadge.dataset.lcj2OcrBadgeRow = String(rowIdx);
+                ocrBadge.dataset.lcstOcrBadgeRow = String(rowIdx);
                 if (period) {
-                    ocrBadge.className = 'lcj2-ocr-badge success';
-                    ocrBadge.textContent = '✓ BULAT 2 LOCK • ' + (meta && meta.confidence ? meta.confidence + '% • ' : '') + period;
+                    ocrBadge.className = 'lcst-ocr-badge success';
+                    ocrBadge.textContent = '✓ ' + (meta && meta.markerOccurrenceCount > 1
+                        ? 'TARGET ' + (Number(meta.markerOccurrence || 0) + 1) + '/' + meta.markerOccurrenceCount
+                        : 'BULAT 2') + ' LOCK • ' +
+                        (meta && meta.confidence ? meta.confidence + '% • ' : '') + period;
                 } else if (meta && meta.error && isTarget) {
-                    ocrBadge.className = 'lcj2-ocr-badge error';
+                    ocrBadge.className = 'lcst-ocr-badge error';
                     ocrBadge.textContent = '! ' + meta.error;
                 } else {
-                    ocrBadge.className = 'lcj2-ocr-badge empty';
+                    ocrBadge.className = 'lcst-ocr-badge empty';
                     ocrBadge.textContent = isTarget ? 'Menunggu lock dua bulatan' : 'Bukan target OCR periode';
                 }
+
+                const touchHandle = document.createElement('button');
+                touchHandle.className = 'lcst-touch-handle';
+                touchHandle.type = 'button';
+                touchHandle.textContent = '↕ TAHAN & GESER';
+                bindTouchSort(touchHandle, card);
 
                 card.addEventListener('dragstart', (e) => {
                     if (state.ocrRunning || state.scanRunning || state.closed) {
@@ -10046,18 +11438,7 @@
                     }
                     state.dragIdx = currentIdx;
                     state.dragCard = card;
-
-                    // Jangan biarkan analisis background berjalan saat kartu sedang dipindah.
-                    if (state.arrangePrefetchTimer) {
-                        clearTimeout(state.arrangePrefetchTimer);
-                        state.arrangePrefetchTimer = null;
-                    }
-                    if (state.arrangePrefetchIdle && typeof cancelIdleCallback === 'function') {
-                        try { cancelIdleCallback(state.arrangePrefetchIdle); } catch (err) {}
-                        state.arrangePrefetchIdle = null;
-                    }
-
-                    panel.classList.add('lcj2-reorder-mode');
+                    panel.classList.add('lcst-reorder-mode');
                     card.classList.add('dragging');
                     e.dataTransfer.effectAllowed = 'move';
                     e.dataTransfer.setData('text/plain', String(currentIdx));
@@ -10100,9 +11481,10 @@
                     swapCardNodes(fromCard, card);
                     finishDragVisuals();
 
-                    clearOcrResultsAfterFastReorder(
-                        'Posisi gambar berhasil ditukar. Target OCR sudah diperbarui dan siap discan.'
-                    );
+                    clearOcrResults('Posisi gambar ditukar. OCR lama dihapus agar kode tidak menempel ke paket yang salah.');
+                    refreshImageCardPositions();
+                    updateOutput();
+                    scheduleArrangePrefetch();
                 });
 
                 media.appendChild(indexTag);
@@ -10111,6 +11493,7 @@
                 card.appendChild(media);
                 card.appendChild(label);
                 card.appendChild(ocrBadge);
+                card.appendChild(touchHandle);
                 grid.appendChild(card);
             });
 
@@ -10121,55 +11504,48 @@
         function updateOcrBadgeRow(rowIdx) {
             const meta = state.scan.ocrMeta && state.scan.ocrMeta[rowIdx];
             const period = state.scan.ocrPeriods && state.scan.ocrPeriods[rowIdx];
-            panel.querySelectorAll('[data-lcj2-ocr-badge-row="' + rowIdx + '"]').forEach((badge) => {
-                const card = badge.closest('.lcj2-img-card');
+            panel.querySelectorAll('[data-lcst-ocr-badge-row="' + rowIdx + '"]').forEach((badge) => {
+                const card = badge.closest('.lcst-img-card');
                 const isTarget = !!(card && card.classList.contains('target'));
                 if (period) {
+                    badge.className = 'lcst-ocr-badge success';
                     const claimTime = state.scan.claimTimestampByRow && state.scan.claimTimestampByRow[rowIdx];
-                    const betValue = state.scan.betOddsByRow && state.scan.betOddsByRow[rowIdx];
-                    const betBelowMin = !!(state.scan.betBelowMinRows && state.scan.betBelowMinRows[rowIdx]);
-                    const betText = lcj2FormatBetOdds(betValue);
-
-                    if (betBelowMin) {
-                        badge.className = 'lcj2-ocr-badge error';
-                        badge.textContent = '✕ TIDAK CAPAI MINBET • TARUHAN ' + betText + ' • MINIMAL 1,60 • ' + period;
-                    } else {
-                        badge.className = 'lcj2-ocr-badge success';
-                        badge.textContent = '✓ MINBET OK • TARUHAN ' + betText + ' • BULAT 2 LOCK • ' +
-                            (meta && meta.confidence ? meta.confidence + '% • ' : '') + period +
-                            (claimTime ? ' • WAKTU ' + lcj2FormatClaimTimestamp(claimTime) : ' • WAKTU BELUM TERBACA');
-                    }
+                    badge.textContent = '✓ ' + (meta && meta.markerOccurrenceCount > 1
+                        ? 'TARGET ' + (Number(meta.markerOccurrence || 0) + 1) + '/' + meta.markerOccurrenceCount
+                        : 'BULAT 2') + ' LOCK • ' +
+                        (meta && meta.confidence ? meta.confidence + '% • ' : '') + period +
+                        (claimTime ? ' • WAKTU ' + lcstFormatClaimTimestamp(claimTime) : ' • WAKTU BELUM TERBACA');
                 } else if (meta && meta.error && isTarget) {
-                    badge.className = 'lcj2-ocr-badge error';
+                    badge.className = 'lcst-ocr-badge error';
                     badge.textContent = '! ' + meta.error;
                 } else {
-                    badge.className = 'lcj2-ocr-badge empty';
+                    badge.className = 'lcst-ocr-badge empty';
                     badge.textContent = isTarget ? 'Menunggu lock dua bulatan' : 'Bukan target OCR periode';
                 }
             });
         }
 
         function openZoom(src) {
-            const oldZoom = document.getElementById('lcj2-zoom');
+            const oldZoom = document.getElementById('lcst-zoom');
             if (oldZoom) oldZoom.remove();
             state.zoomScale = 1;
             state.zoomX = 0;
             state.zoomY = 0;
 
             const zoom = document.createElement('div');
-            zoom.id = 'lcj2-zoom';
+            zoom.id = 'lcst-zoom';
             zoom.innerHTML = `
-                <button class="lcj2-btn red" id="lcj2-close-zoom" style="position:absolute;top:20px;right:20px;z-index:2">✕ TUTUP ZOOM</button>
-                <img id="lcj2-zoom-img" src="${cssEscapeText(src)}">
-                <div class="lcj2-zoom-help">Drag untuk geser • Scroll untuk zoom • ESC untuk menutup</div>
+                <button class="lcst-btn red" id="lcst-close-zoom" style="position:absolute;top:20px;right:20px;z-index:2">✕ TUTUP ZOOM</button>
+                <img id="lcst-zoom-img" src="${cssEscapeText(src)}">
+                <div class="lcst-zoom-help">Drag untuk geser • Scroll untuk zoom • ESC untuk menutup</div>
             `;
             document.body.appendChild(zoom);
 
-            const zimg = zoom.querySelector('#lcj2-zoom-img');
+            const zimg = zoom.querySelector('#lcst-zoom-img');
             function applyTransform() {
                 zimg.style.transform = `translate(${state.zoomX}px, ${state.zoomY}px) scale(${state.zoomScale})`;
             }
-            zoom.querySelector('#lcj2-close-zoom').addEventListener('click', () => zoom.remove());
+            zoom.querySelector('#lcst-close-zoom').addEventListener('click', () => zoom.remove());
             zimg.addEventListener('wheel', (e) => {
                 e.preventDefault();
                 state.zoomScale += e.deltaY > 0 ? -0.1 : 0.1;
@@ -10207,17 +11583,18 @@
                 return;
             }
 
-            // OCR hanya berjalan setelah tombol ditekan manual oleh pengguna.
-            // Tidak ada pemanggilan otomatis dari deep scan, refresh, drag, atau saat panel dibuka.
-            setOcrStatus('Susunan otomatis siap. Membaca periode, tanggal, jam, dan GMT dari gambar 2 serta gambar 4...', 36);
+            setOcrStatus('AURORA TURBO aktif. Menyiapkan pembacaan periode dari history setiap paket...', 36);
             state.ocrRunning = true;
-            setScanState('scanning', '⚡ ULTRA FAST SCAN', 'Memakai cache cepat dan jalur satu-pass bila gambar jelas');
-            panel.classList.add('lcj2-performance-mode');
-            const btn = panel.querySelector('#lcj2-ocr-period');
+            setScanState('scanning', 'SEDANG DI SCAN', 'Membaca kode + tanggal + jam + GMT bersamaan • WIB/WITA/WIT dinormalisasi ke WIB');
+            panel.classList.add('lcst-performance-mode');
+            const btn = panel.querySelector('#lcst-ocr-period');
             if (btn) btn.disabled = true;
-            if (btn) btn.textContent = '⚡ ULTRA FAST SCAN...';
-            const alwaysCopyBtn = panel.querySelector('#lcj2-copy');
-            if (alwaysCopyBtn) { alwaysCopyBtn.disabled = false; alwaysCopyBtn.title = 'Salin output sementara saat OCR berjalan'; }
+            if (btn) btn.textContent = '◌ SCAN TURBO...';
+            const alwaysCopyBtn = panel.querySelector('#lcst-copy');
+            if (alwaysCopyBtn) {
+                alwaysCopyBtn.disabled = false;
+                alwaysCopyBtn.title = 'Salin output sementara saat OCR berjalan';
+            }
 
             const packageSize = getPackageSizeFromImages(state.scan.images || []);
             const rows = Math.ceil(state.scan.images.length / packageSize);
@@ -10229,150 +11606,325 @@
             state.scan.claimExpiredRows = [];
             state.scan.claimDeadlineByRow = [];
             state.scan.claimTimestampByRow = [];
+            state.scan.metadataPendingRows = new Array(rows).fill(true);
             if (state.claimExpiredNotified) state.claimExpiredNotified.clear();
-            let ok = 0;
+            hideClaimNotification();
+            const liveOutput = panel.querySelector('#lcst-output');
+            if (liveOutput) liveOutput.value = '';
 
-            try {
-                // Turbo Scan: worker dan seluruh gambar target disiapkan bersamaan.
-                // Paket berikutnya tidak perlu menunggu download, decode, dan deteksi marker.
-                const targetSources = [];
-                for (let preRow = 0; preRow < rows; preRow++) {
-                    const preBase = preRow * packageSize;
-                    const preIdx = packageSize >= 2 ? preBase + 1 : preBase;
-                    const preSrc = state.scan.images[preIdx];
-                    if (preSrc) targetSources.push(preSrc);
+            let ok = 0;
+            let completedRows = 0;
+            const targetSourcesByRow = [];
+            for (let row = 0; row < rows; row++) {
+                const base = row * packageSize;
+                const preferredIdx = packageSize >= 2 ? base + 1 : base;
+                targetSourcesByRow[row] = state.scan.images[preferredIdx] || '';
+            }
+            // Analisis kedua target dimulai bersamaan dengan startup worker. Canvas,
+            // fingerprint, dan seluruh kandidat bulatan kemudian dipakai ulang oleh OCR.
+            const targetAnalysesPromise = Promise.all(targetSourcesByRow.map((src) =>
+                src ? getImageAnalysis(src).catch(() => null) : Promise.resolve(null)
+            ));
+            let markerSelectionByRow = targetSourcesByRow.map(() => ({
+                ordinal: 0,
+                totalOccurrences: 1,
+                identityKey: ''
+            }));
+
+            const processRow = async (row, workerOverrides) => {
+                if (state.closed) return;
+
+                const base = row * packageSize;
+                const preferredIdx = packageSize >= 2 ? base + 1 : base;
+                const src = state.scan.images[preferredIdx];
+                const overallBase = 38 + (row / Math.max(1, rows)) * 57;
+
+                if (!src) {
+                    state.scan.ocrMeta[row] = {
+                        error: 'Gambar ke-2 paket tidak tersedia.',
+                        confidence: 0
+                    };
+                    state.scan.metadataPendingRows[row] = false;
+                    if (panel.querySelector('#lcst-claim-expired-only')) showClaimExpiredNotification(row);
+                    completedRows++;
+                    return;
                 }
 
-                setOcrStatus(
-                    'Ultra Fast menyiapkan <b>' + targetSources.length +
-                    '</b> gambar target dan worker OCR secara bersamaan...',
-                    37,
-                    true
+                // Analisis gambar sudah diprefetch sejak auto-arrange. Panggilan ini memakai cache
+                // bila siap dan tidak mengunduh ulang screenshot.
+                getImageAnalysis(src).catch(() => {});
+
+                setScanState(
+                    'scanning',
+                    'SEDANG DI SCAN',
+                    rows === 2 && LCST_DUAL_PACKAGE_OCR
+                        ? '2 paket diproses bersamaan'
+                        : ('Paket ' + (row + 1) + ' dari ' + rows)
                 );
 
-                await Promise.all([
-                    getSharedOCRWorker(null),
-                    getMetadataOCRWorker().catch(() => null),
-                    getTimestampOCRWorker().catch(() => null),
-                    Promise.allSettled(targetSources.map((targetSrc) => lcj2WarmUltraFastScanCache(targetSrc)))
-                ]);
-
-                for (let row = 0; row < rows; row++) {
-                    if (state.closed) return;
-                    const base = row * packageSize;
-                    const preferredIdx = packageSize >= 2 ? base + 1 : base;
-                    const src = state.scan.images[preferredIdx];
-                    const overallBase = 38 + (row / Math.max(1, rows)) * 57;
-
-                    if (!src) {
-                        state.scan.ocrMeta[row] = { error: 'Gambar ke-2 paket tidak tersedia.', confidence: 0 };
-                        continue;
-                    }
-
-                    setScanState('scanning', 'SEDANG DI SCAN', 'Paket ' + (row + 1) + ' dari ' + rows);
-                    setOcrStatus(
-                        'Paket <b>' + (row + 1) + '/' + rows + '</b> • membaca screenshot nomor <b>' + (preferredIdx + 1) + '</b>.<br>' +
-                        'Tahap pertama: mencari pasangan <b>dua tanda bulat oranye</b>.',
-                        overallBase
-                    );
-
-                    let result;
-                    try {
-                        result = await ocrImagePeriod(src, (progress) => {
-                            setOcrStatus(
-                                'Paket <b>' + (row + 1) + '/' + rows + '</b> • screenshot <b>' + (preferredIdx + 1) + '</b><br>' + cssEscapeText(progress),
-                                Math.min(94, overallBase + 7)
-                            );
-                        });
-                    } catch (err) {
-                        result = {
-                            period: '', text: '', confidence: 0, markerFound: false,
-                            error: err && err.message ? err.message : String(err)
-                        };
-                    }
-
-                    state.scan.ocrTexts[row] = result.text || '';
-                    state.scan.ocrPeriods[row] = result.period || '';
+                const publishCodeReady = (earlyResult) => {
+                    if (state.closed || !earlyResult || !earlyResult.period) return;
+                    state.scan.ocrTexts[row] = earlyResult.text || '';
+                    state.scan.ocrPeriods[row] = earlyResult.period;
                     state.scan.ocrMeta[row] = {
-                        confidence: result.confidence || 0,
-                        markerConfidence: result.markerConfidence || 0,
-                        markerFound: !!result.markerFound,
-                        source: result.source || '',
-                        passes: result.passes || 0,
-                        error: result.error || ''
+                        confidence: earlyResult.confidence || 0,
+                        markerConfidence: earlyResult.markerConfidence || 0,
+                        markerFound: !!earlyResult.markerFound,
+                        markerCandidateCount: earlyResult.markerCandidateCount || 0,
+                        markerOccurrence: earlyResult.markerOccurrence || 0,
+                        markerOccurrenceCount: earlyResult.markerOccurrenceCount || 1,
+                        source: earlyResult.source || '',
+                        passes: earlyResult.passes || 0,
+                        error: ''
                     };
-                    state.scan.betOddsByRow[row] = result.betOdds == null ? null : result.betOdds;
-                    state.scan.betBelowMinRows[row] = !!result.betBelowMin;
-                    if (result.claimTimestamp) {
-                        result.claimTimestamp.sourceImageNumber = preferredIdx + 1;
-                        result.claimTimestamp.source = 'gambar-' + (preferredIdx + 1) + '-' +
-                            String(result.claimTimestamp.source || 'ocr');
-                        result.claimTimestampText = lcj2FormatClaimTimestamp(result.claimTimestamp);
-                    }
-                    state.scan.claimTimestampByRow[row] = result.claimTimestamp || null;
-                    const claimStatus = lcj2CheckClaimDeadline(result.claimTimestamp || null, result.period || '');
-                    state.scan.claimExpiredRows[row] = !!claimStatus.expired;
-                    state.scan.claimDeadlineByRow[row] = claimStatus;
-                    if (result.period) ok++;
-                    if (result.betBelowMin) showTidakCapaiNotification(row, result.betOdds);
-                    if (claimStatus.expired) showClaimExpiredNotification(row, claimStatus);
-
+                    // metadataPendingRows tetap true: kode boleh terlihat, tetapi
+                    // output/copy menunggu taruhan serta aturan tanggal semalam selesai.
                     syncSinglePeriodInput(row);
                     updateOcrBadgeRow(row);
+                    setOcrStatus(
+                        'Paket <b>' + (row + 1) + '/' + rows +
+                        '</b> • kode sudah terkunci: <b style="color:#91f5b7">' +
+                        cssEscapeText(earlyResult.period) +
+                        '</b><br>Memvalidasi taruhan, tanggal/jam, dan aturan tanggal semalam...',
+                        Math.min(94, overallBase + 11)
+                    );
+                };
 
-                    // Output besar tidak perlu dibangun ulang pada setiap paket.
-                    // Perbarui setiap dua paket dan selalu pada paket terakhir.
-                    if (row === rows - 1 || row % 2 === 1) updateOutput();
+                let result;
+                try {
+                    result = await ocrImagePeriod(
+                        src,
+                        (progress) => {
+                            if (state.closed) return;
+                            setOcrStatus(
+                                (rows === 2 && LCST_DUAL_PACKAGE_OCR
+                                    ? '<b>PARALEL 2 PAKET</b> • '
+                                    : '') +
+                                'Paket <b>' + (row + 1) + '/' + rows +
+                                '</b> • screenshot <b>' + (preferredIdx + 1) + '</b><br>' +
+                                cssEscapeText(progress),
+                                Math.min(94, overallBase + 7)
+                            );
+                        },
+                        {
+                            ...(workerOverrides || {}),
+                            markerSelection: markerSelectionByRow[row],
+                            onCodeReady: publishCodeReady
+                        }
+                    );
+                } catch (err) {
+                    result = {
+                        period: '',
+                        text: '',
+                        confidence: 0,
+                        markerFound: false,
+                        error: err && err.message ? err.message : String(err)
+                    };
+                }
 
-                    if (result.period) {
-                        setOcrStatus(
-                            'Paket <b>' + (row + 1) + '</b> berhasil. Dua bulatan terkunci dan kode lolos konsensus.<br>' +
-                            'Periode: <b style="color:#91f5b7">' + cssEscapeText(result.period) + '</b> • keyakinan <b>' + (result.confidence || 0) + '%</b>.' +
-                            '<br>Taruhan: <b style="color:' + (result.betBelowMin ? '#ff7b93' : '#91f5b7') + '">' +
-                                cssEscapeText(lcj2FormatBetOdds(result.betOdds)) + '</b> • ' +
-                                (result.betBelowMin
-                                    ? '<span style="color:#ff7b93;font-weight:1000">TIDAK CAPAI MINBET • MINIMAL 1,60</span>'
-                                    : (result.betOdds == null
-                                        ? '<span style="color:#fde68a;font-weight:1000">TARUHAN BELUM TERBACA • PERIKSA MANUAL</span>'
-                                        : '<span style="color:#91f5b7;font-weight:1000">MINBET OK</span>')) +
-                            '<br>Waktu gambar <b>' + (preferredIdx + 1) + '</b>: <b>' +
-                                cssEscapeText(result.claimTimestampText || 'belum terbaca') + '</b>.' +
-                            (result.claimTimestamp && result.claimTimestamp.timezoneExplicit
-                                ? '<br><span style="color:#fde68a;font-weight:1000">ZONA TERBACA: ' +
-                                    cssEscapeText(result.claimTimestamp.sourceGmtLabel) +
-                                    (result.claimTimestamp.timezoneAdjusted ? ' → GMT+7' : ' • sudah GMT+7') +
-                                    '</span>'
-                                : '<br><span style="color:#fecaca;font-weight:1000">ZONA WAKTU TIDAK TERBACA • PERIKSA MANUAL</span>') +
-                            (claimStatus.hasDate ? ' • Deadline <b>' + cssEscapeText(lcj2FormatClaimDeadline(claimStatus)) + '</b>.' : '') +
-                            (claimStatus.expired ? '<br><span style="color:#ffb7c5;font-weight:1000">TIDAK DAPAT CLAIM • ' +
-                                cssEscapeText(lcj2ClaimStatusMessage(claimStatus)) + '</span>' : ''),
-                            38 + ((row + 1) / rows) * 57
-                        );
-                    } else {
-                        setOcrStatus(
-                            'Paket <b>' + (row + 1) + '</b> tidak diisi otomatis.<br><span style="color:#ffb7c5">' + cssEscapeText(result.error || 'Kode tidak konsisten.') + '</span>',
-                            38 + ((row + 1) / rows) * 57
-                        );
+                state.scan.ocrTexts[row] = result.text || '';
+                state.scan.ocrPeriods[row] = result.period || '';
+                state.scan.ocrMeta[row] = {
+                    confidence: result.confidence || 0,
+                    markerConfidence: result.markerConfidence || 0,
+                    markerFound: !!result.markerFound,
+                    markerCandidateCount: result.markerCandidateCount || 0,
+                    markerOccurrence: result.markerOccurrence || 0,
+                    markerOccurrenceCount: result.markerOccurrenceCount || 1,
+                    source: result.source || '',
+                    passes: result.passes || 0,
+                    error: result.error || ''
+                };
+
+                state.scan.metadataPendingRows[row] = false;
+
+                state.scan.betOddsByRow[row] =
+                    result.betOdds == null ? null : result.betOdds;
+                state.scan.betBelowMinRows[row] = !!result.betBelowMin;
+                state.scan.claimTimestampByRow[row] = result.claimTimestamp || null;
+
+                const claimStatus = lcstCheckClaimDeadline(
+                    result.claimTimestamp || null,
+                    result.period || ''
+                );
+                state.scan.claimExpiredRows[row] = !!claimStatus.expired;
+                state.scan.claimDeadlineByRow[row] = claimStatus;
+
+                if (result.period) ok++;
+                if (result.betBelowMin || claimStatus.expired || panel.querySelector('#lcst-claim-expired-only')) {
+                    showClaimExpiredNotification(row, claimStatus);
+                }
+
+                syncSinglePeriodInput(row);
+                updateOcrBadgeRow(row);
+                updateOutput();
+
+                completedRows++;
+                const donePct = 38 + (completedRows / Math.max(1, rows)) * 57;
+
+                if (result.period) {
+                    setOcrStatus(
+                        'Paket <b>' + (row + 1) + '</b> berhasil.' +
+                        (rows === 2 && LCST_DUAL_PACKAGE_OCR
+                            ? ' <span style="color:#7eeeff"><b>Mode paralel aktif.</b></span>'
+                            : '') +
+                        '<br>Periode: <b style="color:#91f5b7">' +
+                        cssEscapeText(result.period) + '</b> • keyakinan <b>' +
+                        (result.confidence || 0) + '%</b>.' +
+                        '<br>Tanggal/Jam/GMT gambar ke-2: <b>' +
+                        cssEscapeText(result.claimTimestampText || 'belum terbaca') +
+                        '</b>.' +
+                        (claimStatus.hasDate
+                            ? ' • Deadline <b>' +
+                              cssEscapeText(lcstFormatClaimDeadline(claimStatus)) +
+                              '</b>.'
+                            : '') +
+                        (claimStatus.expired
+                            ? '<br><span style="color:#ffb7c5;font-weight:1000">TIDAK DAPAT CLAIM • ' +
+                              cssEscapeText(lcstClaimStatusMessage(claimStatus)) + '</span>'
+                            : ''),
+                        donePct
+                    );
+                } else {
+                    setOcrStatus(
+                        'Paket <b>' + (row + 1) +
+                        '</b> tidak diisi otomatis.<br><span style="color:#ffb7c5">' +
+                        cssEscapeText(result.error || 'Kode tidak konsisten.') +
+                        '</span>',
+                        donePct
+                    );
+                }
+            };
+
+            try {
+                // ULTRA FAST: jangan menunggu semua worker siap sebelum paket pertama mulai.
+                // Primary segera dipakai; secondary/metadata loading ditutup oleh proses paket pertama.
+                const primaryPromise = getSharedOCRWorker(null);
+                let secondaryWorkerUsed = false;
+                // Worker utama dan analisis dua target disiapkan paralel. Setelah itu
+                // setiap screenshot/fingerprint yang sama mendapat ordinal bulatan unik.
+                const startup = await Promise.all([primaryPromise, targetAnalysesPromise]);
+                const targetAnalyses = startup[1] || [];
+                const identityCounts = new Map();
+                const identityByRow = targetSourcesByRow.map((src, row) => {
+                    const analysis = targetAnalyses[row];
+                    const fingerprint = String(analysis && analysis.visualFingerprint || '').trim();
+                    const key = fingerprint
+                        ? 'visual:' + fingerprint
+                        : lcstStableImageSourceKey(src);
+                    if (key) identityCounts.set(key, (identityCounts.get(key) || 0) + 1);
+                    return key;
+                });
+                const identitySeen = new Map();
+                markerSelectionByRow = identityByRow.map((key) => {
+                    const ordinal = key ? (identitySeen.get(key) || 0) : 0;
+                    if (key) identitySeen.set(key, ordinal + 1);
+                    return {
+                        ordinal,
+                        totalOccurrences: key ? (identityCounts.get(key) || 1) : 1,
+                        identityKey: key || ''
+                    };
+                });
+
+                const secondaryPromise = (rows <= 2 && LCST_DUAL_PACKAGE_OCR)
+                    ? getSecondaryOCRWorker().catch(() => null)
+                    : Promise.resolve(null);
+
+                if (LCST_TURBO_PARALLEL_OCR) getMetadataOCRWorker().catch(() => null);
+                if (LCST_TURBO_TIMESTAMP_WORKER) getTimestampOCRWorker().catch(() => null);
+
+                if (rows === 2 && LCST_DUAL_PACKAGE_OCR) {
+                    const first = processRow(0, null);
+                    const second = (async () => {
+                        const secondaryWorker = await secondaryPromise;
+                        if (secondaryWorker) {
+                            secondaryWorkerUsed = true;
+                            return processRow(1, {
+                                worker: secondaryWorker,
+                                metadataWorker: null,
+                                timestampWorker: null
+                            });
+                        }
+                        // Bila worker kedua gagal dibuat, tunggu paket 1 lalu pakai worker utama.
+                        await first;
+                        return processRow(1, null);
+                    })();
+                    await Promise.all([first, second]);
+                } else if (rows === 1 && LCST_DUAL_PACKAGE_OCR) {
+                    // Untuk satu paket, worker kedua lebih efektif membaca taruhan +
+                    // timestamp secara paralel dengan kode daripada hanya menunggu
+                    // fallback dua baris yang jarang dibutuhkan.
+                    await processRow(0, {
+                        metadataWorker: secondaryPromise,
+                        timestampWorker: secondaryPromise
+                    });
+                } else {
+                    for (let row = 0; row < rows; row++) {
+                        await processRow(row, null);
                     }
                 }
+
+                // HARD LOCK KODE UNIK: walaupun dua hasil OCR selesai bersamaan,
+                // periode yang sudah dipakai paket sebelumnya tidak boleh ditempelkan
+                // ke paket berikutnya. Target kedua dikosongkan untuk pemeriksaan ulang.
+                const seenPeriods = new Map();
+                for (let row = 0; row < rows; row++) {
+                    const period = String(state.scan.ocrPeriods[row] || '').trim();
+                    if (!period) continue;
+                    if (!seenPeriods.has(period)) {
+                        seenPeriods.set(period, row);
+                        continue;
+                    }
+                    const firstRow = seenPeriods.get(period);
+                    state.scan.ocrPeriods[row] = '';
+                    state.scan.ocrMeta[row] = {
+                        ...(state.scan.ocrMeta[row] || {}),
+                        confidence: 0,
+                        error: 'Kode sama dengan Paket ' + (firstRow + 1) +
+                            ' diblokir. Pilih bulatan/target lain lalu scan ulang.'
+                    };
+                    updateOcrBadgeRow(row);
+                }
+                ok = state.scan.ocrPeriods.filter((period) => String(period || '').trim()).length;
 
                 syncPeriodInputsFromOcr();
                 updateOutput();
 
                 if (rows > 0 && ok === rows) {
-                    setScanState('success', '✓ SCAN CODE SELESAI', ok + ' dari ' + rows + ' paket berhasil ditemukan');
+                    setScanState(
+                        'success',
+                        'BERHASIL DI SCAN',
+                        ok + ' dari ' + rows + ' paket berhasil' +
+                        (rows === 2 && secondaryWorkerUsed ? ' • HYPER FAST' : '')
+                    );
                 } else if (ok > 0) {
-                    setScanState('partial', '✓ SCAN CODE SELESAI', ok + ' dari ' + rows + ' paket berhasil ditemukan');
+                    setScanState(
+                        'partial',
+                        'SCAN SELESAI',
+                        ok + ' dari ' + rows + ' paket berhasil'
+                    );
                 } else {
-                    setScanState('failed', '✕ SCAN CODE GAGAL', 'Tidak ada kode yang berhasil ditemukan');
+                    setScanState(
+                        'failed',
+                        'GAGAL DI SCAN',
+                        'Tidak ada kode yang lolos'
+                    );
                 }
 
                 setOcrStatus(
-                    'OCR selesai: <b style="color:#91f5b7">' + ok + '</b> dari <b>' + rows + '</b> paket berhasil.<br>' +
-                    (ok < rows ? 'Paket gagal sengaja dibiarkan untuk pemeriksaan manual agar OCR tidak mengambil kode dari baris lain.' : 'Semua kode berhasil dikunci pada baris dengan dua bulatan.'),
+                    'OCR selesai: <b style="color:#91f5b7">' + ok +
+                    '</b> dari <b>' + rows + '</b> paket berhasil.' +
+                    (rows === 2 && secondaryWorkerUsed
+                        ? '<br><span style="color:#7eeeff"><b>HYPER FAST:</b> kedua history diproses bersamaan.</span>'
+                        : '') +
+                    '<br>' +
+                    (ok < rows
+                        ? 'Paket gagal sengaja dibiarkan untuk pemeriksaan manual agar OCR tidak mengambil kode dari baris lain.'
+                        : 'Semua kode berhasil dikunci pada baris dengan dua bulatan.'),
                     100,
                     true
                 );
+
                 if (ok < rows) {
                     const failedRows = [];
                     for (let row = 0; row < rows; row++) {
@@ -10380,21 +11932,35 @@
                     }
                     showManualScanNotification(failedRows);
                 }
+
             } catch (err) {
-                setScanState('failed', 'GAGAL DI SCAN', 'Proses OCR mengalami kesalahan');
-                setOcrStatus('OCR gagal: ' + cssEscapeText(err && err.message ? err.message : err), 0, true);
+                setScanState(
+                    'failed',
+                    'GAGAL DI SCAN',
+                    'Proses OCR mengalami kesalahan'
+                );
+                setOcrStatus(
+                    'OCR gagal: ' +
+                    cssEscapeText(err && err.message ? err.message : err),
+                    0,
+                    true
+                );
                 showManualScanNotification([]);
             } finally {
                 state.ocrRunning = false;
-                if (!state.scanRunning) panel.classList.remove('lcj2-performance-mode');
+                if (!state.scanRunning) {
+                    panel.classList.remove('lcst-performance-mode');
+                }
                 if (btn) btn.disabled = false;
-                if (btn) btn.textContent = 'SCAN DISINI';
+                if (btn) {
+                    btn.innerHTML = '<span class="lcst-nova-btn-icon">⌁</span><span><b>SCAN CEPAT</b><small>Baca gambar target</small></span>';
+                }
                 updateCopyAvailability();
             }
         }
 
         function saveAccountValue() {
-            const input = panel.querySelector('#lcj2-rek-all');
+            const input = panel.querySelector('#lcst-rek-all');
             const parsed = parseRekNama(input ? input.value : '');
             if (!parsed.nama && !parsed.rek) return;
             const dbNow = getAccountDB();
@@ -10406,7 +11972,7 @@
             if (e.key !== 'Escape') return;
             e.preventDefault();
             e.stopPropagation();
-            const z = document.getElementById('lcj2-zoom');
+            const z = document.getElementById('lcst-zoom');
             if (z) {
                 z.remove();
                 return;
@@ -10414,24 +11980,28 @@
             closePanel();
         }
 
-        panel.querySelector('#lcj2-close').addEventListener('click', closePanel);
-        panel.querySelector('#lcj2-ocr-period').addEventListener('click', runOcrPeriods);
-        panel.querySelector('#lcj2-bank-refresh').addEventListener('click', () => fillAccountFromAdmin(state.scan.userId, true));
+        panel.querySelector('#lcst-close').addEventListener('click', closePanel);
+        panel.querySelector('#lcst-ocr-period').addEventListener('click', runOcrPeriods);
+        panel.querySelector('#lcst-bank-refresh').addEventListener('click', () => fillAccountFromAdmin(state.scan.userId, true));
 
-        const userIdInput = panel.querySelector('#lcj2-user-text');
-        let committedUserId = String(state.scan.userId || '').trim();
+        const userIdInput = panel.querySelector('#lcst-user-text');
+        let committedUserId = String(state.scan.userId || '').trim().toLowerCase();
+        if (userIdInput) {
+            userIdInput.value = String(userIdInput.value || '').trim().toLowerCase();
+            state.scan.userId = userIdInput.value;
+        }
 
         function stopPendingBankLookupForUserEdit() {
             state.bankLookupSeq += 1;
             state.bankLookupRunning = false;
             state.bankLookupUserId = '';
-            const refreshBtn = panel.querySelector('#lcj2-bank-refresh');
+            const refreshBtn = panel.querySelector('#lcst-bank-refresh');
             if (refreshBtn) refreshBtn.disabled = false;
         }
 
         function commitEditedUserId(forceLookup) {
             if (!userIdInput) return;
-            const nextUserId = String(userIdInput.value || '').trim();
+            const nextUserId = String(userIdInput.value || '').trim().toLowerCase();
             userIdInput.value = nextUserId;
             state.scan.userId = nextUserId;
             updateOutput();
@@ -10440,8 +12010,8 @@
             stopPendingBankLookupForUserEdit();
             committedUserId = nextUserId;
 
-            const accountInput = panel.querySelector('#lcj2-rek-all');
-            if (!lcj2ValidLookupUserId(nextUserId)) {
+            const accountInput = panel.querySelector('#lcst-rek-all');
+            if (!lcstValidLookupUserId(nextUserId)) {
                 if (accountInput) accountInput.value = 'NAMA USER,NO REKENING';
                 updateOutput();
                 setBankState('waiting', 'USER ID BELUM TERDETEKSI', 'Isi User ID yang benar pada kolom USER ID');
@@ -10450,8 +12020,8 @@
 
             const savedAccount = getAccountDB()[nextUserId] || { nama: '', rek: '' };
             if (accountInput) {
-                const savedName = lcj2CleanAccountName(savedAccount.nama) || 'NAMA USER';
-                const savedNumber = lcj2CleanAccountNumber(savedAccount.rek) || 'NO REKENING';
+                const savedName = lcstCleanAccountName(savedAccount.nama) || 'NAMA USER';
+                const savedNumber = lcstCleanAccountNumber(savedAccount.rek) || 'NO REKENING';
                 accountInput.value = savedName + ',' + savedNumber;
             }
             updateOutput();
@@ -10460,7 +12030,9 @@
 
         if (userIdInput) {
             userIdInput.addEventListener('input', () => {
-                const typedUserId = String(userIdInput.value || '').trim();
+                // Ketik maupun paste langsung dipaksa lowercase di kolom USER ID.
+                const typedUserId = String(userIdInput.value || '').trim().toLowerCase();
+                if (userIdInput.value !== typedUserId) userIdInput.value = typedUserId;
                 state.scan.userId = typedUserId;
                 if (typedUserId !== committedUserId) stopPendingBankLookupForUserEdit();
                 updateOutput();
@@ -10475,12 +12047,15 @@
             });
         }
 
-        panel.querySelector('#lcj2-copy-user').addEventListener('click', (e) => {
+        panel.querySelector('#lcst-copy-user').addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            const copyUserBtn = panel.querySelector('#lcj2-copy-user');
-            if (userIdInput) state.scan.userId = String(userIdInput.value || '').trim();
-            const userId = String(state.scan.userId || '').trim();
+            const copyUserBtn = panel.querySelector('#lcst-copy-user');
+            if (userIdInput) {
+                userIdInput.value = String(userIdInput.value || '').trim().toLowerCase();
+                state.scan.userId = userIdInput.value;
+            }
+            const userId = String(state.scan.userId || '').trim().toLowerCase();
             if (!userId) {
                 setOcrStatus('User ID belum tersedia untuk disalin.', null, true);
                 return;
@@ -10510,14 +12085,14 @@
         });
 
         function refreshClaimDeadlineClock() {
-            if (state.closed) return;
+            if (state.closed || document.hidden) return;
             updateLiveTimeDisplay();
             if (state.ocrRunning) return;
 
             const output = makeOutput(state.scan);
-            const outputBox = panel.querySelector('#lcj2-output');
-            if (outputBox) outputBox.value = output;
-            updateCopyAvailability();
+            const outputBox = panel.querySelector('#lcst-output');
+            if (outputBox && outputBox.value !== output) outputBox.value = output;
+            updateCopyAvailability(output);
 
             const expiredRows = getBlockedClaimRows();
             const expiredSet = new Set(expiredRows);
@@ -10533,23 +12108,24 @@
                 showClaimExpiredNotification(freshExpiredRow, status);
                 setOcrStatus(
                     'Paket <b>' + (freshExpiredRow + 1) + '</b> tidak dapat claim.<br>' +
-                    'Waktu gambar 2/4: <b>' + cssEscapeText(lcj2FormatClaimTimestamp(status && (status.imageTimestamp || status.claimDate))) + '</b>.<br>' +
-                    '<span style="color:#ffb7c5;font-weight:1000">' + cssEscapeText(lcj2ClaimStatusMessage(status)) + '</span><br>' +
-                    'Waktu online sekarang: <b>' + cssEscapeText(lcj2FormatCurrentWib(lcj2NowDate()) + ' • ' + lcj2GetOnlineTimeSourceLabel()) + '</b>.',
+                    'Waktu gambar target: <b>' + cssEscapeText(lcstFormatClaimTimestamp(status && (status.imageTimestamp || status.claimDate))) + '</b> • ' +
+                    'deadline <b>' + cssEscapeText(lcstFormatClaimDeadline(status)) + '</b>.<br>' +
+                    '<span style="color:#ffb7c5;font-weight:1000">' + cssEscapeText(lcstClaimStatusMessage(status)) + '</span><br>' +
+                    'Waktu online sekarang: <b>' + cssEscapeText(lcstFormatCurrentWib(lcstNowDate()) + ' • ' + lcstGetOnlineTimeSourceLabel()) + '</b>.',
                     null,
                     true
                 );
             }
         }
 
-        panel.querySelector('#lcj2-copy').addEventListener('click', () => {
-            const copyBtn = panel.querySelector('#lcj2-copy');
+        panel.querySelector('#lcst-copy').addEventListener('click', () => {
+            const copyBtn = panel.querySelector('#lcst-copy');
             // makeOutput menghitung ulang waktu WIB agar cutoff tetap tepat walau panel sudah lama terbuka.
             const output = makeOutput(state.scan);
             const betBlockedRows = getBlockedBetRows();
             const claimBlockedRows = getBlockedClaimRows();
             const allBlockedRows = Array.from(new Set(betBlockedRows.concat(claimBlockedRows))).sort((a, b) => a - b);
-            const outputBox = panel.querySelector('#lcj2-output');
+            const outputBox = panel.querySelector('#lcst-output');
             if (outputBox) outputBox.value = output;
 
             if (allBlockedRows.length && !output.trim()) {
@@ -10561,8 +12137,8 @@
                     showTidakCapaiNotification(firstRow, state.scan.betOddsByRow[firstRow]);
                 }
                 const reasons = [];
-                if (claimBlockedRows.length) reasons.push('tidak memenuhi aturan claim pergantian hari 23.00-02.00 WIB');
-                if (betBlockedRows.length) reasons.push('TIDAK CAPAI MINBET (Taruhan di bawah 1,60)');
+                if (claimBlockedRows.length) reasons.push('tidak memenuhi aturan tanggal semalam 23.00–02.00 WIB');
+                if (betBlockedRows.length) reasons.push('Taruhan di bawah 1,60');
                 setOcrStatus('DANGER: Semua paket tidak dapat dicopy karena ' + reasons.join(' dan ') + '.', null, true);
                 updateCopyAvailability();
                 return;
@@ -10581,13 +12157,13 @@
                 if (claimBlockedRows.length) {
                     messages.push(
                         'Paket ' + claimBlockedRows.map((row) => row + 1).join(', ') +
-                        ' tidak ikut dicopy karena sudah melewati batas claim 02.00 WIB.'
+                        ' tidak ikut dicopy karena tidak memenuhi aturan tanggal/jam claim.'
                     );
                 }
                 if (betBlockedRows.length) {
                     messages.push(
                         'Paket ' + betBlockedRows.map((row) => row + 1).join(', ') +
-                        ' tidak ikut dicopy karena TIDAK CAPAI MINBET (Taruhan di bawah 1,60).'
+                        ' tidak ikut dicopy karena Taruhan di bawah 1,60.'
                     );
                 }
                 setOcrStatus('DANGER: ' + messages.join('<br>') + ' Paket lainnya tetap disalin.', null, true);
@@ -10616,18 +12192,32 @@
                 setOcrStatus('Gagal menyalin output. Blok isi kolom output lalu salin manual.', null, true);
             });
         });
-        panel.querySelector('#lcj2-rek-all').addEventListener('input', updateOutput);
-        panel.querySelector('#lcj2-rek-all').addEventListener('change', saveAccountValue);
-        panel.querySelector('#lcj2-rek-all').addEventListener('blur', saveAccountValue);
+        panel.querySelector('#lcst-rek-all').addEventListener('input', updateOutput);
+        const phoneInput = panel.querySelector('#lcst-phone-files');
+        panel.querySelector('#lcst-pick-phone').addEventListener('click', () => phoneInput.click());
+        phoneInput.addEventListener('change', async () => {
+            await addPhoneFiles(phoneInput.files);
+            phoneInput.value = '';
+        });
+        panel.querySelector('#lcst-clear-phone').addEventListener('click', () => {
+            if (state.ocrRunning || state.scanRunning || !state.scan.images.length) return;
+            state.localObjectUrls.forEach((url) => { try { URL.revokeObjectURL(url); } catch (e) {} });
+            state.localObjectUrls.clear();
+            state.scan.images = [];
+            clearOcrResults('Semua gambar dihapus. Ambil gambar baru dari Galeri atau Kamera HP.');
+            renderImages();
+        });
+        panel.querySelector('#lcst-rek-all').addEventListener('change', saveAccountValue);
+        panel.querySelector('#lcst-rek-all').addEventListener('blur', saveAccountValue);
         document.addEventListener('keydown', escClose, true);
         document.addEventListener('selectionchange', flushPendingStatusWhenPossible, true);
         panel.addEventListener('copy', () => setTimeout(() => applyPendingStatus(false), 0));
 
         // Periksa waktu WIB berkala. Bila panel terbuka melewati 02.00 WIB,
         // status claim berubah otomatis tanpa perlu menekan SCAN ulang.
-        lcj2SyncOnlineTime(true);
+        lcstSyncOnlineTime(true);
         state.claimDeadlineTimer = setInterval(() => {
-            lcj2SyncOnlineTime(false);
+            lcstSyncOnlineTime(false);
             refreshClaimDeadlineClock();
         }, 1000);
         refreshClaimDeadlineClock();
@@ -10644,8 +12234,11 @@
     }
 
     ready(() => {
-        lcj2SyncOnlineTime(true);
+        lcstSyncOnlineTime(true);
         createBubble();
+        // Worker disiapkan ketika panel digunakan atau bubble disentuh.
         setInterval(createBubble, 8000);
     });
+})();
+
 })();
