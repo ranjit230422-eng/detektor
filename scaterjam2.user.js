@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         LiveChat OCR Claim — WIB/WITA/WIT + Batas 02.00
 // @namespace    linetogel-livechat-ocr-claim-fixed
-// @version      7.8.0
-// @description  Panel OCR Android ringan: ambil gambar dari HP, susun dengan sentuhan, OCR tanggal/jam, maksimum dua worker.
+// @version      7.8.1
+// @description  Panel OCR LiveChat untuk Android: gambar tetap diambil dari chat aktif, dapat disusun dengan sentuhan, dan tampilan dibuat ringan.
 // @author       OpenAI
 // @match        https://my.livechatinc.com/*
 // @run-at       document-idle
@@ -26,7 +26,7 @@
 
     // Versi terbaru mengambil alih UI lama bila lebih dari satu versi tidak sengaja aktif.
     // Ini mencegah script lama memblokir perbaikan melalui guard boolean yang sama.
-    const LCST_BUILD_VERSION = '7.8.0-android-picker-touch-sort';
+    const LCST_BUILD_VERSION = '7.8.1-android-livechat-touch-sort';
     const lcstExistingInstance = window.__LC_BUBBLE_SCREENSHOT_ACTIVE_ONLY__;
     if (lcstExistingInstance && typeof lcstExistingInstance === 'object' && lcstExistingInstance.version === LCST_BUILD_VERSION) return;
     try {
@@ -2637,9 +2637,9 @@
                 #lcst-panel-fixed .lcst-img-media{height:190px!important}
                 #lcst-panel-fixed .lcst-img-index{font-size:8px!important;padding:4px!important;left:3px!important;right:3px!important;flex-wrap:wrap!important}
             }
-            .lcst-mobile-picker{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}
-            .lcst-mobile-picker .lcst-btn{min-height:44px;touch-action:manipulation}
-            .lcst-mobile-picker-note{font-size:11px;color:#9aa8bd;line-height:1.45}
+            .lcst-mobile-livechat{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}
+            .lcst-mobile-livechat .lcst-btn{min-height:44px;touch-action:manipulation}
+            .lcst-mobile-livechat-note{font-size:11px;color:#9aa8bd;line-height:1.45}
             .lcst-touch-handle{display:none;width:100%;min-height:38px;border:0;border-top:1px solid #273246;background:#111a29;color:#d8e2f0;font:800 11px/1 Segoe UI,Arial,sans-serif;touch-action:none;cursor:grab}
             .lcst-touch-handle:active{background:#26344a;color:#fff}
             .lcst-img-card.lcst-touch-moving{opacity:.58!important;outline:2px solid #d4b67d!important;transform:scale(.98)!important}
@@ -10156,7 +10156,7 @@
                         </div>
                         <div class="lcst-nova-brand-copy">
                             <div class="lcst-nova-eyebrow">LINETOGEL • SCAN STUDIO</div>
-                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.8.0</span></h3>
+                            <h3 class="lcst-title">Scan Studio <span class="lcst-version">7.8.1</span></h3>
                             <div class="lcst-subtitle">Periode, tanggal & waktu dalam satu ruang kerja</div>
                         </div>
                     </div>
@@ -10266,11 +10266,9 @@
                                     <span><b>SCAN CEPAT</b><small>Baca gambar target</small></span>
                                 </button>
                             </div>
-                            <div class="lcst-mobile-picker">
-                                <button class="lcst-btn blue" id="lcst-pick-phone" type="button">＋ AMBIL DARI HP</button>
-                                <button class="lcst-btn" id="lcst-clear-phone" type="button">HAPUS SEMUA</button>
-                                <span class="lcst-mobile-picker-note">Galeri atau Kamera • maksimal 6 gambar • tahan tombol GESER untuk memindahkan</span>
-                                <input id="lcst-phone-files" type="file" accept="image/*" multiple hidden>
+                            <div class="lcst-mobile-livechat">
+                                <button class="lcst-btn blue" id="lcst-refresh-chat-images" type="button">↻ AMBIL ULANG DARI LC</button>
+                                <span class="lcst-mobile-livechat-note">Gambar diambil otomatis dari chat LiveChat yang aktif • tahan tombol GESER untuk memindahkan</span>
                             </div>
                             <div id="lcst-empty-box" class="lcst-empty" style="display:${scan.images.length ? 'none' : 'block'}">
                                 <div class="lcst-nova-empty-icon">▧</div>
@@ -10373,7 +10371,6 @@
             claimDeadlineTimer: null,
             claimExpiredNotified: new Set(),
             dragGhost: null,
-            localObjectUrls: new Set(),
             touchSort: null
         };
 
@@ -10421,8 +10418,6 @@
                 state.claimDeadlineTimer = null;
             }
             destroySharedOCRWorker().catch(() => {});
-            state.localObjectUrls.forEach((url) => { try { URL.revokeObjectURL(url); } catch (e) {} });
-            state.localObjectUrls.clear();
             panel.remove();
         }
 
@@ -11085,7 +11080,12 @@
             state.scanRunning = true;
             panel.classList.add('lcst-performance-mode');
             const ocrBtn = panel.querySelector('#lcst-ocr-period');
+            const refreshChatBtn = panel.querySelector('#lcst-refresh-chat-images');
             if (ocrBtn) ocrBtn.disabled = true;
+            if (refreshChatBtn) {
+                refreshChatBtn.disabled = true;
+                refreshChatBtn.textContent = '◌ MENGAMBIL DARI LC...';
+            }
             setOcrStatus('Menelusuri seluruh scroll chat aktif untuk mengumpulkan screenshot. OCR belum dijalankan...', 8);
             try {
                 const newScan = await scanPageDeep((msg) => setOcrStatus(msg, 24));
@@ -11126,6 +11126,10 @@
                 state.scanRunning = false;
                 if (!state.ocrRunning) panel.classList.remove('lcst-performance-mode');
                 if (ocrBtn) ocrBtn.disabled = false;
+                if (refreshChatBtn) {
+                    refreshChatBtn.disabled = false;
+                    refreshChatBtn.textContent = '↻ AMBIL ULANG DARI LC';
+                }
             }
         }
 
@@ -11262,58 +11266,11 @@
         function removeImageAt(index, reason) {
             if (state.ocrRunning || state.scanRunning || state.closed) return;
             if (index < 0 || index >= state.scan.images.length) return;
-            const removed = state.scan.images.splice(index, 1)[0];
-            if (removed && state.localObjectUrls.has(removed)) {
-                try { URL.revokeObjectURL(removed); } catch (e) {}
-                state.localObjectUrls.delete(removed);
-            }
+            state.scan.images.splice(index, 1);
             clearOcrResults(reason || 'Gambar dihapus. OCR lama dibersihkan agar hasil tidak tertukar.');
             renderImages();
             updateOutput();
             prefetchTargetImages(state.scan.images);
-        }
-
-        async function preparePhoneImage(file) {
-            if (!file || !/^image\//i.test(file.type || '')) throw new Error('File bukan gambar');
-            const source = await createImageBitmap(file);
-            const maxSide = 1800;
-            const scale = Math.min(1, maxSide / Math.max(source.width, source.height));
-            const width = Math.max(1, Math.round(source.width * scale));
-            const height = Math.max(1, Math.round(source.height * scale));
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d', { alpha: false });
-            ctx.drawImage(source, 0, 0, width, height);
-            if (source.close) source.close();
-            const blob = await new Promise((resolve, reject) => canvas.toBlob(
-                (value) => value ? resolve(value) : reject(new Error('Gagal memproses gambar')),
-                'image/jpeg', .88
-            ));
-            canvas.width = canvas.height = 1;
-            return URL.createObjectURL(blob);
-        }
-
-        async function addPhoneFiles(fileList) {
-            if (state.ocrRunning || state.scanRunning || state.closed) return;
-            const room = Math.max(0, LCST_MAX_SELECTED_IMAGES - state.scan.images.length);
-            const files = Array.from(fileList || []).filter((file) => /^image\//i.test(file.type || '')).slice(0, room);
-            if (!room) { setOcrStatus('Maksimal <b>6 gambar</b>. Hapus gambar lama sebelum menambah.', 0, true); return; }
-            if (!files.length) return;
-            setOcrStatus('Menyiapkan <b>' + files.length + '</b> gambar dari HP...', 12);
-            const urls = [];
-            for (const file of files) {
-                try {
-                    const url = await preparePhoneImage(file);
-                    urls.push(url);
-                    state.localObjectUrls.add(url);
-                } catch (err) {}
-            }
-            if (!urls.length) { setOcrStatus('Gambar dari HP gagal dibaca. Coba pilih JPG atau PNG.', 0, true); return; }
-            state.scan.images.push(...urls);
-            clearOcrResults('Gambar dari HP berhasil dimasukkan. Susun gambar lalu tekan SCAN CEPAT.');
-            renderImages();
-            setOcrStatus('<b>' + urls.length + '</b> gambar berhasil diambil dari HP. Tahan tombol <b>GESER</b> untuk memindahkan.', 18);
         }
 
         function bindTouchSort(handle, card) {
@@ -12193,20 +12150,7 @@
             });
         });
         panel.querySelector('#lcst-rek-all').addEventListener('input', updateOutput);
-        const phoneInput = panel.querySelector('#lcst-phone-files');
-        panel.querySelector('#lcst-pick-phone').addEventListener('click', () => phoneInput.click());
-        phoneInput.addEventListener('change', async () => {
-            await addPhoneFiles(phoneInput.files);
-            phoneInput.value = '';
-        });
-        panel.querySelector('#lcst-clear-phone').addEventListener('click', () => {
-            if (state.ocrRunning || state.scanRunning || !state.scan.images.length) return;
-            state.localObjectUrls.forEach((url) => { try { URL.revokeObjectURL(url); } catch (e) {} });
-            state.localObjectUrls.clear();
-            state.scan.images = [];
-            clearOcrResults('Semua gambar dihapus. Ambil gambar baru dari Galeri atau Kamera HP.');
-            renderImages();
-        });
+        panel.querySelector('#lcst-refresh-chat-images').addEventListener('click', runDeepScan);
         panel.querySelector('#lcst-rek-all').addEventListener('change', saveAccountValue);
         panel.querySelector('#lcst-rek-all').addEventListener('blur', saveAccountValue);
         document.addEventListener('keydown', escClose, true);
