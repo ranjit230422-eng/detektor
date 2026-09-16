@@ -40,7 +40,7 @@
     const POS_KEY = 'lc_bubble_screenshot_tool_position_active_only_v46_clean_final';
     const DB_KEY  = 'screenshot_tool_db_v1';
     const Z_TOP   = 2147483647;
-    const LCST_DASHBOARD_LOGO_URL = 'https://line32762.com/assets/img/ei/logo.png?v=y5h2w2cmxvdvv6zrc0iq';
+    const LCST_DASHBOARD_LOGO_URL = 'https://line32556.com/assets/img/ei/logo.png';
     let lcstDashboardLogoDataUrl = '';
     let lcstDashboardLogoPromise = null;
 
