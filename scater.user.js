@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LiveChat OCR Claim — WIB/WITA/WIT + Batas 02.00
 // @namespace    linetogel-livechat-ocr-claim-fixed
-// @version      7.7.9
+// @version      7.8.2
 // @description  Panel Midnight Gold, OCR tanggal/jam kuat, maksimum dua worker dan pembaruan tampilan ringan. Aturan claim tetap.
 // @author       OpenAI
 // @match        https://my.livechatinc.com/*
@@ -26,7 +26,7 @@
 
     // Versi terbaru mengambil alih UI lama bila lebih dari satu versi tidak sengaja aktif.
     // Ini mencegah script lama memblokir perbaikan melalui guard boolean yang sama.
-    const LCST_BUILD_VERSION = '7.7.9-fast-arrange-new-logo';
+    const LCST_BUILD_VERSION = '7.8.2-marker-only';
     const lcstExistingInstance = window.__LC_BUBBLE_SCREENSHOT_ACTIVE_ONLY__;
     if (lcstExistingInstance && typeof lcstExistingInstance === 'object' && lcstExistingInstance.version === LCST_BUILD_VERSION) return;
     try {
@@ -40,6 +40,21 @@
     const POS_KEY = 'lc_bubble_screenshot_tool_position_active_only_v46_clean_final';
     const DB_KEY  = 'screenshot_tool_db_v1';
     const Z_TOP   = 2147483647;
+    // @require berjalan di sandbox Tampermonkey. Pada mode @grant aktif,
+    // Tesseract biasanya tersedia sebagai global userscript dan bukan properti
+    // window halaman. Versi lama hanya mengecek window.Tesseract sehingga OCR
+    // selalu dianggap belum dimuat walaupun library sebenarnya sudah siap.
+    const LCST_TESSERACT = (() => {
+        try {
+            if (typeof Tesseract !== 'undefined' && Tesseract && Tesseract.createWorker) {
+                return Tesseract;
+            }
+        } catch (e) {}
+        try {
+            if (window.Tesseract && window.Tesseract.createWorker) return window.Tesseract;
+        } catch (e) {}
+        return null;
+    })();
     const LCST_DASHBOARD_LOGO_URL = 'https://line32556.com/assets/img/ei/logo.png';
     let lcstDashboardLogoDataUrl = '';
     let lcstDashboardLogoPromise = null;
@@ -5264,12 +5279,12 @@
         const started = Date.now();
         return new Promise((resolve, reject) => {
             (function check() {
-                if (window.Tesseract && window.Tesseract.createWorker) {
+                if (LCST_TESSERACT && LCST_TESSERACT.createWorker) {
                     resolve();
                     return;
                 }
                 if (Date.now() - started > timeoutMs) {
-                    reject(new Error('Library OCR belum siap. Refresh halaman lalu coba lagi.'));
+                    reject(new Error('Library OCR gagal dimuat. Periksa koneksi/CDN Tampermonkey, lalu refresh halaman.'));
                     return;
                 }
                 setTimeout(check, 100);
@@ -5285,7 +5300,7 @@
 
         const workerGeneration = lcstWorkerGeneration;
         lcstSharedWorkerInit = (async () => {
-            const worker = await window.Tesseract.createWorker(
+            const worker = await LCST_TESSERACT.createWorker(
                 'eng',
                 1,
                 {
@@ -5339,7 +5354,7 @@
 
         const workerGeneration = lcstWorkerGeneration;
         lcstSecondaryWorkerInit = (async () => {
-            const worker = await window.Tesseract.createWorker(
+            const worker = await LCST_TESSERACT.createWorker(
                 'eng',
                 1,
                 {
@@ -5379,7 +5394,7 @@
 
         const workerGeneration = lcstWorkerGeneration;
         lcstMetadataWorkerInit = (async () => {
-            const worker = await window.Tesseract.createWorker(
+            const worker = await LCST_TESSERACT.createWorker(
                 'eng',
                 1,
                 {
@@ -5421,7 +5436,7 @@
 
         const workerGeneration = lcstWorkerGeneration;
         lcstTimestampWorkerInit = (async () => {
-            const worker = await window.Tesseract.createWorker(
+            const worker = await LCST_TESSERACT.createWorker(
                 'eng',
                 1,
                 {
@@ -6789,7 +6804,11 @@
             ? Number(marker.centerX) / w
             : null;
 
-        const compact = screenRatio <= 2.02 || (markerXRatio != null && markerXRatio <= 0.285);
+        // Screenshot browser HP yang tinggi (seperti 720x1600) memakai kolom
+        // Transaksi lebih ke kiri. Versi lama baru mengenal layout compact setelah
+        // marker ditemukan, sehingga pencarian awal sering memakai koordinat desktop.
+        const compact = screenRatio <= 2.02 || screenRatio >= 2.08 ||
+            (markerXRatio != null && markerXRatio <= 0.285);
         return compact ? {
             name: 'history-v2-compact',
             compact: true,
@@ -8773,14 +8792,10 @@
 
     function topCandidatesFromDigits(digits) {
         digits = onlyDigits(digits);
-        const out = [];
-        if (!digits) return out;
-        if (digits.length === LCST_EXPECTED_TOP_LENGTH && /^20\d{7}$/.test(digits)) out.push({ value: digits, correction: 0 });
-        for (let i = 0; i + LCST_EXPECTED_TOP_LENGTH <= digits.length; i++) {
-            const part = digits.slice(i, i + LCST_EXPECTED_TOP_LENGTH);
-            if (/^20\d{7}$/.test(part)) out.push({ value: part, correction: digits.length === LCST_EXPECTED_TOP_LENGTH ? 0 : 1 });
-        }
-        return out;
+        // Area sudah dikunci ke ikon putaran. Jangan pilih berdasarkan awalan
+        // atau memotong angka panjang dari baris lain menjadi kandidat kode.
+        return digits.length === LCST_EXPECTED_TOP_LENGTH
+            ? [{ value: digits, correction: 0 }] : [];
     }
 
     function bottomCandidatesFromDigits(digits) {
@@ -8850,15 +8865,17 @@
 
         lines.forEach(line => {
             topCandidatesFromDigits(line).forEach(c => addVote(topVotes, c, confidence, sourceWeight, label));
-            bottomCandidatesFromDigits(line).forEach(c => addVote(bottomVotes, c, confidence, sourceWeight * 0.92, label));
+            if (line.length === LCST_EXPECTED_BOTTOM_LENGTH) {
+                bottomCandidatesFromDigits(line).forEach(c => addVote(bottomVotes, c, confidence, sourceWeight * 0.92, label));
+            }
         });
 
-        if (compact.length >= LCST_EXPECTED_FULL_LENGTH) {
+        if (compact.length === LCST_EXPECTED_FULL_LENGTH) {
             for (let i = 0; i + LCST_EXPECTED_FULL_LENGTH <= compact.length; i++) {
                 const full = compact.slice(i, i + LCST_EXPECTED_FULL_LENGTH);
                 const top = full.slice(0, LCST_EXPECTED_TOP_LENGTH);
                 const bottom = full.slice(LCST_EXPECTED_TOP_LENGTH);
-                if (/^20\d{7}$/.test(top)) {
+                if (/^\d{9}$/.test(top)) {
                     addVote(topVotes, { value: top, correction: 0 }, confidence, sourceWeight + 0.35, label + '-full');
                     addVote(bottomVotes, { value: bottom, correction: 0 }, confidence, sourceWeight + 0.35, label + '-full');
                 }
@@ -8877,7 +8894,7 @@
     }
 
     function chooseFinalPeriod(topVotes, bottomVotes, usedPasses) {
-        const tops = rankVotes(topVotes).filter(x => /^20\d{7}$/.test(x.value));
+        const tops = rankVotes(topVotes).filter(x => /^\d{9}$/.test(x.value));
         const bottoms = rankVotes(bottomVotes).filter(x => /^\d{10}$/.test(x.value));
         if (!tops.length || !bottoms.length) {
             return {
@@ -8943,20 +8960,15 @@
         return addWhiteBorder(out, 8);
     }
 
-    function lcstTopPeriodDateValid(value) {
-        const digits = onlyDigits(value);
-        if (!/^20\d{7}$/.test(digits)) return false;
-        return !!lcstValidDateParts(
-            Number(digits.slice(0, 4)),
-            Number(digits.slice(4, 6)),
-            Number(digits.slice(6, 8))
-        );
+    function lcstTopPeriodFormatValid(value) {
+        // Kode bukan syarat tanggal. Tanggal/jam diperiksa pada jalur metadata.
+        return /^\d{9}$/.test(onlyDigits(value));
     }
 
     function lcstFastPeriodReliable(picked, minOcrConfidence) {
         if (!picked || !picked.period || !picked.top || !picked.bottom) return false;
-        if (!/^20\d{7}\d{10}$/.test(picked.period)) return false;
-        if (!lcstTopPeriodDateValid(picked.top.value)) return false;
+        if (!/^\d{19}$/.test(picked.period)) return false;
+        if (!lcstTopPeriodFormatValid(picked.top.value)) return false;
         if (picked.top.correction !== 0 || picked.bottom.correction !== 0) return false;
         const minConf = Number(minOcrConfidence) || 55;
         return (picked.top.avgConfidence || 0) >= minConf &&
@@ -9651,7 +9663,7 @@
             if (!lockedBottomValue || !picked.period || !picked.top || !picked.bottom) return false;
             if (picked.bottom.value !== lockedBottomValue) return false;
             if (picked.top.correction !== 0 || picked.bottom.correction !== 0) return false;
-            if (!/^20\d{7}$/.test(picked.top.value || '')) return false;
+            if (!/^\d{9}$/.test(picked.top.value || '')) return false;
             return (
                 (picked.top.avgConfidence || 0) >= 72 &&
                 (marker.confidence || 0) >= 64 &&
@@ -9662,7 +9674,7 @@
         // Gabungan tiga pass awal (window + atas + bawah) sering sudah cukup.
         // Nilai ini dulu dibuang sehingga fallback selalu mulai dari nol.
         const seededPicked = chooseFinalPeriod(topVotes, bottomVotes, usedPasses);
-        if (isReliable(seededPicked, false) && lcstTopPeriodDateValid(seededPicked.top.value)) {
+        if (isReliable(seededPicked, false) && lcstTopPeriodFormatValid(seededPicked.top.value)) {
             return makeReturn(seededPicked);
         }
 
@@ -9847,7 +9859,7 @@
             const requestedTarget = markerSelection && Number(markerSelection.totalOccurrences) > 1
                 ? 'Target bulatan ke-' + (Math.max(0, Number(markerSelection.ordinal) || 0) + 1) +
                     ' tidak tersedia. Paket ini dilarang memakai bulatan paket sebelumnya.'
-                : 'Dua tanda bulat belum terdeteksi.';
+                : 'Ikon putaran belum terdeteksi; kode tidak dipindai.';
             return {
                 period: '', text: '', confidence: 0, markerFound: false,
                 source: 'strict-double-marker-v55',
