@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LiveChat OCR Claim — WIB/WITA/WIT + Batas 02.00
 // @namespace    linetogel-livechat-ocr-claim-fixed
-// @version      7.8.2
+// @version      7.8.3
 // @description  Panel Midnight Gold, OCR tanggal/jam kuat, maksimum dua worker dan pembaruan tampilan ringan. Aturan claim tetap.
 // @author       OpenAI
 // @match        https://my.livechatinc.com/*
@@ -26,7 +26,7 @@
 
     // Versi terbaru mengambil alih UI lama bila lebih dari satu versi tidak sengaja aktif.
     // Ini mencegah script lama memblokir perbaikan melalui guard boolean yang sama.
-    const LCST_BUILD_VERSION = '7.8.2-marker-only';
+    const LCST_BUILD_VERSION = '7.8.3-marker-only';
     const lcstExistingInstance = window.__LC_BUBBLE_SCREENSHOT_ACTIVE_ONLY__;
     if (lcstExistingInstance && typeof lcstExistingInstance === 'object' && lcstExistingInstance.version === LCST_BUILD_VERSION) return;
     try {
@@ -3157,8 +3157,34 @@
         return urls;
     }
 
+    function lcstIsProfileImageElement(el, root) {
+        // Periksa identitas elemen/avatar, bukan nama umum pengirim pada baris pesan.
+        const avatarLabel = /(?:avatar|gravatar|profile[-_\s]*(?:pic(?:ture)?|photo|image|img)|(?:user|contact|agent|customer)[-_\s]*(?:photo|avatar)|foto[-_\s]*profil)/i;
+        let current = el;
+        for (let depth = 0; current && current !== root && depth < 4; depth++, current = current.parentElement) {
+            const label = ['class', 'id', 'aria-label', 'data-testid', 'alt', 'title']
+                .map(key => current.getAttribute ? current.getAttribute(key) || '' : '').join(' ');
+            if (avatarLabel.test(label)) return true;
+        }
+        // Link avatar kadang punya URL berkas acak; periksa img di dalamnya juga.
+        const img = String(el.tagName || '').toLowerCase() === 'img'
+            ? el : (el.querySelector ? el.querySelector('img') : null);
+        if (!img) return false;
+        const label = ['class', 'id', 'alt', 'aria-label', 'src'].map(key => img.getAttribute(key) || '').join(' ');
+        if (avatarLabel.test(label)) return true;
+        const rect = img.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0 && rect.width <= 80 && rect.height <= 80 &&
+            Math.abs(rect.width - rect.height) <= 4) {
+            const radius = getComputedStyle(img).borderRadius || '';
+            if (radius.includes('%') && parseFloat(radius) >= 45) return true;
+            if (!radius.includes('%') && parseFloat(radius) >= Math.min(rect.width, rect.height) * 0.45) return true;
+        }
+        return false;
+    }
+
     function addElementImageUrls(el, root, marker, images, ignoreMarker) {
         if (!isRenderedInsideScope(el, root)) return;
+        if (lcstIsProfileImageElement(el, root)) return;
         if (!ignoreMarker && !isAfterMarker(marker, el)) return;
 
         const tag = String(el.tagName || '').toLowerCase();
@@ -6526,6 +6552,21 @@
 
     function lcstBuildAutoArrangedOrder(images, analyses) {
         const list = Array.isArray(images) ? images.slice() : [];
+        // Empat/lima kandidat tetap menjadi satu paket tiga gambar.
+        if (list.length === 4 || list.length === 5) {
+            const raw = Array.isArray(analyses) ? analyses : [];
+            const items = list.map((src, index) => lcstAnalysisItem(src, index, raw[index]));
+            const assigned = lcstAssignScreenshotRolesWithLimit(items, 1);
+            const packages = assigned && lcstBuildPackagesFromAssigned(assigned, 1);
+            const pack = packages && packages[0];
+            const ordered = pack ? [pack.game.src, pack.history.src, pack.win.src] : list.slice(0, 3);
+            return {
+                images: ordered, changed: true, confident: true, rows: 1,
+                originalCount: list.length, discarded: list.length - 3,
+                visualConfidence: !!pack && !!pack.history.hasHistoryMarker,
+                reason: pack ? 'four-five-select-three' : 'four-five-limit-three'
+            };
+        }
         const packageSize = getPackageSizeFromImages(list);
         if (packageSize !== 3 || list.length < 3 || list.length % 3 !== 0) {
             return { images: list, changed: false, confident: false, rows: 0, reason: 'not-three-image-package' };
@@ -10949,8 +10990,8 @@
             const originalCount = state.scan.images.length;
             const packageSize = getPackageSizeFromImages(state.scan.images);
 
-            // 3/6 disusun. Jika lebih dari 6, tetap proses walaupun jumlahnya 7, 8, 10, dst.
-            if (originalCount <= LCST_MAX_SELECTED_IMAGES && (packageSize !== 3 || originalCount % 3 !== 0)) {
+            // 3–5 menjadi 3; 6 atau lebih menjadi maksimal 6 gambar.
+            if (originalCount < 3) {
                 return { changed: false, confident: false, rows: 0, reason: 'not-three-image-package' };
             }
 
