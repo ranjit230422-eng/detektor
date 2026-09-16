@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LiveChat OCR Claim — WIB/WITA/WIT + Batas 02.00
 // @namespace    linetogel-livechat-ocr-claim-fixed
-// @version      7.8.8
+// @version      7.8.9
 // @description  Panel OCR LiveChat untuk Android: gambar tetap diambil dari chat aktif, dapat disusun dengan sentuhan, dan tampilan dibuat ringan.
 // @author       OpenAI
 // @match        https://my.livechatinc.com/*
@@ -26,7 +26,7 @@
 
     // Versi terbaru mengambil alih UI lama bila lebih dari satu versi tidak sengaja aktif.
     // Ini mencegah script lama memblokir perbaikan melalui guard boolean yang sama.
-    const LCST_BUILD_VERSION = '7.8.8-android-livechat-touch-sort';
+    const LCST_BUILD_VERSION = '7.8.9-android-marker-three';
     const lcstExistingInstance = window.__LC_BUBBLE_SCREENSHOT_ACTIVE_ONLY__;
     if (lcstExistingInstance && typeof lcstExistingInstance === 'object' && lcstExistingInstance.version === LCST_BUILD_VERSION) return;
     try {
@@ -5387,12 +5387,20 @@
         });
     }
 
+    function lcstResolveTesseract() {
+        // @require dapat tersedia di ruang userscript, bukan window halaman.
+        if (typeof Tesseract !== 'undefined' && typeof Tesseract.createWorker === 'function') return Tesseract;
+        if (typeof globalThis !== 'undefined' && globalThis.Tesseract && typeof globalThis.Tesseract.createWorker === 'function') return globalThis.Tesseract;
+        if (window.Tesseract && typeof window.Tesseract.createWorker === 'function') return window.Tesseract;
+        return null;
+    }
+
     function waitForTesseract(timeoutMs) {
         timeoutMs = timeoutMs || 15000;
         const started = Date.now();
         return new Promise((resolve, reject) => {
             (function check() {
-                if (window.Tesseract && window.Tesseract.createWorker) {
+                if (lcstResolveTesseract()) {
                     resolve();
                     return;
                 }
@@ -5417,7 +5425,9 @@
 
     async function lcstCreateBoundedWorker(...args) {
         let abandoned = false;
-        const creation = window.Tesseract.createWorker(...args);
+        const engine = lcstResolveTesseract();
+        if (!engine) throw new Error('Library OCR belum siap. Refresh LiveChat lalu coba lagi.');
+        const creation = engine.createWorker(...args);
         creation.then(worker => {
             if (abandoned) Promise.resolve(worker.terminate()).catch(() => {});
         }, () => {});
@@ -6682,6 +6692,21 @@
 
     function lcstBuildAutoArrangedOrder(images, analyses) {
         const list = Array.isArray(images) ? images.slice() : [];
+        // Empat/lima kandidat tetap menjadi satu paket tiga gambar.
+        if (list.length === 4 || list.length === 5) {
+            const raw = Array.isArray(analyses) ? analyses : [];
+            const items = list.map((src, index) => lcstAnalysisItem(src, index, raw[index]));
+            const assigned = lcstAssignScreenshotRolesWithLimit(items, 1);
+            const packages = assigned && lcstBuildPackagesFromAssigned(assigned, 1);
+            const pack = packages && packages[0];
+            const ordered = pack ? [pack.game.src, pack.history.src, pack.win.src] : list.slice(0, 3);
+            return {
+                images: ordered, changed: true, confident: true, rows: 1,
+                originalCount: list.length, discarded: list.length - 3,
+                visualConfidence: !!pack && !!pack.history.hasHistoryMarker,
+                reason: pack ? 'four-five-select-three' : 'four-five-limit-three'
+            };
+        }
         const packageSize = getPackageSizeFromImages(list);
         if (packageSize !== 3 || list.length < 3 || list.length % 3 !== 0) {
             return { images: list, changed: false, confident: false, rows: 0, reason: 'not-three-image-package' };
@@ -6960,7 +6985,11 @@
             ? Number(marker.centerX) / w
             : null;
 
-        const compact = screenRatio <= 2.02 || (markerXRatio != null && markerXRatio <= 0.285);
+        // Screenshot browser HP yang tinggi (seperti 720x1600) memakai kolom
+        // Transaksi lebih ke kiri. Versi lama baru mengenal layout compact setelah
+        // marker ditemukan, sehingga pencarian awal sering memakai koordinat desktop.
+        const compact = screenRatio <= 2.02 || screenRatio >= 2.08 ||
+            (markerXRatio != null && markerXRatio <= 0.285);
         return compact ? {
             name: 'history-v2-compact',
             compact: true,
@@ -8974,14 +9003,10 @@
 
     function topCandidatesFromDigits(digits) {
         digits = onlyDigits(digits);
-        const out = [];
-        if (!digits) return out;
-        if (digits.length === LCST_EXPECTED_TOP_LENGTH && /^20\d{7}$/.test(digits)) out.push({ value: digits, correction: 0 });
-        for (let i = 0; i + LCST_EXPECTED_TOP_LENGTH <= digits.length; i++) {
-            const part = digits.slice(i, i + LCST_EXPECTED_TOP_LENGTH);
-            if (/^20\d{7}$/.test(part)) out.push({ value: part, correction: digits.length === LCST_EXPECTED_TOP_LENGTH ? 0 : 1 });
-        }
-        return out;
+        // Area sudah dikunci ke ikon putaran. Jangan pilih berdasarkan awalan
+        // atau memotong angka panjang dari baris lain menjadi kandidat kode.
+        return digits.length === LCST_EXPECTED_TOP_LENGTH
+            ? [{ value: digits, correction: 0 }] : [];
     }
 
     function bottomCandidatesFromDigits(digits) {
@@ -9051,15 +9076,17 @@
 
         lines.forEach(line => {
             topCandidatesFromDigits(line).forEach(c => addVote(topVotes, c, confidence, sourceWeight, label));
-            bottomCandidatesFromDigits(line).forEach(c => addVote(bottomVotes, c, confidence, sourceWeight * 0.92, label));
+            if (line.length === LCST_EXPECTED_BOTTOM_LENGTH) {
+                bottomCandidatesFromDigits(line).forEach(c => addVote(bottomVotes, c, confidence, sourceWeight * 0.92, label));
+            }
         });
 
-        if (compact.length >= LCST_EXPECTED_FULL_LENGTH) {
+        if (compact.length === LCST_EXPECTED_FULL_LENGTH) {
             for (let i = 0; i + LCST_EXPECTED_FULL_LENGTH <= compact.length; i++) {
                 const full = compact.slice(i, i + LCST_EXPECTED_FULL_LENGTH);
                 const top = full.slice(0, LCST_EXPECTED_TOP_LENGTH);
                 const bottom = full.slice(LCST_EXPECTED_TOP_LENGTH);
-                if (/^20\d{7}$/.test(top)) {
+                if (/^\d{9}$/.test(top)) {
                     addVote(topVotes, { value: top, correction: 0 }, confidence, sourceWeight + 0.35, label + '-full');
                     addVote(bottomVotes, { value: bottom, correction: 0 }, confidence, sourceWeight + 0.35, label + '-full');
                 }
@@ -9078,7 +9105,7 @@
     }
 
     function chooseFinalPeriod(topVotes, bottomVotes, usedPasses) {
-        const tops = rankVotes(topVotes).filter(x => /^20\d{7}$/.test(x.value));
+        const tops = rankVotes(topVotes).filter(x => /^\d{9}$/.test(x.value));
         const bottoms = rankVotes(bottomVotes).filter(x => /^\d{10}$/.test(x.value));
         if (!tops.length || !bottoms.length) {
             return {
@@ -9144,20 +9171,15 @@
         return addWhiteBorder(out, 8);
     }
 
-    function lcstTopPeriodDateValid(value) {
-        const digits = onlyDigits(value);
-        if (!/^20\d{7}$/.test(digits)) return false;
-        return !!lcstValidDateParts(
-            Number(digits.slice(0, 4)),
-            Number(digits.slice(4, 6)),
-            Number(digits.slice(6, 8))
-        );
+    function lcstTopPeriodFormatValid(value) {
+        // Kode bukan syarat tanggal. Tanggal/jam diperiksa pada jalur metadata.
+        return /^\d{9}$/.test(onlyDigits(value));
     }
 
     function lcstFastPeriodReliable(picked, minOcrConfidence) {
         if (!picked || !picked.period || !picked.top || !picked.bottom) return false;
-        if (!/^20\d{7}\d{10}$/.test(picked.period)) return false;
-        if (!lcstTopPeriodDateValid(picked.top.value)) return false;
+        if (!/^\d{19}$/.test(picked.period)) return false;
+        if (!lcstTopPeriodFormatValid(picked.top.value)) return false;
         if (picked.top.correction !== 0 || picked.bottom.correction !== 0) return false;
         const minConf = Number(minOcrConfidence) || 55;
         return (picked.top.avgConfidence || 0) >= minConf &&
@@ -9862,7 +9884,7 @@
             if (!lockedBottomValue || !picked.period || !picked.top || !picked.bottom) return false;
             if (picked.bottom.value !== lockedBottomValue) return false;
             if (picked.top.correction !== 0 || picked.bottom.correction !== 0) return false;
-            if (!/^20\d{7}$/.test(picked.top.value || '')) return false;
+            if (!/^\d{9}$/.test(picked.top.value || '')) return false;
             return (
                 (picked.top.avgConfidence || 0) >= 72 &&
                 (marker.confidence || 0) >= 64 &&
@@ -9873,7 +9895,7 @@
         // Gabungan tiga pass awal (window + atas + bawah) sering sudah cukup.
         // Nilai ini dulu dibuang sehingga fallback selalu mulai dari nol.
         const seededPicked = chooseFinalPeriod(topVotes, bottomVotes, usedPasses);
-        if (isReliable(seededPicked, false) && lcstTopPeriodDateValid(seededPicked.top.value)) {
+        if (isReliable(seededPicked, false) && lcstTopPeriodFormatValid(seededPicked.top.value)) {
             return makeReturn(seededPicked);
         }
 
@@ -10048,7 +10070,7 @@
             const requestedTarget = markerSelection && Number(markerSelection.totalOccurrences) > 1
                 ? 'Target bulatan ke-' + (Math.max(0, Number(markerSelection.ordinal) || 0) + 1) +
                     ' tidak tersedia. Paket ini dilarang memakai bulatan paket sebelumnya.'
-                : 'Dua tanda bulat belum terdeteksi.';
+                : 'Ikon putaran belum terdeteksi; kode tidak dipindai.';
             return {
                 period: '', text: '', confidence: 0, markerFound: false,
                 source: 'strict-double-marker-v55',
@@ -11221,8 +11243,8 @@
             const originalCount = state.scan.images.length;
             const packageSize = getPackageSizeFromImages(state.scan.images);
 
-            // 3/6 disusun. Jika lebih dari 6, tetap proses walaupun jumlahnya 7, 8, 10, dst.
-            if (originalCount <= LCST_MAX_SELECTED_IMAGES && (packageSize !== 3 || originalCount % 3 !== 0)) {
+            // 3–5 menjadi 3; 6 atau lebih menjadi maksimal 6 gambar.
+            if (originalCount < 3) {
                 return { changed: false, confident: false, rows: 0, reason: 'not-three-image-package' };
             }
 
