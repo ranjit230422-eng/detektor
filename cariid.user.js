@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Cari ID & Rekening HP — Bubble Find
 // @namespace    local.mobile.find
-// @version      1.3.0
+// @version      1.5.0
 // @description  Bubble kecil untuk mencari teks halaman, User ID, dan rekening di HP. Tanpa server dan tanpa OCR.
 // @match        http://*/*
 // @match        https://*/*
@@ -23,6 +23,7 @@
     button:active{background:#35527d}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #81baff}
     #bubble{position:fixed;width:44px;height:44px;min-height:44px;padding:0;border-radius:50%;background:linear-gradient(145deg,#264971,#111f35);box-shadow:0 4px 14px #0008;pointer-events:auto;touch-action:none;font:24px system-ui;user-select:none}
     #panel{position:fixed;left:10px;top:12px;width:min(350px,calc(100vw - 20px));padding:12px;background:#111d30;color:#eef5ff;border:1px solid #3d587c;border-radius:16px;box-shadow:0 10px 35px #0008;pointer-events:auto;font:14px system-ui;max-height:85vh;overflow:auto}
+    #panel-handle{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;cursor:grab;position:sticky;top:0;background:#111d30;z-index:2;min-height:44px}#panel-handle:active{cursor:grabbing}
     [hidden]{display:none!important}.row{display:flex;gap:8px;align-items:center;margin-top:9px}.title{display:flex;align-items:center;justify-content:space-between;font-weight:700}.title button{font-size:20px}
     input,textarea,select{color:#f1f5ff;background:#0a1424;border:1px solid #425b7e;border-radius:9px;padding:10px;min-width:0;font-size:16px}input,textarea{width:100%}textarea{resize:vertical;min-height:88px;line-height:1.4}select{flex:1}#status{flex:1;font-size:13px;color:#cedef6}#note{font-size:11px;color:#9eafc8;line-height:1.4;margin-top:9px}
     #checks{display:grid;gap:6px;margin-top:9px}.check{padding:8px;border-radius:8px;background:#172235;color:#9eafc8;border:1px solid #344155;overflow-wrap:anywhere}.check.yes{background:#123e2d;color:#bcffdb;border-color:#328e63;box-shadow:0 0 8px #26a86633}.hit.good{background:#27c47538;border-color:#27c475}.hit.good.current{outline-color:#27c475}
@@ -31,9 +32,9 @@
   <div id="marks"></div>
   <button id="bubble" title="Cari User ID / rekening" aria-label="Buka pencarian">⌕</button>
   <section id="panel" hidden aria-label="Cari di halaman">
-    <div class="title">CARI DI HALAMAN<button id="close" aria-label="Tutup">×</button></div>
-    <div class="row"><select id="mode" aria-label="Jenis pencarian"><option value="auto">Otomatis / sekali tempel</option><option value="text">User ID / teks</option><option value="bank">Nomor rekening</option></select></div>
-    <div class="row"><textarea id="query" rows="3" placeholder="Tempel bebas: nama, rekening, bank…" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="enter"></textarea></div>
+    <div class="title" id="panel-handle" title="Sentuh judul lalu geser"><span>⠿ CARI DI HALAMAN</span><button id="close" aria-label="Tutup">×</button></div>
+    <div class="row"><select id="mode" aria-label="Jenis pencarian"><option value="id">Cari User ID</option><option value="auto">Otomatis / sekali tempel</option><option value="text">User ID / teks</option><option value="bank">Nomor rekening</option></select></div>
+    <div class="row"><textarea id="query" rows="3" placeholder="Ketik ID, misalnya: jimmy809" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="enter"></textarea></div>
     <div class="row"><button id="search">Cari</button><button id="clear">Hapus</button></div>
     <div class="row"><span id="status" role="status" aria-live="polite">Masukkan pencarian</span><button id="prev" aria-label="Hasil sebelumnya">↑</button><button id="next" aria-label="Hasil berikutnya">↓</button></div>
     <div id="checks"></div>
@@ -41,28 +42,40 @@
   </section>`;
   const $ = id => root.getElementById(id);
   const bubble = $('bubble'), panel = $('panel'), input = $('query'), mode = $('mode');
-  let bundle = null;
+  let bundle = null, bundles = [];
   let hits = [], index = -1, serial = 0, timer, frame = 0, dirty = true, clipped = false;
   let position = {x:innerWidth-58,y:innerHeight*0.6};
   try {position = GM_getValue('bubble-position',position);} catch (_) {}
+  let panelPosition={x:10,y:10};
+  try{const saved=GM_getValue('panel-position',panelPosition);if(Number.isFinite(saved?.x)&&Number.isFinite(saved?.y))panelPosition=saved;}catch(_){}
   const viewport = () => {const v=window.visualViewport;return {x:v?.offsetLeft||0,y:v?.offsetTop||0,w:v?.width||innerWidth,h:v?.height||innerHeight};};
-  function place(){const v=viewport();position.x=Math.max(v.x+6,Math.min(position.x,v.x+v.w-50));position.y=Math.max(v.y+6,Math.min(position.y,v.y+v.h-50));bubble.style.left=position.x+'px';bubble.style.top=position.y+'px';panel.style.left=(v.x+10)+'px';panel.style.top=(v.y+10)+'px';panel.style.width=Math.min(350,v.w-20)+'px';panel.style.maxHeight=Math.max(100,v.h-20)+'px';}
+  function place(){
+    const v=viewport();position.x=Math.max(v.x+6,Math.min(position.x,v.x+v.w-50));position.y=Math.max(v.y+6,Math.min(position.y,v.y+v.h-50));
+    bubble.style.left=position.x+'px';bubble.style.top=position.y+'px';
+    const w=Math.min(350,Math.max(160,v.w-20));
+    panelPosition.x=Math.max(6,Math.min(panelPosition.x,Math.max(6,v.w-w-6)));
+    panelPosition.y=Math.max(6,Math.min(panelPosition.y,Math.max(6,v.h-130)));
+    panel.style.left=(v.x+panelPosition.x)+'px';panel.style.top=(v.y+panelPosition.y)+'px';
+    panel.style.width=w+'px';panel.style.maxHeight=Math.max(70,v.h-panelPosition.y-10)+'px';
+  }
   place();
   let drag=null, suppressClickUntil=0;
   function savePosition(){try{GM_setValue('bubble-position',position);}catch(_){}}
-  function startDrag(id,x,y){
-    drag={id,x,y,bx:position.x,by:position.y,moved:false};
+  function startDrag(id,x,y,target='bubble'){
+    const pos=target==='panel'?panelPosition:position;
+    drag={id,x,y,bx:pos.x,by:pos.y,moved:false,target};
   }
   function moveDrag(id,x,y){
     if(!drag||drag.id!==id)return;
     const dx=x-drag.x,dy=y-drag.y;
     if(Math.hypot(dx,dy)>7)drag.moved=true;
-    if(drag.moved){position={x:drag.bx+dx,y:drag.by+dy};place();}
+    if(drag.moved){const pos={x:drag.bx+dx,y:drag.by+dy};if(drag.target==='panel')panelPosition=pos;else position=pos;place();}
   }
   function endDrag(id,cancelled=false){
     if(!drag||drag.id!==id)return;
-    const moved=drag.moved;drag=null;
+    const moved=drag.moved,target=drag.target;drag=null;
     suppressClickUntil=Date.now()+700;
+    if(target==='panel'){if(moved){try{GM_setValue('panel-position',panelPosition);}catch(_){}}return;}
     if(moved)savePosition();
     else if(!cancelled)toggle();
   }
@@ -99,6 +112,26 @@
     window.addEventListener('mousemove',e=>moveDrag('mouse',e.clientX,e.clientY),true);
     window.addEventListener('mouseup',()=>endDrag('mouse'),true);
   }
+  const handle=$('panel-handle');
+  const isClose=e=>e.target.closest?.('button');
+  handle.addEventListener('contextmenu',e=>{if(!isClose(e))e.preventDefault();});
+  if(window.PointerEvent){
+    handle.addEventListener('pointerdown',e=>{
+      if(isClose(e)||!e.isPrimary||drag||(e.pointerType==='mouse'&&e.button!==0))return;
+      e.preventDefault();e.stopPropagation();startDrag(e.pointerId,e.clientX,e.clientY,'panel');
+      try{handle.setPointerCapture(e.pointerId);}catch(_){}
+    });
+    handle.addEventListener('lostpointercapture',e=>endDrag(e.pointerId,true));
+  }else{
+    handle.addEventListener('touchstart',e=>{
+      if(isClose(e)||drag||e.touches.length!==1)return;
+      const t=e.changedTouches[0];e.preventDefault();e.stopPropagation();startDrag(t.identifier,t.clientX,t.clientY,'panel');
+    },{passive:false});
+    handle.addEventListener('mousedown',e=>{
+      if(isClose(e)||drag||e.button!==0||Date.now()<suppressClickUntil)return;
+      e.preventDefault();startDrag('mouse',e.clientX,e.clientY,'panel');
+    });
+  }
   window.addEventListener('blur',()=>{if(drag)endDrag(drag.id,true);});
   bubble.addEventListener('click',e=>{
     e.preventDefault();e.stopPropagation();
@@ -107,34 +140,74 @@
   });
   function toggle(){panel.hidden=!panel.hidden;if(!panel.hidden){place();input.focus();if(input.value)search(false);}else{serial++;$('marks').replaceChildren();}}
   $('close').onclick=()=>{panel.hidden=true;serial++;$('marks').replaceChildren();};
-  function clear(){bundle=null;$('checks').replaceChildren();serial++;clearTimeout(timer);hits=[];index=-1;$('marks').replaceChildren();$('status').textContent='Masukkan pencarian';}
+  function clear(){bundle=null;bundles=[];$('checks').replaceChildren();serial++;clearTimeout(timer);hits=[];index=-1;$('marks').replaceChildren();$('status').textContent='Masukkan pencarian';}
   $('clear').onclick=()=>{input.value='';clear();input.focus();};
   mode.onchange=()=>{input.inputMode=mode.value==='bank'?'numeric':'text';input.placeholder=mode.value==='bank'?'Ketik nomor rekening…':mode.value==='auto'?'Tempel bebas: nama, rekening, bank…':'Ketik User ID atau teks…';search(false);};
   input.oninput=()=>{serial++;clearTimeout(timer);timer=setTimeout(()=>search(false),300);};
-  input.onkeydown=e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();input.blur();search(true);}if(e.key==='Escape')$('close').click();};
+  input.onkeydown=e=>{if(e.key==='Enter'&&(mode.value==='id'||e.ctrlKey||e.metaKey)){e.preventDefault();input.blur();search(true);}if(e.key==='Escape')$('close').click();};
   $('search').onclick=()=>{input.blur();search(true);};
   function status(){ renderChecks();$('status').textContent=hits.length?`${index+1} / ${hits.length}${clipped?'+':''} hasil`:'Tidak ditemukan';}
   function navigate(delta){if(dirty){search(true);return;}if(!hits.length)return;index=(index+delta+hits.length)%hits.length;reveal();}
   $('prev').onclick=()=>navigate(-1);$('next').onclick=()=>navigate(1);
-  function reveal(){const h=hits[index];if(!h)return;const el=h.el||h.range.startContainer.parentElement;el.scrollIntoView({block:'center',inline:'center',behavior:'instant'});if(h.el){try{h.el.setSelectionRange(h.start,h.end);}catch(_){}}status();schedulePaint();}
+  function reveal(){const h=hits[index];if(!h)return;const el=h.el||h.range.startContainer.parentElement;let w=el.ownerDocument.defaultView;while(w&&w!==window){try{const f=w.frameElement;if(!f)break;f.scrollIntoView({block:'center',inline:'center',behavior:'instant'});w=w.parent;}catch(_){break;}}el.scrollIntoView({block:'center',inline:'center',behavior:'instant'});if(h.el){try{h.el.setSelectionRange(h.start,h.end);}catch(_){}}status();schedulePaint();}
   function schedulePaint(){if(frame)return;frame=requestAnimationFrame(()=>{frame=0;paint();});}
-  function paint(){const marks=$('marks');marks.replaceChildren();if(panel.hidden)return;const fragment=document.createDocumentFragment();let count=0;for(let i=0;i<hits.length;i++){const h=hits[i];if(!(h.el||h.range.startContainer).isConnected)continue;const rects=h.parts?h.parts.flatMap(p=>Array.from(p.range.getClientRects())):h.el?[h.el.getBoundingClientRect()]:h.range.getClientRects();for(const r of rects){if(!r.width||!r.height||r.bottom<0||r.top>innerHeight||r.right<0||r.left>innerWidth)continue;const mark=document.createElement('div');mark.className='hit'+(h.parts?' good':'')+(i===index?' current':'');mark.style.cssText=`left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px`;fragment.append(mark);if(++count>=400)break;}if(count>=400)break;}marks.append(fragment);}
-  function visible(el){if(!el||el.closest('script,style,noscript,template,[hidden],[inert]'))return false;const s=getComputedStyle(el);return s.display!=='none'&&s.visibility!=='hidden'&&s.visibility!=='collapse'&&el.getClientRects().length>0;}
+  function paint(){const marks=$('marks');marks.replaceChildren();if(panel.hidden)return;const fragment=document.createDocumentFragment();let count=0;for(let i=0;i<hits.length;i++){const h=hits[i];if(!(h.el||h.range.startContainer).isConnected)continue;const rects=h.parts?h.parts.flatMap(p=>Array.from(p.range.getClientRects())):h.el?[h.el.getBoundingClientRect()]:h.range.getClientRects();for(const rawRect of rects){const r=topRect(rawRect,(h.el||h.range?.startContainer||h.parts?.[0]?.range.startContainer).ownerDocument);if(!r.width||!r.height||r.bottom<0||r.top>innerHeight||r.right<0||r.left>innerWidth)continue;const mark=document.createElement('div');mark.className='hit'+(h.parts?' good':'')+(i===index?' current':'');mark.style.cssText=`left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px`;fragment.append(mark);if(++count>=400)break;}if(count>=400)break;}marks.append(fragment);}
+  function visible(el){if(!el||el.closest('script,style,noscript,template,[hidden],[inert]'))return false;const s=el.ownerDocument.defaultView.getComputedStyle(el);return s.display!=='none'&&s.visibility!=='hidden'&&s.visibility!=='collapse'&&el.getClientRects().length>0;}
   // Keep inline fragments together, but never join separate table cells/blocks.
-  function block(el){while(el&&el!==document.body){const d=getComputedStyle(el).display;if(!['inline','contents'].includes(d))return el;el=el.parentElement;}return document.body;}
-  function pattern(){const raw=input.value.trim();if(!raw)return null;if(mode.value==='bank'){const digits=raw.replace(/[\s.\-]/g,'');if(!/^\d+$/.test(digits))return null;return new RegExp(digits.split('').join('[\\s.\\-]*'),'g');}return new RegExp(raw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi');}
-  async function search(jump){const token=++serial;clearTimeout(timer);hits=[];index=-1;clipped=false;$('marks').replaceChildren();if(!input.value.trim()){clear();return;}bundle=mode.value==='auto'?parseBundle(input.value):null;$('checks').replaceChildren();$('note').textContent='Mencari teks yang sudah dimuat pada halaman ini.';if(bundle){await searchBundle(token,jump);return;}const regex=pattern();if(!regex){$('status').textContent='Masukkan angka rekening';return;}$('status').textContent='Mencari…';
-    const groups=[];let group=null,owner=null,n,steps=0;
-    const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{acceptNode(node){const p=node.parentElement;return p&&!host.contains(p)&&!p.closest('textarea,select')&&visible(p)?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT;}});
-    while((n=walker.nextNode())){const b=block(n.parentElement);if(b!==owner){owner=b;group={text:'',nodes:[]};groups.push(group);}group.nodes.push({node:n,start:group.text.length});group.text+=n.data;if(++steps%600===0){await new Promise(r=>setTimeout(r,0));if(token!==serial)return;}}
+  function block(el){while(el&&el!==document.body){const d=el.ownerDocument.defaultView.getComputedStyle(el).display;if(!['inline','contents'].includes(d))return el;el=el.parentElement;}return document.body;}
+  const watchedDocuments=new WeakSet();
+  let inaccessibleFrames=0;
+  function searchDocuments(){
+    const docs=[],seen=new Set();inaccessibleFrames=0;
+    function visit(doc){
+      if(!doc?.body||seen.has(doc))return;seen.add(doc);docs.push(doc);
+      if(!watchedDocuments.has(doc)){
+        watchedDocuments.add(doc);doc.addEventListener('scroll',schedulePaint,true);
+        if(doc!==document){
+          new MutationObserver(()=>{dirty=true;if(!panel.hidden&&input.value){clearTimeout(timer);timer=setTimeout(()=>search(false),650);}}).observe(doc.body,{subtree:true,childList:true,characterData:true});
+        }
+      }
+      for(const f of doc.querySelectorAll('iframe,frame')){
+        if(!visible(f))continue;
+        try{const child=f.contentDocument;if(child)visit(child);else inaccessibleFrames++;}catch(_){inaccessibleFrames++;}
+      }
+    }
+    visit(document);return docs;
+  }
+  function topRect(rect,doc){
+    let left=rect.left,top=rect.top,width=rect.width,height=rect.height,w=doc.defaultView;
+    while(w&&w!==window){
+      try{
+        const f=w.frameElement;if(!f)break;const box=f.getBoundingClientRect();
+        const sx=f.offsetWidth?box.width/f.offsetWidth:1,sy=f.offsetHeight?box.height/f.offsetHeight:1;
+        left=box.left+(left+f.clientLeft)*sx;top=box.top+(top+f.clientTop)*sy;width*=sx;height*=sy;w=w.parent;
+      }catch(_){break;}
+    }
+    return {left,top,width,height,right:left+width,bottom:top+height};
+  }
+  function pattern(){const raw=mode.value==='id'?cleanID(input.value):input.value.trim();if(!raw)return null;if(mode.value==='bank'){const digits=raw.replace(/[\s.\-]/g,'');if(!/^\d+$/.test(digits))return null;return new RegExp(digits.split('').join('[\\s.\\-]*'),'g');}return new RegExp(raw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi');}
+  async function search(jump){const token=++serial;clearTimeout(timer);hits=[];index=-1;clipped=false;$('marks').replaceChildren();if(!input.value.trim()){clear();return;}bundles=mode.value==='auto'?parseBundles(input.value):[];bundle=bundles[0]||null;$('checks').replaceChildren();$('note').textContent='Mencari teks yang sudah dimuat pada halaman ini.';if(bundle){await searchBundle(token,jump);return;}const regex=pattern();if(!regex){$('status').textContent=mode.value==='bank'?'Masukkan angka rekening':'Masukkan User ID';return;}$('status').textContent='Mencari…';
+    const groups=[];let steps=0;const documents=searchDocuments();
+    for(const doc of documents){
+      let group=null,owner=null,n;
+      const walker=doc.createTreeWalker(doc.body,NodeFilter.SHOW_TEXT,{acceptNode(node){const p=node.parentElement;return p&&!host.contains(p)&&!p.closest('textarea,select')&&visible(p)?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT;}});
+      while((n=walker.nextNode())){
+        const b=block(n.parentElement);if(b!==owner){owner=b;group={text:'',nodes:[]};groups.push(group);}
+        group.nodes.push({node:n,start:group.text.length});group.text+=n.data;
+        if(++steps%600===0){await new Promise(r=>setTimeout(r,0));if(token!==serial)return;}
+      }
+    }
     const found=[];
-    for(const g of groups){regex.lastIndex=0;let m;while((m=regex.exec(g.text))){const end=m.index+m[0].length;const first=g.nodes.find(x=>x.start+x.node.length>m.index);const last=g.nodes.find(x=>x.start+x.node.length>=end);if(!first||!last)continue;const range=document.createRange();try{range.setStart(first.node,m.index-first.start);range.setEnd(last.node,end-last.start);if(range.getClientRects().length)found.push({range});}catch(_){}if(found.length>=2000){clipped=true;break;}}if(clipped)break;if(++steps%250===0){await new Promise(r=>setTimeout(r,0));if(token!==serial)return;}}
-    if(!clipped)for(const el of document.querySelectorAll('input:not([type]),input[type="text"],input[type="search"],input[type="tel"],input[type="number"],textarea')){if(!visible(el))continue;regex.lastIndex=0;let m;while((m=regex.exec(el.value))){found.push({el,start:m.index,end:m.index+m[0].length});if(found.length>=2000){clipped=true;break;}}if(clipped)break;}
-    if(token!==serial)return;hits=found;index=hits.length?0:-1;dirty=false;status();if(jump&&hits.length)reveal();else schedulePaint();
+    for(const g of groups){regex.lastIndex=0;let m;while((m=regex.exec(g.text))){const end=m.index+m[0].length;const first=g.nodes.find(x=>x.start+x.node.length>m.index);const last=g.nodes.find(x=>x.start+x.node.length>=end);if(!first||!last)continue;const range=first.node.ownerDocument.createRange();try{range.setStart(first.node,m.index-first.start);range.setEnd(last.node,end-last.start);if(range.getClientRects().length)found.push({range});}catch(_){}if(found.length>=2000){clipped=true;break;}}if(clipped)break;if(++steps%250===0){await new Promise(r=>setTimeout(r,0));if(token!==serial)return;}}
+    if(!clipped)for(const el of documents.flatMap(doc=>Array.from(doc.querySelectorAll('input:not([type]),input[type="text"],input[type="search"],input[type="tel"],input[type="number"],textarea')))){if(!visible(el))continue;regex.lastIndex=0;let m;while((m=regex.exec(el.value))){found.push({el,start:m.index,end:m.index+m[0].length});if(found.length>=2000){clipped=true;break;}}if(clipped)break;}
+    if(token!==serial)return;hits=found;index=hits.length?0:-1;dirty=false;status();if(!hits.length)$('note').textContent=inaccessibleFrames?'Ada frame yang tidak dapat diakses. Buka tabel langsung di tab baru lalu cari lagi.':'ID tidak ditemukan pada teks yang sudah dimuat. Periksa halaman/halaman berikutnya pada tabel.';if(jump&&hits.length)reveal();else schedulePaint();
   }
 
   // A zero in a bank name remains a zero: 0vo is NOT silently changed to OVO.
   // PURE_HELPERS_START
+  function cleanID(value){
+    return value.normalize('NFKC').trim().replace(/^(?:user\s*id|userid|username|id\s*user|id)\s*[:=]\s*/i,'').trim();
+  }
   function parseBundle(value) {
     const text=value.normalize('NFKC').replace(/\r/g,'').trim();
     if(!text)return null;
@@ -206,16 +279,72 @@
     }
     return null;
   }
+  function parseBundles(value){
+    const text=value.normalize('NFKC').trim();
+    const markers=Array.from(text.matchAll(/\b(?:akun|rekening|data)\s+(?:yang\s+)?(?:terdaftar|baru|lama|pengganti)\s*[:=]?\s*/gi));
+    const chunks=[];
+    if(markers.length){
+      const prefix=text.slice(0,markers[0].index).trim();
+      if(/\d{5}/.test(prefix))chunks.push({text:prefix,label:'Data awal'});
+      markers.forEach((m,i)=>chunks.push({label:m[0].replace(/[:=\s]+$/g,''),text:text.slice(m.index+m[0].length,markers[i+1]?.index??text.length)}));
+    }else{
+      const lines=text.split(/\n|;/).filter(t=>t.trim());
+      const numbered=lines.filter(t=>/\d{5}/.test(t));
+      if(numbered.length>1)numbered.forEach(t=>chunks.push({text:t,label:'Akun '+(chunks.length+1)}));
+      else chunks.push({text,label:'Akun 1'});
+    }
+    const results=[];
+    for(const chunk of chunks){
+      const raw=chunk.text.replace(/^[\s.;|]+|[\s.;|]+$/g,'');
+      const numeric=Array.from(raw.matchAll(/(?<![\p{L}\p{N}])\d(?:[\d .-]*\d)?(?![\p{L}\p{N}])/gu))
+        .map(m=>m[0].replace(/\D/g,'')).filter(n=>n.length>=5&&n.length<=24);
+      const numbers=[...new Set(numeric)];
+      if(numbers.length>1){
+        // Unclear association: search each number without borrowing a name/bank.
+        numbers.forEach((number,i)=>results.push({bank:'',name:'',number,label:chunk.label+' / nomor '+(i+1)}));continue;
+      }
+      let parsed=parseBundle(raw);
+      // Slash/pipe/comma-separated records, including name/number/bank.
+      const parts=raw.replace(/\ba\s*\/\s*n\b/gi,'Atas nama').split(/[\/|,]/).map(t=>t.trim().replace(/\.+$/,'')).filter(Boolean);
+      if(parts.length>1&&numbers.length===1){
+        const number=numbers[0];
+        const bankRE=/^(?:BCA|BRI|BNI|BSI|MANDIRI|CIMB(?:\s+NIAGA)?|PERMATA|DANAMON|BTN|MAYBANK|OCBC|PANIN|MEGA|JAGO|SEABANK|NEOBANK|DANA|OVO|0VO|GOPAY|SHOPEEPAY|LINKAJA)$/i;
+        const bank=parts.find(p=>bankRE.test(p))||parsed?.bank||'';
+        const possibleNames=parts.filter(p=>!bankRE.test(p)&&!/[0-9]/.test(p)&&/^[\p{L} .'-]+$/u.test(p)&&!/^\s*(?:bank|bqnk|bnk)\b/i.test(p));
+        let name=parsed?.name||'';
+        if(possibleNames.length===1)name=possibleNames[0].replace(/^(?:atas\s*nama|nama\s*(?:rek(?:ening)?)?|nm)\s*[:.-]?\s*/i,'').trim();
+        parsed={bank,number,name};
+      }
+      if(parsed)results.push({...parsed,label:chunk.label});
+    }
+    return results;
+  }
+  function selectAccountHits(candidates,queries){
+    const selected=[];
+    for(const query of queries){
+      const own=candidates.filter(h=>h.query===query);
+      const anchor=own.some(h=>h.matches.number)?'number':own.some(h=>h.matches.name)?'name':'bank';
+      selected.push(...own.filter(h=>h.matches[anchor]));
+    }
+    return selected;
+  }
   // PURE_HELPERS_END
   function renderChecks(){
-    const box=$('checks');box.replaceChildren();if(!bundle)return;
-    const hit=hits[index];
-    for(const [key,label] of [['bank','Bank / dompet'],['number','Rekening'],['name','Nama']]){
-      if(!bundle[key])continue;
-      const ok=!!hit?.matches[key],el=document.createElement('div');el.className='check'+(ok?' yes':'');
-      el.textContent=`${ok?'✓':'○'} ${label}: ${bundle[key]} — ${ok?'cocok':'tidak ditemukan pada data ini'}`;box.append(el);
+    const box=$('checks');box.replaceChildren();if(!bundles.length)return;
+    const hit=hits[index],current=hit?.query||bundles[0];
+    if(bundles.length>1)for(const q of bundles){
+      const matching=hits.filter(h=>h.query===q),numberFound=matching.some(h=>h.matches.number);
+      const row=document.createElement('div');row.className='check'+(numberFound?' yes':'');
+      row.textContent=`${q.label}: ${q.number||q.name||q.bank} — ${numberFound?'nomor ditemukan':matching.length?'bagian lain cocok; nomor belum ditemukan':'tidak ditemukan'}`;
+      box.append(row);
     }
-    $('note').textContent='Cocok dengan teks halaman, bukan verifikasi bank. Status berlaku untuk satu baris/data yang dipilih. 0 dan O dianggap berbeda.';
+    const heading=document.createElement('div');heading.textContent='Detail: '+current.label;box.append(heading);
+    for(const [key,label] of [['bank','Bank / dompet'],['number','Rekening'],['name','Nama']]){
+      if(!current[key])continue;
+      const ok=!!hit?.matches[key],el=document.createElement('div');el.className='check'+(ok?' yes':'');
+      el.textContent=`${ok?'✓':'○'} ${label}: ${current[key]} — ${ok?'cocok':'tidak ditemukan pada data ini'}`;box.append(el);
+    }
+    $('note').textContent='Tiap akun dicari terpisah. Hijau hanya untuk bagian yang cocok pada data yang dipilih. Gunakan ↑ ↓ untuk berpindah hasil.';
   }
   function recordOwner(el){
     return el.closest('tr,[role="row"],li,article,[data-record-id]')||block(el);
@@ -244,18 +373,18 @@
     const candidates=[];
     for(const g of records.values()){
       if(g.text.length>5000)continue;
-      const matches={},parts=[];
-      for(const key of ['bank','number','name']){
-        const match=fieldMatch(g.text,bundle[key],key);
-        if(match){const range=makeRange(g,match);if(range&&range.getClientRects().length){matches[key]=true;parts.push({range,key});}}
+      for(const query of bundles){
+        const matches={},parts=[];
+        for(const key of ['bank','number','name']){
+          const match=fieldMatch(g.text,query[key],key);
+          if(match){const range=makeRange(g,match);if(range&&range.getClientRects().length){matches[key]=true;parts.push({range,key});}}
+        }
+        if(parts.length)candidates.push({el:g.el,parts,matches,query});
       }
-      if(parts.length)candidates.push({el:g.el,parts,matches});
       if(++steps%300===0){await new Promise(r=>setTimeout(r,0));if(token!==serial)return;}
     }
     if(token!==serial)return;
-    // Prefer account-number records. If absent, try the full name, then bank.
-    const anchor=candidates.some(h=>h.matches.number)?'number':candidates.some(h=>h.matches.name)?'name':'bank';
-    const selected=candidates.filter(h=>h.matches[anchor]);clipped=selected.length>2000;
+    const selected=selectAccountHits(candidates,bundles);clipped=selected.length>2000;
     hits=selected.slice(0,2000);index=hits.length?0:-1;dirty=false;status();
     if(jump&&hits.length)reveal();else schedulePaint();
   }
