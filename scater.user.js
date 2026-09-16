@@ -1641,7 +1641,7 @@
                 background-color:#26030d!important;
                 background-image:
                     linear-gradient(145deg,rgba(37,2,12,.52) 0%,rgba(78,5,20,.40) 48%,rgba(38,3,13,.50) 100%),
-                    url("https://line32762.com/assets/img/ei/logo.png?v=y5h2w2cmxvdvv6zrc0iq"),
+                    url("https://line32556.com/assets/img/ei/logo.png"),
                     radial-gradient(circle at 7% 2%,rgba(255,197,61,.34),transparent 31%),
                     radial-gradient(circle at 94% 5%,rgba(255,45,68,.32),transparent 30%),
                     radial-gradient(circle at 50% 105%,rgba(255,165,49,.18),transparent 38%),
