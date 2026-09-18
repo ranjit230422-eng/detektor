@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Cari ID & Rekening HP â€” Bubble Find
 // @namespace    local.mobile.find
-// @version      1.9.1
+// @version      2.0.0
 // @description  Bubble kecil untuk mencari teks halaman, User ID, dan rekening di HP. Tanpa server dan tanpa OCR.
 // @match        http://*/*
 // @match        https://*/*
@@ -33,16 +33,17 @@
     .account-card{margin-top:12px;padding:10px;border:1px solid #3d587c;border-radius:12px;background:#0c1729}.account-card strong{font-size:12px;color:#b6d6ff}.field-row{display:flex;gap:6px;align-items:center}.field-row input{flex:1;width:0;font-size:14px}.field-row button{padding:8px;font-size:12px;flex-shrink:0}.account-card .hint{margin-bottom:0}
     #panel{background:linear-gradient(155deg,#14253b,#0c1423);border-color:#38577a;box-shadow:0 16px 45px #0009;padding:14px;border-radius:20px}#panel-handle{background:#142338;letter-spacing:.6px;font-size:12px;border-bottom:1px solid #2b425e;padding-bottom:7px}#query{min-height:100px;background:#080f1d;border-color:#355676}#search{flex:1;background:linear-gradient(145deg,#294d77,#1a3352);font-weight:700}#checks{gap:10px}.check{background:#111e30;border-radius:12px;padding:12px;color:#c0cee1}.check.yes{background:linear-gradient(130deg,#123e30,#112c26);border-color:#3ea97a;color:#d4ffe8}.match-title{font-size:11px;color:#9fb6d0;margin-bottom:6px;letter-spacing:.5px}.match-value{font-size:15px;font-weight:700;overflow-wrap:anywhere}.match-bottom{display:flex;align-items:center;justify-content:space-between;gap:7px;margin-top:8px;font-size:11px}.match-bottom button{min-height:32px;padding:5px 10px;font-size:11px}.match-summary{padding:10px;border-radius:10px;background:#1d3048;font-size:12px;line-height:1.5;color:#deebff}#status{font-weight:600}#tidy summary{color:#b8cde6;font-size:12px}
     #bubble{display:grid;place-items:center;color:#d2e8ff;border-color:#51769d}#panel{padding:14px;background:linear-gradient(150deg,#16263b,#0b1220 65%);border:1px solid #3b5471}#panel-handle{background:#132136;min-height:44px}#panel-handle span{font-size:12px;font-weight:800}#query{min-height:84px;font-size:15px;line-height:1.55}#checks{gap:8px}.result-choices{display:flex;gap:6px;overflow-x:auto;padding:3px 0 6px;max-width:100%}.result-choice{flex:0 0 auto;min-height:38px;font-size:11px;border-radius:9px;padding:7px 10px;background:#142238}.result-choice.active{background:#284565;border-color:#91b9e1}.result-choice small{display:block;margin-top:2px;color:#b3c6dc}.result-heading{border:1px solid #41648a;padding:12px;border-radius:12px;background:linear-gradient(120deg,#203b59,#15283e)}.result-heading strong{display:block;font-size:16px;color:#eff7ff;overflow-wrap:anywhere}.result-heading small{display:block;font-size:11px;color:#aabed6;margin-top:5px}.result-heading.good{border-color:#378566;background:linear-gradient(120deg,#173f32,#142a29)}.check{padding:11px 12px;border-color:#2f425b}.match-title{font-size:10px;letter-spacing:1px}.match-value{font-size:16px}.match-bottom{margin-top:7px}.match-bottom button{border-color:#415b78;background:#243c57;min-height:34px}.check.yes .match-bottom button{border-color:#378163;background:#1d4d3a}#note{line-height:1.6}#tidy{border-color:#2d425e}#prev,#next{min-height:36px;min-width:38px}
+    #native-preview{margin-top:10px;background:#101e32;border:1px solid #365577;border-radius:12px;padding:11px;font-size:12px;line-height:1.6;overflow-wrap:anywhere}#native-preview button{margin:6px 6px 0 0;font-size:12px;min-height:36px}#native-preview strong{color:#d5e9ff}#native-preview .native-value{padding:7px 0;font-size:17px;font-weight:700;color:#d4ffe8}
   </style>
   <div id="marks"></div>
   <button id="bubble" title="Cari User ID / rekening" aria-label="Buka pencarian"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button>
   <section id="panel" hidden aria-label="Cari di halaman">
     <div class="title" id="panel-handle" title="Sentuh judul lalu geser"><span>COCOKKAN DATA ADMIN</span><button id="close" aria-label="Tutup">Ã—</button></div>
-    <div class="row"><select id="mode" aria-label="Jenis pencarian"><option value="auto">Sekali tempel chat â€” cari semua</option><option value="id">Cari User ID</option><option value="name">Nama rekening</option><option value="text">User ID / teks</option><option value="bank">Nomor rekening</option></select></div>
+    <div class="row"><select id="mode" aria-label="Jenis pencarian"><option value="auto">Sekali tempel chat â€” cari semua</option><option value="admin_id">Cari User ID di admin (otomatis)</option><option value="admin_bank">Cari nomor rekening di admin (otomatis)</option><option value="id">Ctrl F â€” User ID di halaman</option><option value="name">Nama rekening</option><option value="text">Ctrl F â€” teks di halaman</option><option value="bank">Nomor rekening</option></select></div>
     <div class="row"><textarea id="query" rows="3" placeholder="Tempel chat: nama, nomor rekening, bank / e-walletâ€¦" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="enter"></textarea></div>
     <div class="row"><button id="search">Cari semua</button><button id="clear">Hapus</button></div>
     <div class="row"><span id="status" role="status" aria-live="polite">Masukkan pencarian</span><button id="prev" aria-label="Hasil sebelumnya">â†‘</button><button id="next" aria-label="Hasil berikutnya">â†“</button></div>
-    <div id="checks"></div>
+    <div id="native-preview" hidden></div><div id="checks"></div>
     <div id="note">Mencari teks yang sudah dimuat pada halaman ini.</div>
     <details id="tidy">
       <summary>âœ¦ RAPIKAN &amp; SALIN</summary>
@@ -166,13 +167,12 @@
   });
   function toggle(){panel.hidden=!panel.hidden;if(!panel.hidden){place();input.focus();if(input.value)search(false);}else{serial++;$('marks').replaceChildren();}}
   $('close').onclick=()=>{panel.hidden=true;serial++;$('marks').replaceChildren();};
-  function clear(){bundle=null;bundles=[];$('checks').replaceChildren();serial++;clearTimeout(timer);hits=[];index=-1;$('marks').replaceChildren();$('status').textContent='Masukkan pencarian';}
+  function clear(){$('native-preview').hidden=true;$('native-preview').replaceChildren();bundle=null;bundles=[];$('checks').replaceChildren();serial++;clearTimeout(timer);hits=[];index=-1;$('marks').replaceChildren();$('status').textContent='Masukkan pencarian';}
   $('clear').onclick=()=>{input.value='';clear();input.focus();};
-  mode.onchange=()=>{input.inputMode=mode.value==='bank'?'numeric':'text';input.placeholder=mode.value==='bank'?'Ketik nomor rekeningâ€¦':mode.value==='name'?'Ketik nama atau tempel data rekeningâ€¦':mode.value==='auto'?'Tempel bebas: nama, rekening, bankâ€¦':'Ketik User ID atau teksâ€¦';search(false);};
-  input.addEventListener('paste',()=>{mode.value='auto';input.inputMode='text';});
+  mode.onchange=()=>{input.inputMode='text';input.placeholder=mode.value==='admin_id'?'Tempel chat: User ID / username / user nameâ€¦':mode.value==='admin_bank'?'Tempel chat yang memuat nomor rekeningâ€¦':mode.value==='bank'?'Ketik nomor rekeningâ€¦':mode.value==='name'?'Ketik nama atau tempel data rekeningâ€¦':mode.value==='auto'?'Tempel bebas: nama, rekening, bankâ€¦':'Ketik User ID atau teksâ€¦';$('search').textContent=isNativeMode()?'Cari di admin':'Cari';search(false);};
   input.oninput=()=>{serial++;clearTimeout(timer);timer=setTimeout(()=>search(false),300);};
-  input.onkeydown=e=>{if(e.key==='Enter'&&(mode.value==='id'||e.ctrlKey||e.metaKey)){e.preventDefault();input.blur();search(true);}if(e.key==='Escape')$('close').click();};
-  $('search').onclick=()=>{input.blur();search(true);};
+  input.onkeydown=e=>{if(e.key==='Enter'&&(isNativeMode()||mode.value==='id'||e.ctrlKey||e.metaKey)&&!e.shiftKey){e.preventDefault();input.blur();if(isNativeMode())runNativeSearch();else search(true);}if(e.key==='Escape')$('close').click();};
+  $('search').onclick=()=>{input.blur();if(isNativeMode())runNativeSearch();else search(true);};
   function status(){ renderChecks();$('status').textContent=hits.length?`${index+1} / ${hits.length}${clipped?'+':''} hasil`:'Tidak ditemukan';}
   function navigate(delta){if(dirty){search(true);return;}if(!hits.length)return;index=(index+delta+hits.length)%hits.length;reveal();}
   $('prev').onclick=()=>navigate(-1);$('next').onclick=()=>navigate(1);
@@ -212,8 +212,8 @@
     }
     return {left,top,width,height,right:left+width,bottom:top+height};
   }
-  function pattern(){if(mode.value==='name')return namePattern(nameQuery(input.value));const raw=(mode.value==='id'||mode.value==='auto')?cleanID(input.value):input.value.trim();if(!raw)return null;if(mode.value==='bank'){const digits=raw.replace(/[\s.\-]/g,'');if(!/^\d+$/.test(digits))return null;return new RegExp(digits.split('').join('[\\s.\\-]*'),'g');}return new RegExp(raw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi');}
-  async function search(jump){const token=++serial;clearTimeout(timer);hits=[];index=-1;clipped=false;$('marks').replaceChildren();if(!input.value.trim()){clear();return;}bundles=mode.value==='auto'?extractAccounts(input.value):[];if(mode.value==='auto'&&!bundles.length)bundles=[{label:'Chat ditempel',raw:input.value,name:'',number:'',bank:''}];if(mode.value==='auto'&&/^[a-z_][a-z0-9_]*[0-9][a-z0-9_]*$/i.test(cleanID(input.value))&&!bundles.some(q=>q.name||q.number||q.bank))bundles=[];bundle=bundles[0]||null;$('checks').replaceChildren();$('note').textContent='Mencari teks yang sudah dimuat pada halaman ini.';if(bundle){await searchBundle(token,jump);return;}const regex=pattern();if(!regex){$('status').textContent=mode.value==='bank'?'Masukkan angka rekening':mode.value==='name'?'Masukkan nama rekening yang jelas':'Masukkan User ID';return;}$('status').textContent='Mencariâ€¦';
+  function pattern(){if(mode.value==='name')return namePattern(nameQuery(input.value));const raw=(mode.value==='id'||mode.value==='auto')?cleanID(input.value):input.value.trim();if(!raw)return null;if(mode.value==='bank'){const options=extractSearchValues(input.value,'bank');if(options.length!==1)return null;const digits=options[0];return new RegExp(digits.split('').join('[\\s.\\-]*'),'g');}return new RegExp(raw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi');}
+  async function search(jump){if(isNativeMode()){serial++;clearTimeout(timer);hits=[];index=-1;bundle=null;bundles=[];$('checks').replaceChildren();$('marks').replaceChildren();previewNative();return;}$('native-preview').hidden=true;const token=++serial;clearTimeout(timer);hits=[];index=-1;clipped=false;$('marks').replaceChildren();if(!input.value.trim()){clear();return;}bundles=mode.value==='auto'?extractAccounts(input.value):[];if(mode.value==='auto'&&!bundles.length)bundles=[{label:'Chat ditempel',raw:input.value,name:'',number:'',bank:''}];if(mode.value==='auto'&&/^[a-z_][a-z0-9_]*[0-9][a-z0-9_]*$/i.test(cleanID(input.value))&&!bundles.some(q=>q.name||q.number||q.bank))bundles=[];bundle=bundles[0]||null;$('checks').replaceChildren();$('note').textContent='Mencari teks yang sudah dimuat pada halaman ini.';if(bundle){await searchBundle(token,jump);return;}const regex=pattern();if(!regex){$('status').textContent=mode.value==='bank'?'Masukkan angka rekening':mode.value==='name'?'Masukkan nama rekening yang jelas':'Masukkan User ID';return;}$('status').textContent='Mencariâ€¦';
     const groups=[];let steps=0;const documents=searchDocuments();
     for(const doc of documents){
       let group=null,owner=null,n;
@@ -232,9 +232,7 @@
 
   // A zero in a bank name remains a zero: 0vo is NOT silently changed to OVO.
   // PURE_HELPERS_START
-  function cleanID(value){
-    return value.normalize('NFKC').trim().replace(/^(?:user\s*id|userid|username|id\s*user|id)\s*[:=]\s*/i,'').trim();
-  }
+  function cleanID(value){const candidates=extractSearchValues(value,'id');return candidates.length===1?candidates[0]:String(value).normalize('NFKC').trim();}
   function parseBundle(value) {
     const text=value.normalize('NFKC').replace(/\r/g,'').trim();
     if(!text)return null;
@@ -684,6 +682,122 @@
     }else{tidyMessage('Salin otomatis diblokir. Tekan lama hasil yang terpilih, lalu pilih Salin.');}
   };
 
+
+  // NATIVE_PURE_START
+  function extractSearchValues(value,kind){
+    const text=String(value).normalize('NFKC').replace(/[\u200B\u2060\uFEFF]/g,'').trim();
+    const unique=values=>[...new Set(values)];
+    if(kind==='id'){
+      const label=/\b(?:user\s*id|user\s*name|id\s*user)\b\s*(?:(?:nya|adalah|yaitu)\s*)?(?:[:=\-â€“>]+\s*)?["'`*]*\s*([a-z0-9_][a-z0-9_.@\-]*)/gi;
+      const labelled=Array.from(text.matchAll(label)).map(m=>m[1].replace(/[.,;:]+$/g,''))
+        .filter(v=>!['nama','bank','rekening','norek','username','userid','user','id','saya','nya','adalah','yaitu'].includes(v.toLowerCase()));
+      if(labelled.length)return unique(labelled);
+      const bare=text.replace(/^["'`*]+|["'`*]+$/g,'');
+      return /^[a-z0-9_][a-z0-9_.@\-]*$/i.test(bare)?[bare]:[];
+    }
+    const result=[];
+    const labelled=/\b(?:nomor\s*(?:rekening|rek)|no\.?\s*(?:rekening|rek)|norek|rekening|rek|account\s*(?:number|no))\b\s*(?:nya\s*)?[:=\-]*\s*(\d[\d \t.\-â€â€‘â€“â€”]*\d|\d)/gi;
+    for(const m of text.matchAll(labelled)){const n=m[1].replace(/\D/g,'');if(n.length>=5&&n.length<=30)result.push(n);}
+    if(result.length)return unique(result);
+    for(const part of text.split(/[\n/,;|]+/)){
+      for(const m of part.matchAll(/(?<![\p{L}\p{N}_])\d[\d \t.\-â€â€‘â€“â€”]*\d(?![\p{L}\p{N}_])/gu)){
+        // Ignore obvious date strings instead of turning dates into accounts.
+        if(/^\d{1,4}[-.]\d{1,2}[-.]\d{1,4}$/.test(m[0]))continue;
+        const n=m[0].replace(/\D/g,'');if(n.length>=5&&n.length<=30)result.push(n);
+      }
+    }
+    return unique(result);
+  }
+  function nativeFieldKind(value){
+    const t=String(value).normalize('NFKC').toLowerCase().replace(/[^a-z0-9]/g,'');
+    if(/^(?:user(?:id|name)|iduser|usernamefilter|searchuser(?:id|name)|txtuser(?:id|name)|cariuser(?:id|name))$/.test(t))return 'id';
+    if(/^(?:namarekening|namarek|accountname|accname|bankaccname|bankaccountname|banknameholder|accountholder|txtnamarekening)$/.test(t))return 'name';
+    if(/^(?:nomorrekening|norekening|norek|nomorrek|norekbank|rekening|rek|accountnumber|accountno|accno|bankaccount|bankacc|bankaccno|bankaccountnumber|bankaccountno|txtnorek|searchnorek)$/.test(t))return 'bank';
+    return '';
+  }
+  // NATIVE_PURE_END
+  function isNativeMode(){return mode.value==='admin_id'||mode.value==='admin_bank';}
+  function nativeAllowed(){return location.hostname==='agwl2.admitoto.com'&&location.pathname==='/agentplayerlist.php';}
+  function previewNative(){
+    const box=$('native-preview');box.hidden=false;box.replaceChildren();
+    const kind=mode.value==='admin_id'?'id':'bank',values=extractSearchValues(input.value,kind);
+    const title=document.createElement('strong');title.textContent=kind==='id'?'USER ID YANG AKAN DICARI':'NOMOR REKENING YANG AKAN DICARI';box.append(title);
+    if(!nativeAllowed()){$('status').textContent='Buka halaman daftar pemain admin';box.append(document.createTextNode(' â€” Fitur ini khusus agwl2.admitoto.com/agentplayerlist.php.'));return;}
+    if(values.length===1){const v=document.createElement('div');v.className='native-value';v.textContent=values[0];box.append(v);box.append(document.createTextNode('Tekan Cari di admin untuk mengisi kolom dan menjalankan pencarian.'));$('status').textContent='Siap mencari di admin';}
+    else if(values.length>1){box.append(document.createElement('br'));box.append(document.createTextNode('Ada beberapa data. Pilih yang ingin dicari:'));values.forEach(value=>{const b=document.createElement('button');b.textContent=value;b.onclick=()=>runNativeSearch(value);box.append(b);});$('status').textContent='Pilih satu data';}
+    else{$('status').textContent=input.value.trim()?'Data belum terbaca':'Tempel data terlebih dahulu';box.append(document.createElement('br'));box.append(document.createTextNode(kind==='id'?'Contoh: username: kohbing007. Bisa juga tempel ID saja.':'Contoh: nomor rekening: 0882-2536-4576. Bisa juga tempel nomor saja.'));}
+    $('note').textContent='Pilihan pencarian tetap. Nama rekening dan Ctrl F tersedia di daftar pilihan atas.';
+  }
+  function nativeInputs(scope){return Array.from(scope.querySelectorAll('input:not([type]),input[type="text"],input[type="search"],input[type="tel"],input[type="number"]')).filter(el=>!el.readOnly&&visible(el));}
+  function nativeLabels(field){
+    const labels=[field.name,field.id,field.getAttribute('aria-label'),field.placeholder].filter(Boolean).map(text=>({text,weight:6}));
+    for(const label of field.labels||[])labels.push({text:label.textContent,weight:12});
+    const ref=field.getAttribute('aria-labelledby');if(ref)for(const id of ref.split(/\s+/)){const el=field.ownerDocument.getElementById(id);if(el)labels.push({text:el.textContent,weight:12});}
+    const cell=field.closest('td,th');
+    if(cell){const prev=cell.previousElementSibling;if(prev&&!nativeInputs(prev).length)labels.push({text:prev.textContent,weight:10});}
+    const parent=field.parentElement;
+    if(parent){const prev=field.previousElementSibling;if(prev&&!nativeInputs(prev).length)labels.push({text:prev.textContent,weight:10});const direct=Array.from(parent.childNodes).filter(n=>n.nodeType===3).map(n=>n.textContent).join(' ');labels.push({text:direct,weight:8});}
+    return labels;
+  }
+  function resolveNativeField(doc,kind){
+    const ranked=nativeInputs(doc).map(el=>({el,score:Math.max(0,...nativeLabels(el).map(l=>nativeFieldKind(l.text)===kind?l.weight:0))})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
+    if(!ranked.length)return null;
+    if(ranked.length>1&&ranked[0].score===ranked[1].score)return null;
+    return ranked[0].el;
+  }
+  function nativeToggleKind(el){
+    const labels=[el.name,el.id,...Array.from(el.labels||[]).map(l=>l.textContent)];
+    const cell=el.closest('td,th,label');if(cell)labels.push(cell.textContent);
+    const sibling=el.nextSibling;if(sibling?.nodeType===3)labels.push(sibling.textContent);
+    return labels.map(nativeFieldKind).find(Boolean)||'';
+  }
+  function setNativeValue(field,value){
+    const w=field.ownerDocument.defaultView;
+    const setter=Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype,'value')?.set;
+    if(setter)setter.call(field,value);else field.value=value;
+    field.dispatchEvent(new w.Event('input',{bubbles:true}));field.dispatchEvent(new w.Event('change',{bubbles:true}));
+  }
+  let nativeBusy=false;
+  function runNativeSearch(chosen){
+    if(nativeBusy)return;
+    clearTimeout(timer);serial++;$('marks').replaceChildren();$('checks').replaceChildren();
+    if(!nativeAllowed()){previewNative();return;}
+    const kind=mode.value==='admin_id'?'id':'bank',values=extractSearchValues(input.value,kind);
+    const value=chosen&&values.includes(chosen)?chosen:values.length===1?values[0]:'';
+    if(!value){previewNative();return;}
+    const candidates=searchDocuments().map(doc=>({doc,field:resolveNativeField(doc,kind)})).filter(x=>x.field);
+    if(candidates.length!==1){previewNative();$('status').textContent='Kolom admin belum dapat dipastikan';$('note').textContent='Kolom tidak diisi karena labelnya belum dikenali atau ada lebih dari satu kolom. Kirim HTML formulir pencarian agar pemetaannya dapat disesuaikan.';return;}
+    const {doc,field}=candidates[0],form=field.form;
+    if(form){let url;try{url=new URL(form.action||doc.URL,doc.URL);}catch(_){return;}if(url.origin!==location.origin||url.pathname!=='/agentplayerlist.php'){$('status').textContent='Formulir bukan pencarian daftar pemain';return;}}
+    const scope=form||doc;
+    const buttons=Array.from(scope.querySelectorAll('button,input[type="submit"],input[type="button"],a[onclick]')).filter(el=>visible(el)&&!el.disabled&&/^(?:cari|search)$/i.test((el.tagName==='INPUT'?el.value:el.textContent).trim()));
+    if(buttons.length!==1){$('status').textContent='Tombol Cari admin belum dapat dipastikan';$('note').textContent='Pencarian belum dikirim karena tombol Cari tidak ditemukan atau ada beberapa tombol dengan label sama.';return;}
+    nativeBusy=true;
+    try{
+      // Clear only the companion identity filters, never unrelated form values.
+      for(const other of ['id','name','bank']){const old=resolveNativeField(doc,other);if(old&&old!==field&&old.form===form)setNativeValue(old,'');}
+      for(const box of scope.querySelectorAll('input[type="checkbox"]')){
+        const k=nativeToggleKind(box);if(!['id','name','bank'].includes(k)||box.disabled)continue;
+        const checked=k===kind;if(box.checked!==checked)box.click();
+      }
+      if(field.disabled||field.readOnly)throw new Error('Kolom pencarian tidak aktif.');
+      setNativeValue(field,value);
+      if(field.value!==value)throw new Error('Nilai pada kolom admin berubah. Pencarian dibatalkan.');
+      $('status').textContent='Menjalankan pencarian adminâ€¦';
+      try{sessionStorage.setItem('mobile-find-admin-pending',JSON.stringify({time:Date.now(),mode:mode.value,value}));}catch(_){}
+      // Click the native search control once; no synthetic Enter or repeated submit.
+      buttons[0].click();
+      $('status').textContent='Pencarian dikirim: '+value;
+    }catch(error){$('status').textContent=error.message||'Pencarian admin gagal.';}
+    finally{setTimeout(()=>{nativeBusy=false;},1200);}
+  }
+  function restoreNativeSearch(){
+    if(!nativeAllowed())return;
+    try{const raw=sessionStorage.getItem('mobile-find-admin-pending');if(!raw)return;sessionStorage.removeItem('mobile-find-admin-pending');const saved=JSON.parse(raw);if(Date.now()-saved.time>90000||!['admin_id','admin_bank'].includes(saved.mode)||typeof saved.value!=='string')return;
+      input.value=saved.value;mode.value=saved.mode;panel.hidden=false;place();$('search').textContent='Cari di admin';previewNative();$('status').textContent='Hasil pencarian admin: '+saved.value;
+    }catch(_){}
+  }
+
   const observer=new MutationObserver(records=>{if(!records.some(r=>!host.contains(r.target)))return;dirty=true;if(!panel.hidden&&input.value){clearTimeout(timer);timer=setTimeout(()=>search(false),650);}});
   observer.observe(document.body,{subtree:true,childList:true,characterData:true});
   document.addEventListener('input',e=>{if(e.target===host)return;dirty=true;if(!panel.hidden&&input.value){clearTimeout(timer);timer=setTimeout(()=>search(false),400);}},true);
@@ -691,4 +805,5 @@
   window.addEventListener('resize',()=>{place();schedulePaint();});
   window.visualViewport?.addEventListener('resize',()=>{place();schedulePaint();});
   window.visualViewport?.addEventListener('scroll',()=>{place();schedulePaint();});
+  restoreNativeSearch();
 })();
