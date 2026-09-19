@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Cari ID & Rekening HP â€” Bubble Find
 // @namespace    local.mobile.find
-// @version      2.0.0
+// @version      2.1.0
 // @description  Bubble kecil untuk mencari teks halaman, User ID, dan rekening di HP. Tanpa server dan tanpa OCR.
 // @match        http://*/*
 // @match        https://*/*
@@ -34,6 +34,8 @@
     #panel{background:linear-gradient(155deg,#14253b,#0c1423);border-color:#38577a;box-shadow:0 16px 45px #0009;padding:14px;border-radius:20px}#panel-handle{background:#142338;letter-spacing:.6px;font-size:12px;border-bottom:1px solid #2b425e;padding-bottom:7px}#query{min-height:100px;background:#080f1d;border-color:#355676}#search{flex:1;background:linear-gradient(145deg,#294d77,#1a3352);font-weight:700}#checks{gap:10px}.check{background:#111e30;border-radius:12px;padding:12px;color:#c0cee1}.check.yes{background:linear-gradient(130deg,#123e30,#112c26);border-color:#3ea97a;color:#d4ffe8}.match-title{font-size:11px;color:#9fb6d0;margin-bottom:6px;letter-spacing:.5px}.match-value{font-size:15px;font-weight:700;overflow-wrap:anywhere}.match-bottom{display:flex;align-items:center;justify-content:space-between;gap:7px;margin-top:8px;font-size:11px}.match-bottom button{min-height:32px;padding:5px 10px;font-size:11px}.match-summary{padding:10px;border-radius:10px;background:#1d3048;font-size:12px;line-height:1.5;color:#deebff}#status{font-weight:600}#tidy summary{color:#b8cde6;font-size:12px}
     #bubble{display:grid;place-items:center;color:#d2e8ff;border-color:#51769d}#panel{padding:14px;background:linear-gradient(150deg,#16263b,#0b1220 65%);border:1px solid #3b5471}#panel-handle{background:#132136;min-height:44px}#panel-handle span{font-size:12px;font-weight:800}#query{min-height:84px;font-size:15px;line-height:1.55}#checks{gap:8px}.result-choices{display:flex;gap:6px;overflow-x:auto;padding:3px 0 6px;max-width:100%}.result-choice{flex:0 0 auto;min-height:38px;font-size:11px;border-radius:9px;padding:7px 10px;background:#142238}.result-choice.active{background:#284565;border-color:#91b9e1}.result-choice small{display:block;margin-top:2px;color:#b3c6dc}.result-heading{border:1px solid #41648a;padding:12px;border-radius:12px;background:linear-gradient(120deg,#203b59,#15283e)}.result-heading strong{display:block;font-size:16px;color:#eff7ff;overflow-wrap:anywhere}.result-heading small{display:block;font-size:11px;color:#aabed6;margin-top:5px}.result-heading.good{border-color:#378566;background:linear-gradient(120deg,#173f32,#142a29)}.check{padding:11px 12px;border-color:#2f425b}.match-title{font-size:10px;letter-spacing:1px}.match-value{font-size:16px}.match-bottom{margin-top:7px}.match-bottom button{border-color:#415b78;background:#243c57;min-height:34px}.check.yes .match-bottom button{border-color:#378163;background:#1d4d3a}#note{line-height:1.6}#tidy{border-color:#2d425e}#prev,#next{min-height:36px;min-width:38px}
     #native-preview{margin-top:10px;background:#101e32;border:1px solid #365577;border-radius:12px;padding:11px;font-size:12px;line-height:1.6;overflow-wrap:anywhere}#native-preview button{margin:6px 6px 0 0;font-size:12px;min-height:36px}#native-preview strong{color:#d5e9ff}#native-preview .native-value{padding:7px 0;font-size:17px;font-weight:700;color:#d4ffe8}
+    #prefix-row{display:flex;justify-content:flex-end;margin-top:7px}#prefix-888{min-width:66px;min-height:36px;padding:6px 12px;background:#234838;border-color:#438c68;font-weight:700;color:#d9ffe8}#prefix-888:disabled{opacity:.65;cursor:default}#prefix-options{margin-top:8px;padding:10px;border:1px solid #365577;border-radius:10px;color:#d5e9ff;font-size:12px}#prefix-options button{display:block;width:100%;margin-top:7px;font-size:13px}
+    #referral-box{margin-top:12px;padding:12px;border:1px solid #47688a;border-radius:14px;background:linear-gradient(135deg,#1a3049,#111e30)}.ref-heading{font-size:12px;font-weight:800;letter-spacing:.7px;color:#c8e4ff}.ref-dates{font-size:11px;line-height:1.6;color:#a6bbd3;margin:5px 0 10px}.ref-row{margin-top:8px;padding:10px;border-radius:10px;background:#0c1828;border:1px solid #304861}.ref-id{font-size:13px;font-weight:700;overflow-wrap:anywhere}.ref-count{font-size:23px;color:#a2e4bd;font-weight:800;min-height:28px}.ref-caption,.ref-state{font-size:11px;color:#a6bbd3;line-height:1.5}.ref-error{color:#edc38e}#referral-box button{font-size:11px;min-height:32px;margin-top:8px}
   </style>
   <div id="marks"></div>
   <button id="bubble" title="Cari User ID / rekening" aria-label="Buka pencarian"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button>
@@ -42,8 +44,10 @@
     <div class="row"><select id="mode" aria-label="Jenis pencarian"><option value="auto">Sekali tempel chat â€” cari semua</option><option value="admin_id">Cari User ID di admin (otomatis)</option><option value="admin_bank">Cari nomor rekening di admin (otomatis)</option><option value="id">Ctrl F â€” User ID di halaman</option><option value="name">Nama rekening</option><option value="text">Ctrl F â€” teks di halaman</option><option value="bank">Nomor rekening</option></select></div>
     <div class="row"><textarea id="query" rows="3" placeholder="Tempel chat: nama, nomor rekening, bank / e-walletâ€¦" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="enter"></textarea></div>
     <div class="row"><button id="search">Cari semua</button><button id="clear">Hapus</button></div>
+    <div id="prefix-row" hidden><button id="prefix-888" type="button" title="Tambahkan 888 di depan nomor rekening">+888</button></div>
+    <div id="prefix-options" hidden></div>
     <div class="row"><span id="status" role="status" aria-live="polite">Masukkan pencarian</span><button id="prev" aria-label="Hasil sebelumnya">â†‘</button><button id="next" aria-label="Hasil berikutnya">â†“</button></div>
-    <div id="native-preview" hidden></div><div id="checks"></div>
+    <div id="native-preview" hidden></div><div id="checks"></div><section id="referral-box" hidden aria-live="polite"></section>
     <div id="note">Mencari teks yang sudah dimuat pada halaman ini.</div>
     <details id="tidy">
       <summary>âœ¦ RAPIKAN &amp; SALIN</summary>
@@ -167,10 +171,10 @@
   });
   function toggle(){panel.hidden=!panel.hidden;if(!panel.hidden){place();input.focus();if(input.value)search(false);}else{serial++;$('marks').replaceChildren();}}
   $('close').onclick=()=>{panel.hidden=true;serial++;$('marks').replaceChildren();};
-  function clear(){$('native-preview').hidden=true;$('native-preview').replaceChildren();bundle=null;bundles=[];$('checks').replaceChildren();serial++;clearTimeout(timer);hits=[];index=-1;$('marks').replaceChildren();$('status').textContent='Masukkan pencarian';}
+  function clear(){stopReferralWatch();prefix888Applied='';refreshPrefix888();$('native-preview').hidden=true;$('native-preview').replaceChildren();bundle=null;bundles=[];$('checks').replaceChildren();serial++;clearTimeout(timer);hits=[];index=-1;$('marks').replaceChildren();$('status').textContent='Masukkan pencarian';}
   $('clear').onclick=()=>{input.value='';clear();input.focus();};
-  mode.onchange=()=>{input.inputMode='text';input.placeholder=mode.value==='admin_id'?'Tempel chat: User ID / username / user nameâ€¦':mode.value==='admin_bank'?'Tempel chat yang memuat nomor rekeningâ€¦':mode.value==='bank'?'Ketik nomor rekeningâ€¦':mode.value==='name'?'Ketik nama atau tempel data rekeningâ€¦':mode.value==='auto'?'Tempel bebas: nama, rekening, bankâ€¦':'Ketik User ID atau teksâ€¦';$('search').textContent=isNativeMode()?'Cari di admin':'Cari';search(false);};
-  input.oninput=()=>{serial++;clearTimeout(timer);timer=setTimeout(()=>search(false),300);};
+  mode.onchange=()=>{stopReferralWatch();refreshPrefix888();input.inputMode='text';input.placeholder=mode.value==='admin_id'?'Tempel chat: User ID / username / user nameâ€¦':mode.value==='admin_bank'?'Tempel chat yang memuat nomor rekeningâ€¦':mode.value==='bank'?'Ketik nomor rekeningâ€¦':mode.value==='name'?'Ketik nama atau tempel data rekeningâ€¦':mode.value==='auto'?'Tempel bebas: nama, rekening, bankâ€¦':'Ketik User ID atau teksâ€¦';$('search').textContent=isNativeMode()?'Cari di admin':'Cari';search(false);};
+  input.oninput=()=>{stopReferralWatch();prefix888Applied='';refreshPrefix888();serial++;clearTimeout(timer);timer=setTimeout(()=>search(false),300);};
   input.onkeydown=e=>{if(e.key==='Enter'&&(isNativeMode()||mode.value==='id'||e.ctrlKey||e.metaKey)&&!e.shiftKey){e.preventDefault();input.blur();if(isNativeMode())runNativeSearch();else search(true);}if(e.key==='Escape')$('close').click();};
   $('search').onclick=()=>{input.blur();if(isNativeMode())runNativeSearch();else search(true);};
   function status(){ renderChecks();$('status').textContent=hits.length?`${index+1} / ${hits.length}${clipped?'+':''} hasil`:'Tidak ditemukan';}
@@ -191,7 +195,7 @@
       if(!watchedDocuments.has(doc)){
         watchedDocuments.add(doc);doc.addEventListener('scroll',schedulePaint,true);
         if(doc!==document){
-          new MutationObserver(()=>{dirty=true;if(!panel.hidden&&input.value){clearTimeout(timer);timer=setTimeout(()=>search(false),650);}}).observe(doc.body,{subtree:true,childList:true,characterData:true});
+          new MutationObserver(()=>{scheduleReferralScan();dirty=true;if(!panel.hidden&&input.value){clearTimeout(timer);timer=setTimeout(()=>search(false),650);}}).observe(doc.body,{subtree:true,childList:true,characterData:true});
         }
       }
       for(const f of doc.querySelectorAll('iframe,frame')){
@@ -451,6 +455,7 @@
       };
       bottom.append(state,copy);card.append(title,body,bottom);box.append(card);
     }
+    if(hit?.admin?.userId&&hit.matches.number)beginReferralIDs([{id:hit.admin.userId}],false);
     $('note').textContent='Nama saja sudah dihitung cocok. Bank dan nomor dinilai terpisah. Tombol Salin mengambil nilai pada kartu. Hanya baris admin yang sudah dimuat dapat dicari.';
   }
   function matchScore(hit){return (hit.matches.number?5:0)+(hit.matches.name?7:0)+(hit.matches.bank?1:0);}
@@ -716,6 +721,29 @@
     return '';
   }
   // NATIVE_PURE_END
+  let prefix888Applied='';
+  function refreshPrefix888(){
+    const bankMode=mode.value==='admin_bank'||mode.value==='bank';
+    $('prefix-row').hidden=!bankMode;
+    const added=bankMode&&prefix888Applied!==''&&input.value===prefix888Applied;
+    $('prefix-888').disabled=added;$('prefix-888').textContent=added?'888 ditambahkan':'+888';
+    $('prefix-options').hidden=true;$('prefix-options').replaceChildren();
+  }
+  function addPrefix888(chosen){
+    if(!['admin_bank','bank'].includes(mode.value))return;
+    if(prefix888Applied&&input.value===prefix888Applied)return;
+    const values=extractSearchValues(input.value,'bank');
+    const value=chosen&&values.includes(chosen)?chosen:values.length===1?values[0]:'';
+    if(!value){
+      if(!values.length){$('status').textContent='Tempel nomor rekening terlebih dahulu';return;}
+      const box=$('prefix-options');box.hidden=false;box.replaceChildren();box.append(document.createTextNode('Pilih nomor yang akan ditambah 888:'));
+      values.forEach(number=>{const button=document.createElement('button');button.textContent=number;button.onclick=()=>addPrefix888(number);box.append(button);});return;
+    }
+    clearTimeout(timer);serial++;input.value='888'+value;prefix888Applied=input.value;
+    refreshPrefix888();search(false);
+    $('status').textContent='888 ditambahkan: '+input.value;
+  }
+  $('prefix-888').onclick=()=>addPrefix888();
   function isNativeMode(){return mode.value==='admin_id'||mode.value==='admin_bank';}
   function nativeAllowed(){return location.hostname==='agwl2.admitoto.com'&&location.pathname==='/agentplayerlist.php';}
   function previewNative(){
@@ -786,7 +814,9 @@
       $('status').textContent='Menjalankan pencarian adminâ€¦';
       try{sessionStorage.setItem('mobile-find-admin-pending',JSON.stringify({time:Date.now(),mode:mode.value,value}));}catch(_){}
       // Click the native search control once; no synthetic Enter or repeated submit.
+      if(kind==='bank')startReferralWatch(value);else stopReferralWatch();
       buttons[0].click();
+      if(kind==='bank')setTimeout(scanReferralAccounts,500);
       $('status').textContent='Pencarian dikirim: '+value;
     }catch(error){$('status').textContent=error.message||'Pencarian admin gagal.';}
     finally{setTimeout(()=>{nativeBusy=false;},1200);}
@@ -794,11 +824,181 @@
   function restoreNativeSearch(){
     if(!nativeAllowed())return;
     try{const raw=sessionStorage.getItem('mobile-find-admin-pending');if(!raw)return;sessionStorage.removeItem('mobile-find-admin-pending');const saved=JSON.parse(raw);if(Date.now()-saved.time>90000||!['admin_id','admin_bank'].includes(saved.mode)||typeof saved.value!=='string')return;
-      input.value=saved.value;mode.value=saved.mode;panel.hidden=false;place();$('search').textContent='Cari di admin';previewNative();$('status').textContent='Hasil pencarian admin: '+saved.value;
+      input.value=saved.value;mode.value=saved.mode;refreshPrefix888();panel.hidden=false;place();$('search').textContent='Cari di admin';previewNative();$('status').textContent='Hasil pencarian admin: '+saved.value;if(saved.mode==='admin_bank'){startReferralWatch(saved.value);setTimeout(scanReferralAccounts,350);}
     }catch(_){}
   }
 
-  const observer=new MutationObserver(records=>{if(!records.some(r=>!host.contains(r.target)))return;dirty=true;if(!panel.hidden&&input.value){clearTimeout(timer);timer=setTimeout(()=>search(false),650);}});
+
+  // REFERRAL_PURE_START
+  function referralDateRange(now=new Date()){
+    const y=now.getFullYear(),m=now.getMonth(),d=now.getDate();
+    const last=new Date(y-1,m+1,0).getDate();
+    const start=new Date(y-1,m,Math.min(d,last)),end=new Date(y,m,d);
+    const format=(v,iso=false)=>{const yy=v.getFullYear(),mm=String(v.getMonth()+1).padStart(2,'0'),dd=String(v.getDate()).padStart(2,'0');return iso?`${yy}-${mm}-${dd}`:`${dd}-${mm}-${yy}`;};
+    return {start:format(start),end:format(end),startISO:format(start,true),endISO:format(end,true),key:format(end,true)};
+  }
+  function referralFieldKind(value){
+    const t=String(value).toLowerCase().replace(/[^a-z0-9]/g,'');
+    if(/^(?:tanggalawal|tglawal|startdate|datestart|datefrom|fromdate|date1|tgl1|start|from)$/.test(t))return 'start';
+    if(/^(?:tanggalakhir|tglakhir|enddate|dateend|dateto|todate|date2|tgl2|end|to)$/.test(t))return 'end';
+    if(/^(?:userid|username|iduser|upline|referral|namareferral|referralname|referralid|referrer|searchuser|searchuserid)$/.test(t))return 'id';
+    return '';
+  }
+  function parseReferralCount(value){
+    const s=String(value).trim();
+    return /^\d+(?:[.,]\d{3})*$/.test(s)?s.replace(/[.,]/g,''):null;
+  }
+  // REFERRAL_PURE_END
+  let referralWatch='',referralScanTimer=0,referralGeneration=0,referralBusy=false;
+  let referralItems=[],referralQueue=[],referralDay=referralDateRange().key;
+  const referralCache=new Map();
+  const referralURL='https://agwl2.admitoto.com/referrallist.php';
+  function referralHost(){return location.hostname==='agwl2.admitoto.com';}
+  function stopReferralWatch(){referralWatch='';clearTimeout(referralScanTimer);referralGeneration++;referralItems=[];referralQueue=[];$('referral-box').hidden=true;}
+  function startReferralWatch(number){stopReferralWatch();referralWatch=number;renderReferral();}
+  function scheduleReferralScan(){if(referralWatch){clearTimeout(referralScanTimer);referralScanTimer=setTimeout(scanReferralAccounts,600);}}
+  function scanReferralAccounts(){
+    if(!referralWatch||!referralHost())return;
+    const ids=[];
+    for(const doc of searchDocuments())for(const row of doc.querySelectorAll('tr,[role="row"]')){
+      const record=readAdminRecord(row);
+      if(record?.number===referralWatch&&record.userId&&!ids.some(v=>v.id.toLowerCase()===record.userId.toLowerCase()))ids.push({id:record.userId});
+    }
+    if(ids.length)beginReferralIDs(ids,true);else renderReferral();
+  }
+  function beginReferralIDs(ids,fromWatch=false){
+    if(!referralHost())return;
+    if(referralWatch&&!fromWatch)return;
+    const range=referralDateRange();
+    for(const {id} of ids){
+      if(!id||referralItems.some(v=>v.id.toLowerCase()===id.toLowerCase()))continue;
+      const cached=referralCache.get(range.key+'|'+id.toLowerCase());
+      const item={id,range,state:cached?'done':'loading',data:cached||null};referralItems.push(item);
+      if(!cached)referralQueue.push({item,generation:referralGeneration});
+    }
+    renderReferral();processReferralQueue();
+  }
+  function renderReferral(){
+    const box=$('referral-box');box.replaceChildren();box.hidden=!referralWatch&&!referralItems.length;
+    if(box.hidden)return;
+    const range=referralDateRange(),title=document.createElement('div');title.className='ref-heading';title.textContent='REFERRAL â€¢ DOWNLINE AKTIF';
+    const dates=document.createElement('div');dates.className='ref-dates';dates.textContent=range.start+' sampai '+range.end+' â€¢ 1 tahun';box.append(title,dates);
+    if(!referralItems.length){const waiting=document.createElement('div');waiting.className='ref-state';waiting.textContent='Menunggu User ID dari hasil rekening '+referralWatch;box.append(waiting);return;}
+    for(const item of referralItems){
+      const row=document.createElement('div');row.className='ref-row';
+      const id=document.createElement('div');id.className='ref-id';id.textContent=item.id;
+      const caption=document.createElement('div');caption.className='ref-caption';caption.textContent='Downline Aktif';
+      const count=document.createElement('div');count.className='ref-count';count.textContent=item.state==='done'&&item.data.found?item.data.active:'';
+      const state=document.createElement('div');state.className='ref-state'+(item.state==='error'?' ref-error':'');
+      state.textContent=item.state==='loading'?'Memeriksa referralâ€¦':item.state==='error'?item.error:item.data.found?(item.data.total!==null?'Downline Total: '+item.data.total:'Data ditemukan'):'';
+      row.append(id,caption,count,state);
+      if(item.state!=='loading'){const retry=document.createElement('button');retry.textContent='Periksa ulang';retry.onclick=()=>{item.state='loading';item.range=referralDateRange();referralQueue.push({item,generation:referralGeneration});renderReferral();processReferralQueue();};row.append(retry);}
+      box.append(row);
+    }
+  }
+  function resolveReferralField(doc,kind){
+    const fields=Array.from(doc.querySelectorAll('input:not([type]),input[type="text"],input[type="search"],input[type="date"]'));
+    const ranked=fields.map(el=>{
+      const labels=[el.name,el.id,el.getAttribute('aria-label'),el.placeholder,...Array.from(el.labels||[]).map(l=>l.textContent)];
+      const cell=el.closest('td,th');if(cell?.previousElementSibling)labels.push(cell.previousElementSibling.textContent);
+      if(el.previousElementSibling)labels.push(el.previousElementSibling.textContent);
+      if(el.parentElement)labels.push(Array.from(el.parentElement.childNodes).filter(n=>n.nodeType===3).map(n=>n.textContent).join(' '));
+      return {el,score:labels.some(l=>referralFieldKind(l||'')===kind)?1:0};
+    }).filter(x=>x.score);
+    return ranked.length===1?ranked[0].el:null;
+  }
+  function setReferralDates(doc,live=false){
+    const start=resolveReferralField(doc,'start'),end=resolveReferralField(doc,'end'),range=referralDateRange();
+    if(!start||!end)return null;
+    for(const [field,value] of [[start,start.type==='date'?range.startISO:range.start],[end,end.type==='date'?range.endISO:range.end]]){
+      if(field.value!==value){if(live)setNativeValue(field,value);else field.value=value;}
+    }
+    return {start,end,range};
+  }
+  function parseReferralResult(doc,id){
+    const expected=id.trim().toLowerCase();let recognized=false;
+    for(const table of doc.querySelectorAll('table')){
+      const rows=Array.from(table.querySelectorAll('tr')).filter(row=>row.closest('table')===table);let cols=null;
+      for(const row of rows){
+        const cells=Array.from(row.children).filter(c=>/^(TD|TH)$/.test(c.tagName));
+        const texts=cells.map(c=>c.textContent.replace(/\s+/g,' ').trim());
+        const u=texts.findIndex(v=>/^upline$/i.test(v)),a=texts.findIndex(v=>/^downline\s*aktif$/i.test(v)),t=texts.findIndex(v=>/^downline\s*total$/i.test(v));
+        if(u>=0&&a>=0){cols={u,a,t};recognized=true;continue;}
+        if(!cols)continue;
+        if((texts[cols.u]||'').toLowerCase()!==expected)continue;
+        const active=parseReferralCount(texts[cols.a]||''),total=cols.t<0?null:parseReferralCount(texts[cols.t]||'');
+        if(active===null)throw new Error('Angka Downline Aktif belum dapat dibaca.');
+        return {found:true,active,total};
+      }
+    }
+    if(recognized){if(/\b[0-9]+\s+of\s+([2-9][0-9]*|1[0-9]+)\b/i.test(doc.body?.textContent||''))throw new Error('Hasil referral memiliki beberapa halaman; User ID belum ditemukan pada halaman yang terbaca.');return {found:false,active:'',total:null};}
+    if(/(?:data\s+(?:tidak\s+(?:ada|ditemukan)|kosong)|no\s+(?:records?|data|results?)\s*(?:found|available)?)/i.test(doc.body?.textContent||''))return {found:false,active:'',total:null};
+    throw new Error('Tabel referral belum terbaca. Periksa login atau tampilan halaman referral.');
+  }
+  async function referralRequest(url,options={}){
+    const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),18000);
+    try{
+      const res=await fetch(url,{...options,credentials:'same-origin',signal:controller.signal});
+      if(!res.ok)throw new Error('Halaman referral gagal dimuat ('+res.status+').');
+      const finalURL=new URL(res.url||url,referralURL);
+      if(finalURL.origin!==location.origin||finalURL.pathname!=='/referrallist.php')throw new Error('Sesi admin perlu login ulang.');
+      const html=await res.text(),doc=new DOMParser().parseFromString(html,'text/html');
+      if(doc.querySelector('input[type="password"]'))throw new Error('Sesi admin perlu login ulang.');
+      return doc;
+    }catch(e){if(e.name==='AbortError')throw new Error('Pemeriksaan referral melewati batas waktu. Tekan Periksa ulang.');throw e;}
+    finally{clearTimeout(timeout);}
+  }
+  async function lookupReferral(id){
+    const doc=await referralRequest(referralURL),dates=setReferralDates(doc),field=resolveReferralField(doc,'id');
+    if(!dates||!field||!field.name)throw new Error('Kolom User ID / tanggal referral belum dikenali. Perlu pemetaan formulir referral.');
+    const form=field.form;
+    if(!form||dates.start.form!==form||dates.end.form!==form||!dates.start.name||!dates.end.name)throw new Error('Formulir pencarian referral belum dikenali.');
+    const url=new URL(form.getAttribute('action')||referralURL,referralURL);
+    if(url.origin!==location.origin||url.pathname!=='/referrallist.php')throw new Error('Tujuan formulir referral tidak sesuai.');
+    field.value=id;
+    for(const checkbox of form.querySelectorAll('input[type="checkbox"]')){
+      if(referralFieldKind(checkbox.name)==='id'||Array.from(checkbox.labels||[]).some(l=>referralFieldKind(l.textContent)==='id'))checkbox.checked=true;
+    }
+    const buttons=Array.from(form.querySelectorAll('button,input[type="submit"],input[type="button"]')).filter(el=>/^(cari|search)$/i.test((el.tagName==='INPUT'?el.value:el.textContent).trim()));
+    if(buttons.length!==1)throw new Error('Tombol pencarian referral belum dikenali.');
+    const params=new URLSearchParams();
+    for(const [k,v] of new FormData(form))if(typeof v==='string')params.append(k,v);
+    params.set(field.name,id);params.set(dates.start.name,dates.start.value);params.set(dates.end.name,dates.end.value);
+    const button=buttons[0];if(button.name)params.set(button.name,button.value||'');
+    const method=(form.getAttribute('method')||'get').toLowerCase();let result;
+    if(method==='post'){result=await referralRequest(url.href,{method:'POST',body:params});}
+    else if(method==='get'){for(const key of new Set(params.keys()))url.searchParams.delete(key);for(const [k,v] of params)url.searchParams.append(k,v);result=await referralRequest(url.href);}
+    else throw new Error('Metode pencarian referral belum didukung.');
+    // Verify the returned search fields when present, so old filters are not mistaken for a result.
+    const returnedId=resolveReferralField(result,'id'),start=resolveReferralField(result,'start'),end=resolveReferralField(result,'end');
+    if(returnedId&&returnedId.value.trim().toLowerCase()!==id.toLowerCase())throw new Error('Filter User ID belum diterapkan oleh halaman referral.');
+    if(start&&start.value!==dates.start.value||end&&end.value!==dates.end.value)throw new Error('Rentang 1 tahun belum diterapkan oleh halaman referral.');
+    if(!start||!end){const caption=result.body?.textContent||'';const range=referralDateRange();if(!caption.includes(range.start)||!caption.includes(range.end))throw new Error('Rentang tanggal pada hasil referral belum dapat dipastikan.');}
+    return parseReferralResult(result,id);
+  }
+  async function processReferralQueue(){
+    if(referralBusy)return;referralBusy=true;
+    try{while(referralQueue.length){const task=referralQueue.shift();if(task.generation!==referralGeneration)continue;
+      try{const data=await lookupReferral(task.item.id);if(task.generation!==referralGeneration)continue;task.item.data=data;task.item.state='done';referralCache.set(task.item.range.key+'|'+task.item.id.toLowerCase(),data);}
+      catch(error){if(task.generation!==referralGeneration)continue;task.item.state='error';task.item.error=error.message||'Referral gagal dibaca.';}
+      renderReferral();
+    }}finally{referralBusy=false;}
+  }
+  function maintainReferralDates(){
+    if(!referralHost())return;
+    if(location.pathname==='/referrallist.php')setReferralDates(document,true);
+    const day=referralDateRange().key;
+    if(day!==referralDay){referralDay=day;referralCache.clear();const ids=referralItems.map(v=>({id:v.id}));referralGeneration++;referralItems=[];referralQueue=[];if(ids.length)beginReferralIDs(ids,true);else renderReferral();}
+  }
+  if(referralHost()){
+    maintainReferralDates();setInterval(maintainReferralDates,60000);window.addEventListener('focus',maintainReferralDates);
+    if(location.pathname==='/referrallist.php'){
+      document.addEventListener('submit',()=>setReferralDates(document,true),true);
+      document.addEventListener('click',e=>{const button=e.target.closest('button,input[type="submit"],input[type="button"]');if(button&&/^(cari|search)$/i.test((button.tagName==='INPUT'?button.value:button.textContent).trim()))setReferralDates(document,true);},true);
+    }
+  }
+
+  const observer=new MutationObserver(records=>{if(!records.some(r=>!host.contains(r.target)))return;scheduleReferralScan();dirty=true;if(!panel.hidden&&input.value){clearTimeout(timer);timer=setTimeout(()=>search(false),650);}});
   observer.observe(document.body,{subtree:true,childList:true,characterData:true});
   document.addEventListener('input',e=>{if(e.target===host)return;dirty=true;if(!panel.hidden&&input.value){clearTimeout(timer);timer=setTimeout(()=>search(false),400);}},true);
   window.addEventListener('scroll',schedulePaint,true);
