@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         AGWL2 Auto Reset Password Member
 // @namespace    tampermonkey-agwl2-reset-password-member
-// @version      1.4.0
-// @description  Panel reset password mode senyawa maksimal: prioritas panel mini-window terpisah di samping popup agar klik panel tidak membuat Edit Player List hilang; fallback tetap seperti versi awal, close panel ikut close popup, auto generate, isi form, submit, dan copy kata-kata otomatis.
+// @version      1.4.2
+// @description  Panel reset password merah hitam; geser judul dengan mouse atau sentuhan, posisi tidak kembali otomatis. Fungsi reset dan salin tetap tersedia.
 // @match        *://agwl2.admitoto.com/*
 // @match        *://agwl2.suksesbogil.com/*
 // @match        *://agwl2.idnpaito.com/*
@@ -90,7 +90,7 @@
 <meta charset="utf-8">
 <title>${title}</title>
 <style>
-  html, body { margin:0; padding:0; width:100%; min-height:100%; background:#0f1020; overflow:hidden; }
+  html, body { margin:0; padding:0; width:100%; min-height:100%; background:#0c090a; overflow:hidden; }
 </style>
 </head>
 <body data-agwl2-shell="1"></body>
@@ -150,15 +150,6 @@
     }
   }
 
-  function syncDetachedPanelWindow() {
-    if (panelHostType !== 'mini') return;
-    try {
-      if (!panelWindowRef || panelWindowRef.closed) return;
-      const pos = getPanelWindowPosition();
-      panelWindowRef.moveTo(pos.left, pos.top);
-    } catch (e) {}
-  }
-
   function closeThisProfileWindow() {
     try { window.close(); } catch (e) {}
     setTimeout(() => {
@@ -169,7 +160,7 @@
   }
 
   function getPanelHostDoc() {
-    // Prioritas 1: mini-window panel terpisah. Ini yang paling mendekati “senyawa”
+    // Prioritas 1: mini-window panel terpisah. Ini yang paling mendekati â€œsenyawaâ€
     // tetapi tetap seperti awal: panel berada di samping popup, bukan masuk ke dalam tabel.
     const miniDoc = openDetachedPanelWindow();
     if (miniDoc && miniDoc.body) {
@@ -499,143 +490,92 @@
     const css = hostDoc.createElement('style');
     css.id = 'agwl2-rp-style';
     css.textContent = `
+      #agwl2-rp-panel, #agwl2-rp-panel * { box-sizing: border-box; }
       #agwl2-rp-panel {
-        position: fixed;
-        left: 10px;
-        top: 70px;
-        width: ${PANEL_WIDTH}px;
-        z-index: 999999;
-        color: #f7f2ff;
-        background: linear-gradient(180deg, #17172c, #10101f);
-        border: 1px solid rgba(241, 196, 15, .78);
-        border-radius: 10px;
-        box-shadow: 0 12px 35px rgba(0,0,0,.45), 0 0 18px rgba(241,196,15,.18);
-        font-family: Arial, sans-serif;
-        overflow: hidden;
-        user-select: none;
+        position: fixed; left: 10px; top: 70px; width: ${PANEL_WIDTH}px;
+        max-width: calc(100vw - 16px); max-height: calc(100vh - 16px);
+        display: flex; flex-direction: column; z-index: 999999;
+        color: #f7eeee; background: linear-gradient(155deg, #221317, #100e10 48%, #161012);
+        border: 1px solid #66313c; border-radius: 17px;
+        box-shadow: 0 20px 50px #0009, 0 4px 12px #0008, inset 0 1px 0 #ffffff16;
+        font: 12px/1.45 'Segoe UI', Arial, sans-serif;
+        overflow: hidden; user-select: none; color-scheme: dark;
       }
       #agwl2-rp-head {
-        cursor: move;
-        padding: 9px 10px;
-        font-size: 12px;
-        font-weight: 700;
-        color: #ffd966;
-        border-bottom: 1px solid rgba(255,255,255,.08);
-        background: rgba(255,255,255,.03);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 8px;
+        display: flex; align-items: center; gap: 9px; padding: 14px 12px;
+        background: linear-gradient(120deg, #641a29, #35141d 65%, #201015);
+        border-bottom: 1px solid #a13d504d; cursor: grab; touch-action: none; flex-shrink: 0;
       }
+      #agwl2-rp-panel[data-dragging="1"] #agwl2-rp-head { cursor: grabbing; }
+      #agwl2-rp-panel .agwl2-rp-emblem {
+        display: grid; place-items: center; width: 32px; height: 36px; flex-shrink: 0;
+        border-radius: 10px; background: linear-gradient(145deg, #b43750, #631b2a);
+        border: 1px solid #d6657955; box-shadow: 0 4px 8px #0005, inset 0 1px 0 #ffffff25;
+      }
+      #agwl2-rp-panel .agwl2-rp-heading { flex: 1; min-width: 0; }
+      #agwl2-rp-panel .agwl2-rp-heading strong { display: block; font-size: 11px; letter-spacing: 1px; color: #fff0f2; }
+      #agwl2-rp-panel .agwl2-rp-heading small { display: block; font-size: 10px; color: #d5a5af; margin-top: 2px; }
       #agwl2-rp-close {
-        width: 22px;
-        height: 22px;
-        border: 0;
-        border-radius: 5px;
-        cursor: pointer;
-        color: #fff;
-        background: rgba(255,255,255,.12);
+        width: 28px; height: 28px; padding: 0; flex-shrink: 0; border-radius: 9px;
+        border: 1px solid #ffffff18; background: #0b080b55; color: #e7c4cc; cursor: pointer; font-size: 19px;
       }
-      #agwl2-rp-body { padding: 11px; }
-      .agwl2-rp-small { font-size: 11px; color: #d8d3f0; margin-bottom: 6px; font-weight: 700; }
-      #agwl2-rp-user { color: #ffeaa7; font-weight: 800; }
-      #agwl2-rp-passbox {
-        display: flex;
-        align-items: center;
-        gap: 7px;
-        padding: 8px;
-        border: 1px solid #d6a93d;
-        border-radius: 7px;
-        background: #141421;
-        box-shadow: inset 0 0 8px rgba(214,169,61,.16);
-      }
-      #agwl2-rp-pass {
-        flex: 1;
-        text-align: center;
-        font-size: 12px;
-        font-weight: 800;
-        color: #ffffff;
-        letter-spacing: .5px;
-        word-break: break-all;
-      }
-      .agwl2-rp-iconbtn {
-        border: 0;
-        border-radius: 50%;
-        width: 25px;
-        height: 25px;
-        cursor: pointer;
-        color: #fff;
-        background: #5c4b1c;
-        font-size: 13px;
-        flex: 0 0 auto;
-      }
-      #agwl2-rp-range { width: 100%; accent-color: #e7c655; }
-      .agwl2-rp-row { margin-top: 10px; }
-      .agwl2-rp-checks { display: flex; gap: 6px; flex-wrap: wrap; }
-      .agwl2-rp-checks label {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        background: rgba(255,255,255,.08);
-        border: 1px solid rgba(255,255,255,.12);
-        border-radius: 5px;
-        padding: 4px 6px;
-        font-size: 11px;
-        cursor: pointer;
-      }
-      .agwl2-rp-actions { display: grid; grid-template-columns: 1fr; gap: 7px; margin-top: 12px; }
-      .agwl2-rp-btn {
-        border: 0;
-        border-radius: 7px;
-        padding: 8px 10px;
-        font-size: 12px;
-        font-weight: 800;
-        cursor: pointer;
-        color: #151515;
-        background: linear-gradient(180deg, #ffe08a, #d7a82e);
-      }
-      .agwl2-rp-btn.secondary { background: linear-gradient(180deg, #e6e6e6, #bfc1c6); }
-      .agwl2-rp-btn.danger { background: linear-gradient(180deg, #ff7a7a, #e32424); color:#fff; }
-      .agwl2-rp-btn:disabled { opacity: .45; cursor: not-allowed; }
-      #agwl2-rp-output {
-        width: 100%;
-        min-height: 86px;
-        margin-top: 10px;
-        resize: vertical;
-        box-sizing: border-box;
-        color: #111;
-        background: #fff;
-        border-radius: 6px;
-        border: 1px solid #d6a93d;
-        padding: 7px;
-        font-size: 12px;
-        user-select: text;
-      }
-      #agwl2-rp-status {
-        min-height: 15px;
-        margin-top: 7px;
-        font-size: 11px;
-        color: #99f2a4;
-        line-height: 1.35;
-      }
+      #agwl2-rp-body { padding: 13px; overflow-y: auto; min-height: 0; scrollbar-width: thin; scrollbar-color: #70313e #120e11; }
       #agwl2-rp-mode {
-        padding: 6px 8px;
-        margin-bottom: 8px;
-        border-radius: 6px;
-        font-size: 11px;
-        font-weight: 700;
-        background: rgba(255,255,255,.08);
-        color: #ffeaa7;
+        padding: 7px 9px; margin-bottom: 12px; border: 1px solid #63313c;
+        border-radius: 8px; background: #3a19234d; color: #e1a9b5; font-size: 10px; line-height: 1.5;
       }
+      #agwl2-rp-panel .agwl2-rp-small { font-size: 10px; color: #c6aab1; margin-bottom: 7px; font-weight: 600; }
+      #agwl2-rp-user { color: #fff0f3; font-weight: 700; overflow-wrap: anywhere; }
+      #agwl2-rp-passbox {
+        padding: 14px 9px; border: 1px solid #82404e; border-radius: 11px;
+        background: linear-gradient(145deg, #29151c, #100c10);
+        box-shadow: inset 0 2px 7px #0008, 0 1px 0 #ffffff08;
+      }
+      #agwl2-rp-pass { text-align: center; font: 700 16px/1.45 Consolas, monospace; color: #ffe5eb; letter-spacing: 1px; overflow-wrap: anywhere; }
+      #agwl2-rp-panel .agwl2-rp-row { margin-top: 13px; }
+      #agwl2-rp-lenval { float: right; min-width: 24px; text-align: center; padding: 0 5px; border-radius: 5px; color: #ffe4ea; background: #642437; }
+      #agwl2-rp-range { display: block; width: 100%; margin: 0; height: 20px; accent-color: #b93e57; cursor: pointer; }
+      #agwl2-rp-panel .agwl2-rp-checks { display: flex; gap: 5px; }
+      #agwl2-rp-panel .agwl2-rp-checks label {
+        flex: 1; display: flex; justify-content: center; align-items: center; gap: 4px;
+        padding: 7px 3px; border: 1px solid #51313a; border-radius: 8px;
+        background: linear-gradient(#2b1b21, #1d1519); color: #e8ced6; font-size: 11px; cursor: pointer;
+      }
+      #agwl2-rp-panel input[type="checkbox"] { margin: 0; width: 13px; height: 13px; accent-color: #aa304b; }
+      #agwl2-rp-panel .agwl2-rp-actions { display: grid; gap: 8px; margin-top: 15px; }
+      #agwl2-rp-panel .agwl2-rp-btn {
+        width: 100%; min-height: 37px; padding: 9px 8px; border: 1px solid #754050;
+        border-radius: 9px; color: #f7e9ed; background: linear-gradient(#41232e, #2a171f);
+        font: 600 11px/1.4 'Segoe UI', Arial, sans-serif; cursor: pointer;
+        box-shadow: inset 0 1px 0 #ffffff12, 0 3px 6px #0004;
+        transition: filter .15s, transform .15s;
+      }
+      #agwl2-rp-panel .agwl2-rp-btn.danger { border-color: #cc546d; background: linear-gradient(135deg, #b53251, #791e36); color: #fff; }
+      #agwl2-rp-panel .agwl2-rp-btn.secondary { border-color: #4c343d; background: linear-gradient(#2b2027, #1b151a); color: #dbc3cc; }
+      #agwl2-rp-panel button:hover:not(:disabled) { filter: brightness(1.15); }
+      #agwl2-rp-panel button:active:not(:disabled) { transform: translateY(1px); }
+      #agwl2-rp-panel button:disabled { opacity: .45; cursor: not-allowed; }
+      #agwl2-rp-panel :is(button, input, textarea):focus-visible { outline: 2px solid #ed91a7; outline-offset: 2px; }
+      #agwl2-rp-panel .agwl2-rp-output-label { display: block; margin: 15px 0 6px; color: #b89aa5; font-size: 9px; font-weight: 700; letter-spacing: 1.4px; }
+      #agwl2-rp-output {
+        display: block; width: 100%; min-height: 87px; margin: 0; resize: vertical;
+        padding: 10px; color: #ecd9df; background: #0c0a0d; border: 1px solid #443039;
+        border-radius: 9px; font: 11px/1.65 'Segoe UI', Arial, sans-serif; user-select: text;
+        box-shadow: inset 0 2px 6px #0005;
+      }
+      #agwl2-rp-output::placeholder { color: #9b818b; }
+      #agwl2-rp-status { min-height: 16px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #ffffff0c; color: #cfb0ba; font-size: 10px; line-height: 1.5; }
+      @media (prefers-reduced-motion: reduce) { #agwl2-rp-panel button { transition: none !important; } }
     `;
     (hostDoc.head || hostDoc.documentElement).appendChild(css);
 
     const panel = hostDoc.createElement('div');
     panel.id = 'agwl2-rp-panel';
     panel.innerHTML = `
-      <div id="agwl2-rp-head">
-        <span>🔐 Generator Password Eksklusif</span>
-        <button id="agwl2-rp-close" title="Tutup panel dan popup">×</button>
+      <div id="agwl2-rp-head" title="Tahan judul ini lalu geser panel">
+        <span class="agwl2-rp-emblem" aria-hidden="true"><svg width="18" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg></span>
+        <span class="agwl2-rp-heading"><strong>RESET PASSWORD</strong><small>â ¿ Tahan judul untuk geser</small></span>
+        <button id="agwl2-rp-close" title="Tutup panel dan popup" aria-label="Tutup panel dan popup">Ã—</button>
       </div>
       <div id="agwl2-rp-body">
         <div id="agwl2-rp-mode">Panel aktif di profil member.</div>
@@ -659,8 +599,9 @@
           <button class="agwl2-rp-btn" id="agwl2-rp-fill">Isi Password Saja</button>
           <button class="agwl2-rp-btn danger" id="agwl2-rp-reset">Reset + Buat Kata-kata</button>
         </div>
+        <label class="agwl2-rp-output-label" for="agwl2-rp-output">PESAN UNTUK MEMBER</label>
         <textarea id="agwl2-rp-output" placeholder="Kata-kata hasil reset akan muncul di sini..."></textarea>
-        <button class="agwl2-rp-btn secondary" id="agwl2-rp-copy-msg" style="width:100%;margin-top:7px;">Copy Kata-kata</button>
+        <button class="agwl2-rp-btn secondary" id="agwl2-rp-copy-msg" style="width:100%;margin-top:7px;">Salin Kata-kata</button>
         <div id="agwl2-rp-status"></div>
       </div>
     `;
@@ -680,18 +621,18 @@
     const resetBtnPanel = $('agwl2-rp-reset');
 
     function status(text, bad) {
-      statusEl.style.color = bad ? '#ffb3b3' : '#99f2a4';
+      statusEl.style.color = bad ? '#ffb3b3' : '#efc5cb';
       statusEl.textContent = text || '';
     }
 
     function refreshMode() {
       const ready = hasResetForm();
       if (ready) {
-        modeEl.textContent = 'Mode reset aktif: form Reset Password terdeteksi.';
+        modeEl.textContent = 'Form reset terdeteksi â€¢ Siap digunakan';
         fillBtn.disabled = false;
         resetBtnPanel.disabled = false;
       } else {
-        modeEl.textContent = 'Profil terdeteksi, tapi form Reset Password belum terlihat.';
+        modeEl.textContent = 'Menunggu form Reset Password di profil.';
         fillBtn.disabled = true;
         resetBtnPanel.disabled = true;
       }
@@ -763,7 +704,7 @@
 
       if (panelHostType === 'mini') {
         // Mini-window: jika user menutup window panel dari tombol X browser,
-        // popup Edit Player List ikut ditutup agar benar-benar “1 nyawa”.
+        // popup Edit Player List ikut ditutup agar benar-benar â€œ1 nyawaâ€.
         if (panelWindowCloseWatch) clearInterval(panelWindowCloseWatch);
         panelWindowCloseWatch = setInterval(() => {
           try {
@@ -782,7 +723,7 @@
       ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach((evt) => {
         panel.addEventListener(evt, (e) => {
           const target = e.target;
-          if (target && target.id === 'agwl2-rp-close') return;
+          if (target && target.closest('#agwl2-rp-head')) return;
           focusLinkedPopup(evt === 'pointerdown' || evt === 'mousedown' ? 0 : 45);
         }, true);
       });
@@ -881,39 +822,67 @@
 
     (function enableDrag() {
       const head = $('agwl2-rp-head');
-      let dragging = false;
-      let startX = 0;
-      let startY = 0;
-      let startLeft = 0;
-      let startTop = 0;
+      const view = hostDoc.defaultView || window;
+      let drag = null;
 
-      head.addEventListener('mousedown', (e) => {
-        if (e.target && e.target.id === 'agwl2-rp-close') return;
-        dragging = true;
-        panel.dataset.dragged = '1';
-        startX = e.clientX;
-        startY = e.clientY;
-        const rect = panel.getBoundingClientRect();
-        startLeft = rect.left;
-        startTop = rect.top;
+      function place(left, top) {
+        const maxLeft = Math.max(0, view.innerWidth - panel.offsetWidth - 4);
+        const maxTop = Math.max(0, view.innerHeight - panel.offsetHeight - 4);
         panel.style.right = 'auto';
+        panel.style.left = `${Math.max(0, Math.min(maxLeft, left))}px`;
+        panel.style.top = `${Math.max(0, Math.min(maxTop, top))}px`;
+      }
+
+      head.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('button') || !e.isPrimary || e.button !== 0) return;
+        const rect = panel.getBoundingClientRect();
+        drag = {
+          id: e.pointerId, x: e.clientX, y: e.clientY,
+          screenX: e.screenX, screenY: e.screenY,
+          windowX: view.screenX, windowY: view.screenY,
+          left: rect.left, top: rect.top
+        };
+        panel.dataset.dragged = '1';
+        panel.dataset.dragging = '1';
+        try { head.setPointerCapture(e.pointerId); } catch (err) {}
         e.preventDefault();
       });
 
-      hostDoc.addEventListener('mousemove', (e) => {
-        if (!dragging) return;
-        const view = hostDoc.defaultView || window;
-        const maxLeft = Math.max(0, view.innerWidth - panel.offsetWidth - 4);
-        const maxTop = Math.max(0, view.innerHeight - 35);
-        const nextLeft = Math.min(maxLeft, Math.max(0, startLeft + e.clientX - startX));
-        const nextTop = Math.min(maxTop, Math.max(0, startTop + e.clientY - startY));
-        panel.style.left = `${nextLeft}px`;
-        panel.style.top = `${nextTop}px`;
+      head.addEventListener('pointermove', (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        if (panelHostType === 'mini') {
+          // Geser jendela panel, bukan isinya di dalam jendela yang sempit.
+          const screen = view.screen;
+          const minX = Number.isFinite(screen.availLeft) ? screen.availLeft : 0;
+          const minY = Number.isFinite(screen.availTop) ? screen.availTop : 0;
+          const maxX = minX + Math.max(0, screen.availWidth - view.outerWidth);
+          const maxY = minY + Math.max(0, screen.availHeight - view.outerHeight);
+          const left = drag.windowX + e.screenX - drag.screenX;
+          const top = drag.windowY + e.screenY - drag.screenY;
+          try {
+            view.moveTo(Math.max(minX, Math.min(maxX, left)), Math.max(minY, Math.min(maxY, top)));
+          } catch (err) {}
+        } else {
+          place(drag.left + e.clientX - drag.x, drag.top + e.clientY - drag.y);
+        }
+        e.preventDefault();
       });
 
-      hostDoc.addEventListener('mouseup', () => {
-        if (dragging) focusLinkedPopup(80);
-        dragging = false;
+      function stop(e) {
+        if (!drag || (e && e.pointerId !== undefined && e.pointerId !== drag.id)) return;
+        const id = drag.id;
+        drag = null;
+        delete panel.dataset.dragging;
+        try { if (head.hasPointerCapture(id)) head.releasePointerCapture(id); } catch (err) {}
+      }
+      head.addEventListener('pointerup', stop);
+      head.addEventListener('pointercancel', stop);
+      head.addEventListener('lostpointercapture', stop);
+      view.addEventListener('blur', () => stop());
+      view.addEventListener('resize', () => {
+        if (!panel.isConnected || panelHostType === 'mini') return;
+        const rect = panel.getBoundingClientRect();
+        place(rect.left, rect.top);
       });
     })();
 
@@ -934,7 +903,7 @@
       refreshUser();
       refreshMode();
       placePanelLeftOfProfileTable(panel, false);
-      syncDetachedPanelWindow();
+      // Jangan kembalikan posisi jendela yang sudah digeser pengguna.
     }, 1000);
   }
 
