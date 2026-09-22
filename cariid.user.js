@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Cari ID & Rekening HP \u2014 Emas Hitam
 // @namespace    local.mobile.find
-// @version      3.2.0
+// @version      3.3.0
 // @description  Bubble kecil untuk mencari teks halaman, User ID, dan rekening di HP. Kartu saldo per ID dan permintaan data pendukung di atas Rp10.000. Tanpa OCR.
 // @match        http://*/*
 // @match        https://*/*
@@ -88,6 +88,10 @@
     .ref-state{font-size:11px;color:#cfc0a0;line-height:1.6;margin-top:9px;text-align:center}.ref-total{font-size:11px;color:#e1ca96;text-align:center;margin-top:7px}
     .ref-active{border-color:#bfa05a}.ref-empty .ref-badge{background:#302b1e;border-color:#716448;color:#d5c7a5}.ref-error .ref-badge{background:#482721;border-color:#aa6b51;color:#ffd1b8}.ref-error .ref-count{color:#e8b59d}.ref-loading .ref-count{color:#c8b581}
     #referral-box .ref-retry{width:100%;min-height:36px;margin-top:12px;font-size:11px;background:linear-gradient(#423820,#2e281b);border-color:#8f783f;color:#ffe5a2}.ref-wait{padding:14px 10px;border:1px dashed #7d6a3d;border-radius:12px;background:#211d14}
+
+    #account-warning{margin-top:12px;padding:13px;border:1px solid #d1a04e;border-radius:15px;background:linear-gradient(140deg,#45301b,#231b12);box-shadow:0 6px 16px #0004}
+    .account-warning-heading{color:#ffe3a0;font-size:12px;font-weight:800;letter-spacing:.6px;margin-bottom:7px}.account-warning-note{color:#e1c69e;font-size:11px;line-height:1.6;margin:6px 0}
+    .account-warning-card{margin-top:10px;padding:11px;background:#1d1810;border:1px solid #8b6936;border-radius:11px}.account-warning-id{color:#ffdf9a;font-size:12px;font-weight:750;overflow-wrap:anywhere}.account-warning-label{font-size:10px;color:#bba783;margin-top:9px}.account-warning-number{font:700 16px/1.6 ui-monospace,monospace;color:#fff0c0;overflow-wrap:anywhere}.account-warning-number mark{background:#f0c466;color:#241a08;border-radius:4px;padding:2px 4px;margin-left:2px}.account-warning-card button{width:100%;margin-top:9px;min-height:36px;font-size:11px;background:#59421f;border-color:#b28a44;color:#ffe7ac}
   </style>
   <div id="marks"></div>
   <button id="bubble" title="Cari User ID / rekening" aria-label="Buka pencarian"><svg width="31" height="31" viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="3" y="5" width="23" height="21" rx="5" fill="#17150e" stroke="#ffe8a0" stroke-width="1.5"/><circle cx="11" cy="12" r="3" fill="#f4cc64"/><path d="M6.5 21c0-5.3 9-5.3 9 0" stroke="#f4cc64" stroke-width="2" stroke-linecap="round"/><path d="M18 10h4M18 14h3" stroke="#fff0be" stroke-width="1.7" stroke-linecap="round"/><circle cx="23" cy="23" r="5" fill="#f9d679" stroke="#15110a" stroke-width="2"/><path d="m26.5 26.5 3 3" stroke="#15110a" stroke-width="3" stroke-linecap="round"/></svg></button>
@@ -99,7 +103,7 @@
     <div id="prefix-row" hidden><button id="prefix-888" type="button" title="Tambahkan 888 di depan nomor rekening">+888</button></div>
     <div id="prefix-options" hidden></div>
     <div class="row"><span id="status" role="status" aria-live="polite">Masukkan pencarian</span><button id="prev" aria-label="Hasil sebelumnya"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m7 14 5-5 5 5"/></svg></button><button id="next" aria-label="Hasil berikutnya"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button></div>
-    <div id="native-preview" hidden></div><div id="checks"></div><section id="balance-box" hidden aria-live="polite"></section><section id="referral-box" hidden aria-live="polite"></section>
+    <div id="native-preview" hidden></div><div id="checks"></div><section id="account-warning" hidden aria-live="polite"></section><section id="balance-box" hidden aria-live="polite"></section><section id="referral-box" hidden aria-live="polite"></section>
     <div id="note">Mencari teks yang sudah dimuat pada halaman ini.</div>
     <details id="tidy">
       <summary>RAPIKAN &amp; SALIN</summary>
@@ -223,13 +227,13 @@
   });
   function toggle(){panel.hidden=!panel.hidden;if(!panel.hidden){place();input.focus();if(input.value)search(false);}else{serial++;$('marks').replaceChildren();}}
   $('close').onclick=()=>{panel.hidden=true;serial++;$('marks').replaceChildren();};
-  function clear(){clearBalance();stopReferralWatch();prefix888Applied='';refreshPrefix888();$('native-preview').hidden=true;$('native-preview').replaceChildren();bundle=null;bundles=[];$('checks').replaceChildren();serial++;clearTimeout(timer);hits=[];index=-1;$('marks').replaceChildren();$('status').textContent='Masukkan pencarian';}
+  function clear(){clearAccountWarning();clearBalance();stopReferralWatch();prefix888Applied='';refreshPrefix888();$('native-preview').hidden=true;$('native-preview').replaceChildren();bundle=null;bundles=[];$('checks').replaceChildren();serial++;clearTimeout(timer);hits=[];index=-1;$('marks').replaceChildren();$('status').textContent='Masukkan pencarian';}
   $('clear').onclick=()=>{input.value='';clear();input.focus();};
   mode.onchange=()=>{stopReferralWatch();refreshPrefix888();input.inputMode='text';input.placeholder=mode.value==='admin_id'?'Tempel chat: User ID / username / user name\u2026':mode.value==='admin_bank'?'Tempel chat yang memuat nomor rekening\u2026':mode.value==='bank'?'Ketik nomor rekening\u2026':mode.value==='name'?'Ketik nama atau tempel data rekening\u2026':mode.value==='auto'?'Tempel bebas: nama, rekening, bank\u2026':'Ketik User ID atau teks\u2026';$('search').textContent=isNativeMode()?'Cari di admin':'Cari';search(false);};
-  input.oninput=()=>{stopReferralWatch();prefix888Applied='';refreshPrefix888();clearBalance();serial++;clearTimeout(timer);timer=setTimeout(()=>search(false),300);};
+  input.oninput=()=>{stopReferralWatch();prefix888Applied='';refreshPrefix888();clearAccountWarning();clearBalance();serial++;clearTimeout(timer);timer=setTimeout(()=>search(false),300);};
   input.onkeydown=e=>{if(e.key==='Enter'&&(isNativeMode()||mode.value==='id'||e.ctrlKey||e.metaKey)&&!e.shiftKey){e.preventDefault();input.blur();if(isNativeMode())runNativeSearch();else search(true);}if(e.key==='Escape')$('close').click();};
   $('search').onclick=()=>{input.blur();if(isNativeMode())runNativeSearch();else search(true);};
-  function status(){ renderChecks();refreshBalance();$('status').textContent=hits.length?`${index+1} / ${hits.length}${clipped?'+':''} hasil`:'Tidak ditemukan';}
+  function status(){ renderChecks();refreshBalance();refreshAccountWarning();$('status').textContent=hits.length?`${index+1} / ${hits.length}${clipped?'+':''} hasil`:'Tidak ditemukan';}
   function navigate(delta){if(dirty){search(true);return;}if(!hits.length)return;index=(index+delta+hits.length)%hits.length;reveal();}
   $('prev').onclick=()=>navigate(-1);$('next').onclick=()=>navigate(1);
   function reveal(){const h=hits[index];if(!h)return;const el=h.el||h.range.startContainer.parentElement;let w=el.ownerDocument.defaultView;while(w&&w!==window){try{const f=w.frameElement;if(!f)break;f.scrollIntoView({block:'center',inline:'center',behavior:'instant'});w=w.parent;}catch(_){break;}}el.scrollIntoView({block:'center',inline:'center',behavior:'instant'});if(h.el){try{h.el.setSelectionRange(h.start,h.end);}catch(_){}}status();schedulePaint();}
@@ -269,7 +273,7 @@
     return {left,top,width,height,right:left+width,bottom:top+height};
   }
   function pattern(){if(mode.value==='name')return namePattern(nameQuery(input.value));const raw=(mode.value==='id'||mode.value==='auto')?cleanID(input.value):input.value.trim();if(!raw)return null;if(mode.value==='bank'){const options=extractSearchValues(input.value,'bank');if(options.length!==1)return null;const digits=options[0];return new RegExp(digits.split('').join('[\\s.\\-]*'),'g');}return new RegExp(raw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi');}
-  async function search(jump){clearBalance();if(isNativeMode()){serial++;clearTimeout(timer);hits=[];index=-1;bundle=null;bundles=[];$('checks').replaceChildren();$('marks').replaceChildren();previewNative();return;}$('native-preview').hidden=true;const token=++serial;clearTimeout(timer);hits=[];index=-1;clipped=false;$('marks').replaceChildren();if(!input.value.trim()){clear();return;}bundles=mode.value==='auto'?extractAccounts(input.value):[];if(mode.value==='auto'&&!bundles.length)bundles=[{label:'Chat ditempel',raw:input.value,name:'',number:'',bank:''}];if(mode.value==='auto'&&/^[a-z_][a-z0-9_]*[0-9][a-z0-9_]*$/i.test(cleanID(input.value))&&!bundles.some(q=>q.name||q.number||q.bank))bundles=[];bundle=bundles[0]||null;$('checks').replaceChildren();$('note').textContent='Mencari teks yang sudah dimuat pada halaman ini.';if(bundle){await searchBundle(token,jump);return;}const regex=pattern();if(!regex){$('status').textContent=mode.value==='bank'?'Masukkan angka rekening':mode.value==='name'?'Masukkan nama rekening yang jelas':'Masukkan User ID';return;}$('status').textContent='Mencari\u2026';
+  async function search(jump){clearAccountWarning();clearBalance();if(isNativeMode()){serial++;clearTimeout(timer);hits=[];index=-1;bundle=null;bundles=[];$('checks').replaceChildren();$('marks').replaceChildren();previewNative();return;}$('native-preview').hidden=true;const token=++serial;clearTimeout(timer);hits=[];index=-1;clipped=false;$('marks').replaceChildren();if(!input.value.trim()){clear();return;}bundles=mode.value==='auto'?extractAccounts(input.value):[];if(mode.value==='auto'&&!bundles.length)bundles=[{label:'Chat ditempel',raw:input.value,name:'',number:'',bank:''}];if(mode.value==='auto'&&/^[a-z_][a-z0-9_]*[0-9][a-z0-9_]*$/i.test(cleanID(input.value))&&!bundles.some(q=>q.name||q.number||q.bank))bundles=[];bundle=bundles[0]||null;$('checks').replaceChildren();$('note').textContent='Mencari teks yang sudah dimuat pada halaman ini.';if(bundle){await searchBundle(token,jump);return;}const regex=pattern();if(!regex){$('status').textContent=mode.value==='bank'?'Masukkan angka rekening':mode.value==='name'?'Masukkan nama rekening yang jelas':'Masukkan User ID';return;}$('status').textContent='Mencari\u2026';
     const groups=[];let steps=0;const documents=searchDocuments();
     for(const doc of documents){
       let group=null,owner=null,n;
@@ -799,7 +803,7 @@
   function isNativeMode(){return mode.value==='admin_id'||mode.value==='admin_bank';}
   function nativeAllowed(){return location.hostname==='agwl2.admitoto.com'&&location.pathname==='/agentplayerlist.php';}
   function previewNative(){
-    refreshBalance();
+    refreshBalance();refreshAccountWarning();
     const box=$('native-preview');box.hidden=false;box.replaceChildren();
     const kind=mode.value==='admin_id'?'id':'bank',values=extractSearchValues(input.value,kind);
     const title=document.createElement('strong');title.textContent=kind==='id'?'USER ID YANG AKAN DICARI':'NOMOR REKENING YANG AKAN DICARI';box.append(title);
@@ -841,7 +845,7 @@
   let nativeBusy=false;
   function runNativeSearch(chosen){
     if(nativeBusy)return;
-    clearBalance();
+    clearAccountWarning();clearBalance();
     clearTimeout(timer);serial++;$('marks').replaceChildren();$('checks').replaceChildren();
     if(!nativeAllowed()){previewNative();return;}
     const kind=mode.value==='admin_id'?'id':'bank',values=extractSearchValues(input.value,kind);
@@ -1071,6 +1075,62 @@
     }
   }
 
+
+
+  // ACCOUNT_SUFFIX_HELPERS_START
+  function missingAccountSuffix(given,registered){
+    const clean=value=>String(value||'').normalize('NFKC').trim().replace(/[\s.\-\u2010\u2011\u2013\u2014]/g,'');
+    const short=clean(given),full=clean(registered);
+    if(!/^\d{5,24}$/.test(short)||!/^\d{6,25}$/.test(full))return null;
+    return full.length===short.length+1&&full.startsWith(short)?{given:short,full,missing:full.slice(-1)}:null;
+  }
+  function accountSuffixCandidates(numbers,records){
+    const out=[],seen=new Set();
+    for(const given of numbers){
+      // An exact registered number takes precedence over a longer similar one.
+      if(records.some(r=>r.number===given))continue;
+      for(const record of records){
+        const difference=missingAccountSuffix(given,record.number);if(!difference)continue;
+        const key=[given,record.userId,record.number,record.bank,record.name].join('|');
+        if(seen.has(key))continue;seen.add(key);out.push({...record,...difference});
+      }
+    }
+    return out;
+  }
+  // ACCOUNT_SUFFIX_HELPERS_END
+  function clearAccountWarning(){const box=$('account-warning');box.hidden=true;box.replaceChildren();}
+  function refreshAccountWarning(){
+    clearAccountWarning();
+    if(panel.hidden||!['auto','bank','admin_bank'].includes(mode.value)||!input.value.trim())return;
+    const numbers=extractSearchValues(input.value,'bank');if(!numbers.length)return;
+    const records=[];
+    for(const doc of searchDocuments())for(const row of doc.querySelectorAll('tr,[role="row"]')){
+      if(!visible(row))continue;
+      const record=readAdminRecord(row);if(record)records.push(record);
+    }
+    const candidates=accountSuffixCandidates(numbers,records);if(!candidates.length)return;
+    const box=$('account-warning');box.hidden=false;
+    const heading=document.createElement('div');heading.className='account-warning-heading';heading.textContent='NOMOR REKENING KURANG 1 ANGKA DI BELAKANG';
+    const note=document.createElement('div');note.className='account-warning-note';note.textContent='Ditemukan nomor terdaftar yang sama di bagian awal. Cocokkan nama, bank, dan User ID sebelum memakai nomor lengkap.';
+    box.append(heading,note);
+    for(const r of candidates){
+      const card=document.createElement('div');card.className='account-warning-card';
+      const id=document.createElement('div');id.className='account-warning-id';id.textContent=[r.userId?'User ID: '+r.userId:'User ID belum terbaca',r.name,r.bank].filter(Boolean).join(' / ');card.append(id);
+      for(const [label,value] of [['NOMOR YANG DIBERIKAN',r.given],['NOMOR TERDAFTAR',r.full]]){
+        const caption=document.createElement('div');caption.className='account-warning-label';caption.textContent=label;
+        const number=document.createElement('div');number.className='account-warning-number';
+        if(value===r.full){number.textContent=r.given;const digit=document.createElement('mark');digit.textContent=r.missing;number.append(digit);}else number.textContent=value;
+        card.append(caption,number);
+      }
+      const detail=document.createElement('div');detail.className='account-warning-note';detail.textContent='Angka terakhir yang belum ditulis: '+r.missing+'.';card.append(detail);
+      const copy=document.createElement('button');copy.textContent='Salin nomor lengkap';copy.onclick=()=>{
+        const field=document.createElement('textarea');field.value=r.full;card.append(field);
+        copyAccountField(field,'Nomor lengkap').then(ok=>{if(ok)field.remove();else field.addEventListener('blur',()=>field.remove(),{once:true});});
+      };card.append(copy);box.append(card);
+    }
+    if(candidates.length>1){const more=document.createElement('div');more.className='account-warning-note';more.textContent='Ada '+candidates.length+' kemungkinan. Pilih berdasarkan identitas akun, jangan hanya kemiripan nomor.';box.append(more);}
+    const source=document.createElement('div');source.className='account-warning-note';source.textContent='Perbandingan memakai rekening pada tabel admin yang sudah dimuat.';box.append(source);
+  }
 
   // BALANCE_HELPERS_START
   function parseBalance(value){
