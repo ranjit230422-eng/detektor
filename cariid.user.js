@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Cari ID & Rekening HP \u2014 Emas Hitam
 // @namespace    local.mobile.find
-// @version      3.3.0
+// @version      3.4.0
 // @description  Bubble kecil untuk mencari teks halaman, User ID, dan rekening di HP. Kartu saldo per ID dan permintaan data pendukung di atas Rp10.000. Tanpa OCR.
 // @match        http://*/*
 // @match        https://*/*
@@ -231,6 +231,13 @@
   $('clear').onclick=()=>{input.value='';clear();input.focus();};
   mode.onchange=()=>{stopReferralWatch();refreshPrefix888();input.inputMode='text';input.placeholder=mode.value==='admin_id'?'Tempel chat: User ID / username / user name\u2026':mode.value==='admin_bank'?'Tempel chat yang memuat nomor rekening\u2026':mode.value==='bank'?'Ketik nomor rekening\u2026':mode.value==='name'?'Ketik nama atau tempel data rekening\u2026':mode.value==='auto'?'Tempel bebas: nama, rekening, bank\u2026':'Ketik User ID atau teks\u2026';$('search').textContent=isNativeMode()?'Cari di admin':'Cari';search(false);};
   input.oninput=()=>{stopReferralWatch();prefix888Applied='';refreshPrefix888();clearAccountWarning();clearBalance();serial++;clearTimeout(timer);timer=setTimeout(()=>search(false),300);};
+  input.addEventListener('paste',e=>{
+    if(!['admin_id','id'].includes(mode.value))return;
+    const text=e.clipboardData?.getData('text/plain');if(!text)return;
+    const values=extractSearchValues(text,'id');
+    if(values.length!==1)return;
+    e.preventDefault();input.value=values[0];input.dispatchEvent(new Event('input',{bubbles:true}));
+  });
   input.onkeydown=e=>{if(e.key==='Enter'&&(isNativeMode()||mode.value==='id'||e.ctrlKey||e.metaKey)&&!e.shiftKey){e.preventDefault();input.blur();if(isNativeMode())runNativeSearch();else search(true);}if(e.key==='Escape')$('close').click();};
   $('search').onclick=()=>{input.blur();if(isNativeMode())runNativeSearch();else search(true);};
   function status(){ renderChecks();refreshBalance();refreshAccountWarning();$('status').textContent=hits.length?`${index+1} / ${hits.length}${clipped?'+':''} hasil`:'Tidak ditemukan';}
@@ -749,12 +756,13 @@
     const text=String(value).normalize('NFKC').replace(/[\u200B\u2060\uFEFF]/g,'').trim();
     const unique=values=>[...new Set(values)];
     if(kind==='id'){
-      const label=/\b(?:user\s*id|user\s*name|id\s*user)\b\s*(?:(?:nya|adalah|yaitu)\s*)?(?:[:=\-\u2013>]+\s*)?["'`*]*\s*([a-z0-9_][a-z0-9_.@\-]*)/gi;
+      const label=/\b(?:(?:user|usr)[\s_-]*(?:name|id)|id[\s_-]*(?:user|usr)(?:[\s_-]*id)?|user|usr|id)\b\s*(?:(?:saya|aku|nya|adalah|yaitu)\b\s*)*(?:[:=\-\u2013>]+\s*)?["'`*]*\s*([a-z0-9_][a-z0-9_.@\-]*)/gi;
+      const excluded=['nama','name','bank','rekening','norek','username','userid','usrid','usr','user','id','saya','aku','nya','adalah','yaitu','ini','dan'];
       const labelled=Array.from(text.matchAll(label)).map(m=>m[1].replace(/[.,;:]+$/g,''))
-        .filter(v=>!['nama','bank','rekening','norek','username','userid','user','id','saya','nya','adalah','yaitu'].includes(v.toLowerCase()));
+        .filter(v=>!excluded.includes(v.toLowerCase()));
       if(labelled.length)return unique(labelled);
       const bare=text.replace(/^["'`*]+|["'`*]+$/g,'');
-      return /^[a-z0-9_][a-z0-9_.@\-]*$/i.test(bare)?[bare]:[];
+      return /^[a-z0-9_][a-z0-9_.@\-]*$/i.test(bare)&&!excluded.includes(bare.toLowerCase())?[bare]:[];
     }
     const result=[];
     const labelled=/\b(?:nomor\s*(?:rekening|rek)|no\.?\s*(?:rekening|rek)|norek|rekening|rek|account\s*(?:number|no))\b\s*(?:nya\s*)?[:=\-]*\s*(\d[\d \t.\-\u2010\u2011\u2013\u2014]*\d|\d)/gi;
@@ -771,7 +779,7 @@
   }
   function nativeFieldKind(value){
     const t=String(value).normalize('NFKC').toLowerCase().replace(/[^a-z0-9]/g,'');
-    if(/^(?:user(?:id|name)|iduser|usernamefilter|searchuser(?:id|name)|txtuser(?:id|name)|cariuser(?:id|name))$/.test(t))return 'id';
+    if(/^(?:user(?:id|name)|usr(?:id|name)|idusr|iduser|user|usr|id|usernamefilter|searchuser(?:id|name)|txtuser(?:id|name)|cariuser(?:id|name))$/.test(t))return 'id';
     if(/^(?:namarekening|namarek|accountname|accname|bankaccname|bankaccountname|banknameholder|accountholder|txtnamarekening)$/.test(t))return 'name';
     if(/^(?:nomorrekening|norekening|norek|nomorrek|norekbank|rekening|rek|accountnumber|accountno|accno|bankaccount|bankacc|bankaccno|bankaccountnumber|bankaccountno|txtnorek|searchnorek)$/.test(t))return 'bank';
     return '';
@@ -810,7 +818,7 @@
     if(!nativeAllowed()){$('status').textContent='Buka halaman daftar pemain admin';box.append(document.createTextNode(' \u2014 Fitur ini khusus agwl2.admitoto.com/agentplayerlist.php.'));return;}
     if(values.length===1){const v=document.createElement('div');v.className='native-value';v.textContent=values[0];box.append(v);box.append(document.createTextNode('Tekan Cari di admin untuk mengisi kolom dan menjalankan pencarian.'));$('status').textContent='Siap mencari di admin';}
     else if(values.length>1){box.append(document.createElement('br'));box.append(document.createTextNode('Ada beberapa data. Pilih yang ingin dicari:'));values.forEach(value=>{const b=document.createElement('button');b.textContent=value;b.onclick=()=>runNativeSearch(value);box.append(b);});$('status').textContent='Pilih satu data';}
-    else{$('status').textContent=input.value.trim()?'Data belum terbaca':'Tempel data terlebih dahulu';box.append(document.createElement('br'));box.append(document.createTextNode(kind==='id'?'Contoh: username: kohbing007. Bisa juga tempel ID saja.':'Contoh: nomor rekening: 0882-2536-4576. Bisa juga tempel nomor saja.'));}
+    else{$('status').textContent=input.value.trim()?'Data belum terbaca':'Tempel data terlebih dahulu';box.append(document.createElement('br'));box.append(document.createTextNode(kind==='id'?'Tempel username, user name, userid, id user, usrid, usr id, user, atau id diikuti nilai ID.':'Contoh: nomor rekening: 0882-2536-4576. Bisa juga tempel nomor saja.'));}
     $('note').textContent='Pilihan pencarian tetap. Nama rekening dan Ctrl F tersedia di daftar pilihan atas.';
   }
   function nativeInputs(scope){return Array.from(scope.querySelectorAll('input:not([type]),input[type="text"],input[type="search"],input[type="tel"],input[type="number"]')).filter(el=>!el.readOnly&&visible(el));}
@@ -838,9 +846,24 @@
   }
   function setNativeValue(field,value){
     const w=field.ownerDocument.defaultView;
-    const setter=Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype,'value')?.set;
+    const proto=field.tagName==='TEXTAREA'?w.HTMLTextAreaElement.prototype:w.HTMLInputElement.prototype;
+    const setter=Object.getOwnPropertyDescriptor(proto,'value')?.set;
     if(setter)setter.call(field,value);else field.value=value;
     field.dispatchEvent(new w.Event('input',{bubbles:true}));field.dispatchEvent(new w.Event('change',{bubbles:true}));
+  }
+  function clearOtherSearchFilters(scope,field){
+    const textTypes=new Set(['text','search','tel','number','email','url']);
+    for(const other of scope.querySelectorAll('input,textarea,select')){
+      if(other===field||other.form!==field.form||other.disabled||other.readOnly||!visible(other))continue;
+      if(other.tagName==='INPUT'&&!textTypes.has(other.type))continue;
+      if(other.tagName==='SELECT'){
+        const empty=Array.from(other.options).find(o=>!o.disabled&&(o.value===''||/^(?:semua|all|semua\s+\w+|all\s+\w+)$/i.test(o.textContent.trim())));
+        if(!empty)continue;
+        const w=other.ownerDocument.defaultView;other.value=empty.value;other.dispatchEvent(new w.Event('change',{bubbles:true}));continue;
+      }
+      setNativeValue(other,'');
+      if(other.value!=='')throw new Error('Kolom filter lain belum berhasil dikosongkan. Pencarian belum dijalankan.');
+    }
   }
   let nativeBusy=false;
   function runNativeSearch(chosen){
@@ -860,9 +883,12 @@
     if(buttons.length!==1){$('status').textContent='Tombol Cari admin belum dapat dipastikan';$('note').textContent='Pencarian belum dikirim karena tombol Cari tidak ditemukan atau ada beberapa tombol dengan label sama.';return;}
     nativeBusy=true;
     try{
-      // Clear only the companion identity filters, never unrelated form values.
-      for(const other of ['id','name','bank']){const old=resolveNativeField(doc,other);if(old&&old!==field&&old.form===form)setNativeValue(old,'');}
-      for(const box of scope.querySelectorAll('input[type="checkbox"]')){
+      // Restrict clearing to this search form or the common search-control container.
+      let filterScope=form;
+      if(!filterScope){filterScope=field.parentElement;while(filterScope&&filterScope!==doc.body&&!filterScope.contains(buttons[0]))filterScope=filterScope.parentElement;}
+      if(!filterScope||filterScope===doc.body&&!form)throw new Error('Area filter pencarian belum dapat dipastikan.');
+      clearOtherSearchFilters(filterScope,field);
+      for(const box of filterScope.querySelectorAll('input[type="checkbox"]')){
         const k=nativeToggleKind(box);if(!['id','name','bank'].includes(k)||box.disabled)continue;
         const checked=k===kind;if(box.checked!==checked)box.click();
       }
