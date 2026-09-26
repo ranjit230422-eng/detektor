@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Cari ID & Rekening HP \u2014 Emas Hitam
 // @namespace    local.mobile.find
-// @version      3.4.0
+// @version      3.28.0
 // @description  Bubble kecil untuk mencari teks halaman, User ID, dan rekening di HP. Kartu saldo per ID dan permintaan data pendukung di atas Rp10.000. Tanpa OCR.
 // @match        http://*/*
 // @match        https://*/*
@@ -10,6 +10,8 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_setClipboard
+// @grant        GM_openInTab
+// @grant        GM_addValueChangeListener
 // ==/UserScript==
 (() => {
   'use strict';
@@ -225,7 +227,7 @@
     if(Date.now()<suppressClickUntil)return;
     toggle();
   });
-  function toggle(){panel.hidden=!panel.hidden;if(!panel.hidden){place();input.focus();if(input.value)search(false);}else{serial++;$('marks').replaceChildren();}}
+  function toggle(){panel.hidden=!panel.hidden;if(!panel.hidden){place();if(root.getElementById('qris-menu')&&!root.getElementById('qris-menu').hidden){root.getElementById('q-id').focus();}else{input.focus();if(input.value)search(false);}}else{serial++;$('marks').replaceChildren();}}
   $('close').onclick=()=>{panel.hidden=true;serial++;$('marks').replaceChildren();};
   function clear(){clearAccountWarning();clearBalance();stopReferralWatch();prefix888Applied='';refreshPrefix888();$('native-preview').hidden=true;$('native-preview').replaceChildren();bundle=null;bundles=[];$('checks').replaceChildren();serial++;clearTimeout(timer);hits=[];index=-1;$('marks').replaceChildren();$('status').textContent='Masukkan pencarian';}
   $('clear').onclick=()=>{input.value='';clear();input.focus();};
@@ -1262,4 +1264,635 @@
   window.visualViewport?.addEventListener('resize',()=>{place();schedulePaint();});
   window.visualViewport?.addEventListener('scroll',()=>{place();schedulePaint();});
   restoreNativeSearch();
+  // QRIS_ADDON_START â€” isolated workflow; existing modes remain unchanged.
+  const Q_URL='https://m2qris.com/staff/disburstment', Q_ADMIN='https://agwl2.admitoto.com/agentplayerlist.php';
+  const Q_KEY='mf-qris-job-v2', Q_SESSION='mf-qris-worker-v2', Q_OWNER='mf-qris-owner-v2';
+  const qMenu=document.createElement('details');
+  qMenu.id='qris-menu';
+  qMenu.style.cssText='margin-top:12px;border-top:1px solid #cba534;padding-top:12px';
+  qMenu.innerHTML='<summary style="cursor:pointer;font-weight:800;color:#f4cf65;padding:8px 0">PENCARIAN QRIS Â· v3.28.0</summary><div class="row"><textarea id="q-id" placeholder="Tempel User ID / username di sini" aria-label="User ID QRIS"></textarea></div><div class="row"><button id="q-start" type="button">Cari QRIS</button><button id="q-stop" type="button">Batalkan</button><button id="q-clear" type="button">Hapus</button></div><div class="row"><button id="q-diagnostic" type="button">Salin pemeriksaan QRIS</button></div><div id="q-result" role="status" style="white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;padding-top:10px">Hasil muncul di sini. Pencarian berjalan di latar belakang; pastikan admin dan QRIS sudah login.</div>';
+  panel.append(qMenu);
+  const qLegacy=document.createElement('div');qLegacy.id='main-search-page';
+  for(const child of Array.from(panel.children))if(child.id!=='panel-handle'&&child!==qMenu)qLegacy.append(child);
+  const qNav=document.createElement('div');qNav.setAttribute('role','tablist');
+  qNav.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0;';
+  qNav.innerHTML='<button type="button" id="main-search-tab" role="tab" aria-controls="main-search-page">ID &amp; REKENING</button><button type="button" id="qris-search-tab" role="tab" aria-controls="qris-menu">PENCARIAN QRIS</button>';
+  panel.insertBefore(qNav,qMenu);panel.insertBefore(qLegacy,qMenu);
+  qLegacy.setAttribute('role','tabpanel');qLegacy.setAttribute('aria-labelledby','main-search-tab');
+  qMenu.setAttribute('role','tabpanel');qMenu.setAttribute('aria-labelledby','qris-search-tab');
+  qMenu.open=true;qMenu.querySelector('summary').hidden=true;qMenu.style.cssText='margin-top:0;padding-top:0;border:0;';
+  $('panel-handle').querySelector('span').textContent='PENCARIAN Â· v3.28.0';
+  function qShowPage(page){
+    const qris=page==='qris';qLegacy.hidden=qris;qMenu.hidden=!qris;qMenu.open=true;
+    for(const [id,active] of [['main-search-tab',!qris],['qris-search-tab',qris]]){
+      const tab=root.getElementById(id);tab.setAttribute('aria-selected',String(active));
+      tab.style.cssText='font-weight:800;font-size:12px;min-height:46px;border-radius:12px;'+(active?'background:linear-gradient(145deg,#ffe18a,#c69b32);color:#1e190d;border:1px solid #ffe4a0;box-shadow:0 3px 9px #0005;':'background:#22252c;color:#d8dce5;border:1px solid #494e58;');
+    }
+    try{sessionStorage.setItem('mf-search-page',page);}catch(_){}
+    if(qris){serial++;clearTimeout(timer);$('marks').replaceChildren();}
+  }
+  let qWorkerReleased=false;
+  function qSelectMain(){
+    // Only relinquish automation when the user takes over the worker tab itself.
+    // Choosing Main in the originating tab leaves its separate QRIS worker running.
+    const token=qWorkerToken();
+    if(token){
+      qWorkerReleased=true;clearTimeout(qRefreshTimer);
+      sessionStorage.removeItem(Q_SESSION);
+      const hash=new URLSearchParams(location.hash.slice(1));
+      if(hash.has('mfq')){hash.delete('mfq');history.replaceState(null,'',location.pathname+location.search+(hash.toString()?'#'+hash:''));}
+      const job=qJob();
+      if(job?.token===token){job.stage='cancelled';job.autoRefresh=false;job.message='Tab digunakan untuk ID & REKENING. Pencarian QRIS dapat dimulai lagi dari menu QRIS.';qSave(job);}
+    }
+    qShowPage('main');
+  }
+  root.getElementById('main-search-tab').onclick=qSelectMain;
+  root.getElementById('qris-search-tab').onclick=()=>qShowPage('qris');
+  qShowPage(new URLSearchParams(location.hash.slice(1)).has('mfq')?'qris':sessionStorage.getItem('mf-search-page')||'main');
+  const qEl=id=>root.getElementById(id);
+  const qSay=text=>{
+    qEl('q-result').textContent=text;
+    const j=qJob();
+    if(j&&qWorkerToken()===j.token&&!['done','error','cancelled'].includes(j.stage)){
+      j.progress=text;j.updated=Date.now();qSave(j);
+    }
+  };
+  const qSleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  const qDigits=v=>String(v||'').replace(/[\s.\-]/g,'');
+  const qText=el=>(el?.textContent||'').replace(/\s+/g,' ').trim();
+  let qRefreshTimer=0,qRenderedSignature='';
+  let qRunning=false,qOwnedToken=sessionStorage.getItem(Q_OWNER)||'',qTab=null,qWatchTimer=0;
+  function qStatusStyle(raw){
+    const status=String(raw||'').trim().toUpperCase().replace(/[_\s]+/g,'-').replace(/-+/g,'-');
+    if(!status||status==='PENDING')return {label:'PENDING',color:'#ffda57',background:'#493b10'};
+    if(status==='SUCCESS')return {label:'SUCCESS',color:'#69efa8',background:'#103e2c'};
+    if(status==='FAILED-REFUND'||status==='FAILED'||status==='REFUND')return {label:status,color:'#ff9292',background:'#4a2027'};
+    return {label:status,color:'#d6dfed',background:'#283345'};
+  }
+  function qRenderResult(j){
+    const signature=JSON.stringify([j.stage,j.result,j.message,j.progress,j.finished,j.autoRefresh]);
+    if(signature===qRenderedSignature)return;qRenderedSignature=signature;
+    const box=qEl('q-result');box.replaceChildren();
+    const results=j.result?.records||[];
+    if(results.length){
+      const count=document.createElement('div');count.textContent=results.length+' transaksi Â· terbaru di atas';count.style.cssText='font-weight:700;margin-bottom:10px;color:#f4cf65';box.append(count);
+      for(const r of results){
+        const card=document.createElement('div');card.style.cssText='background:#171b22;border:1px solid #a58a38;border-radius:12px;padding:12px;margin-bottom:8px;white-space:normal;';
+        const status=qStatusStyle(r.status);
+        for(const [label,value] of [['AMOUNT',r.amount],['STATUS',status.label],['DATETIME',r.datetime]]){
+          const row=document.createElement('div');row.style.cssText='display:flex;justify-content:space-between;gap:12px;align-items:center;margin:6px 0;';
+          const name=document.createElement('span');name.textContent=label;name.style.cssText='font-size:11px;color:#b4bcc8;';
+          const val=document.createElement('strong');val.textContent=value||'â€”';val.style.cssText='text-align:right;font-size:14px;overflow-wrap:anywhere;';
+          if(label==='STATUS')val.style.cssText+=`color:${status.color};background:${status.background};padding:5px 9px;border-radius:8px;`;
+          row.append(name,val);card.append(row);
+        }
+        box.append(card);
+      }
+    }
+    const note=document.createElement('div');note.style.cssText='font-size:12px;color:#c4c9d2;white-space:pre-wrap;';
+    note.textContent=j.stage==='done'?(j.result?.note||(!results.length?'Belum ada transaksi yang cocok.':'')):(j.message||j.progress||'Mencariâ€¦');
+    if(j.stage==='done'&&j.autoRefresh)note.textContent+=(note.textContent?'\n':'')+'Pembaruan otomatis setiap 1 menit.';
+    if(results.length&&j.stage!=='done')note.textContent+='\nKartu masih menampilkan hasil pemeriksaan sebelumnya.';
+    box.append(note);
+  }
+  function qWorkerToken(){if(qWorkerReleased)return '';return new URLSearchParams(location.hash.slice(1)).get('mfq')||sessionStorage.getItem(Q_SESSION)||'';}
+  function qTerminal(j){return ['done','error','cancelled'].includes(j.stage);}
+  function qCloseWorker(){if(qTab){try{qTab.close();}catch(_){}qTab=null;}}
+  function qDisplayOwned(){
+    if(!qOwnedToken)return;
+    const j=qJob();
+    if(!j||j.token!==qOwnedToken){
+      qEl('q-result').textContent='Pencarian diganti dari tab lain atau sudah kedaluwarsa.';
+      qCloseWorker();qOwnedToken='';sessionStorage.removeItem(Q_OWNER);clearInterval(qWatchTimer);return;
+    }
+    qRenderResult(j);
+    qEl('q-start').disabled=!qTerminal(j);
+    if(qTerminal(j)){if(j.stage!=='done'||!j.autoRefresh){qCloseWorker();clearInterval(qWatchTimer);}return;}
+    if(Date.now()-(j.cycleStarted||j.created)>180000){
+      j.stage='error';j.message='Pencarian belum selesai. Pastikan admin dan QRIS sudah login, lalu coba lagi. Browser HP mungkin menunda tab latar belakang.';qSave(j);qDisplayOwned();
+    }
+  }
+  function qWatchOwned(){
+    clearInterval(qWatchTimer);qWatchTimer=setInterval(qDisplayOwned,1000);qDisplayOwned();
+  }
+  // Storage notifications deliver results without moving or focusing the originating tab.
+  if(typeof GM_addValueChangeListener==='function')GM_addValueChangeListener(Q_KEY,()=>qDisplayOwned());
+  function qJob(){const j=GM_getValue(Q_KEY,null);return j&&Date.now()-(j.updated||j.finished||j.created)<15*60*1000?j:null;}
+  function qSave(j){GM_setValue(Q_KEY,j);}
+  function qAssert(j){if(qWorkerReleased)throw Error('Tab ini digunakan untuk ID & REKENING.');if(qJob()?.token!==j.token||qJob()?.stage==='cancelled')throw Error('Pencarian dibatalkan atau diganti pencarian baru.');}
+  function qDayRange(now=new Date()){
+    const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now);
+    const get=k=>parts.find(p=>p.type===k).value;
+    const end=`${get('year')}-${get('month')}-${get('day')}`;
+    const yesterday=new Date(end+'T00:00:00Z');yesterday.setUTCDate(yesterday.getUTCDate()-1);
+    return {start:yesterday.toISOString().slice(0,10),end};
+  }
+  function qGo(url,j){qAssert(j);if(qWorkerToken()!==j.token)throw Error('Navigasi hanya diizinkan di tab pekerja QRIS.');qSave(j);location.replace(url+'#mfq='+encodeURIComponent(j.token));}
+  function qLabel(el){
+    const nearby=[];
+    let group=el.parentElement;
+    for(let depth=0;group&&depth<3;depth++,group=group.parentElement){
+      if(Array.from(group.querySelectorAll('input')).filter(e=>visible(e)&&e.type!=='hidden').length!==1)break;
+      for(const label of group.querySelectorAll('label,.form-label,.control-label,span,small'))nearby.push(qText(label));
+      const direct=Array.from(group.childNodes).filter(n=>n.nodeType===3).map(n=>n.textContent).join(' ').trim();
+      if(direct.length<80)nearby.push(direct);
+    }
+    return [el.name,el.id,el.placeholder,el.getAttribute('aria-label'),...Array.from(el.labels||[]).map(qText),...nearby].join(' ').toLowerCase();
+  }
+  function qThreeBarPattern(bars){
+    const flat=bars.filter(b=>Number.isFinite(b.x+b.y+b.width+b.height)&&b.width>0&&b.height<=b.width*0.25).sort((a,b)=>a.y-b.y);
+    if(flat.length!==3)return false;
+    const [a,b,c]=flat,tolerance=Math.max(1,a.width*0.12);
+    return a.width>b.width*1.15&&b.width>c.width*1.15&&Math.abs(a.x-b.x)<=tolerance&&Math.abs(a.x-c.x)<=tolerance&&b.y>a.y+a.height&&c.y>b.y+b.height;
+  }
+  function qHasThreeLineIcon(el){
+    const svgs=el.tagName?.toLowerCase()==='svg'?[el]:Array.from(el.querySelectorAll('svg'));
+    for(const svg of svgs){
+      const bars=[];
+      for(const shape of svg.querySelectorAll('line,rect,path,polyline')){
+        try{const b=shape.getBBox();if(b.width>0&&b.height<=b.width*0.25)bars.push({x:b.x,y:b.y,width:b.width,height:b.height});}catch(_){}
+      }
+      if(qThreeBarPattern(bars))return true;
+      // Many icon libraries combine all three horizontal strokes in one SVG path.
+      for(const path of svg.querySelectorAll('path')){
+        const d=path.getAttribute('d')||'';
+        const strokes=[];
+        const re=/M\s*(-?\d*\.?\d+)[ ,]+(-?\d*\.?\d+)\s*([Hh])\s*(-?\d*\.?\d+)/g;
+        let match;while((match=re.exec(d))){const x=+match[1],y=+match[2],end=match[3]==='h'?x+(+match[4]):+match[4];strokes.push({x:Math.min(x,end),y,width:Math.abs(end-x),height:0});}
+        if(qThreeBarPattern(strokes))return true;
+      }
+    }
+    return false;
+  }
+  function qIsFilterButton(el){
+    const text=el.tagName==='INPUT'?el.value:qText(el);
+    const meta=[text,el.id,el.name,el.getAttribute('title'),el.getAttribute('aria-label'),el.getAttribute('data-original-title'),el.getAttribute('data-bs-original-title')].join(' ').toLowerCase();
+    if(/export|download|refresh|reset|reload|transfer|withdraw|delete|hapus/.test(meta))return false;
+    if(qHasThreeLineIcon(el))return true;
+    if(/^(search|cari|filter|apply|terapkan|tampilkan)$/i.test(text))return true;
+    if(/(?:^|[\s_-])(?:filter|search|cari|apply)(?:$|[\s_-])/.test(meta))return true;
+    const icons=Array.from(el.querySelectorAll('svg,i,span,[data-feather],[data-lucide]'));
+    return icons.some(icon=>{
+      const tags=[icon.getAttribute('class'),icon.getAttribute('data-feather'),icon.getAttribute('data-lucide'),icon.getAttribute('data-icon'),icon.getAttribute('aria-label'),qText(icon)].join(' ').toLowerCase();
+      return /(?:^|[\s_:-])(?:filter|filter_list|filter-list|list-filter|sort-variant|sort-descending|funnel|search)(?:$|[\s_:-])/.test(tags);
+    });
+  }
+  function qFilterActionMeta(el){
+    return [qText(el),el.id,el.name,el.getAttribute('class'),el.getAttribute('title'),el.getAttribute('aria-label'),...Array.from(el.querySelectorAll('svg,i,span')).map(e=>[e.getAttribute('class'),e.getAttribute('data-icon'),e.getAttribute('data-feather'),e.getAttribute('data-lucide')].join(' '))].join(' ').toLowerCase();
+  }
+  function qFindFilterButton(scope,search){
+    // Confirmed by the user's live DOM diagnostic, independent of mobile geometry.
+    const exact=Array.from(scope.querySelectorAll('button.btn-result')).filter(e=>visible(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true');
+    if(exact.length===1)return exact[0];
+    if(exact.length>1)throw Error('Lebih dari satu tombol hasil QRIS; pencarian belum dikirim.');
+    const selector='button,[role="button"],a.btn,input[type="submit"],input[type="button"],[onclick]';
+    const iconControls=[];
+    for(const svg of scope.querySelectorAll('svg')){
+      if(!qHasThreeLineIcon(svg))continue;
+      let target=svg.closest(selector);
+      if(!target){
+        let parent=svg.parentElement;
+        for(let depth=0;parent&&scope.contains(parent)&&depth<3;depth++,parent=parent.parentElement){
+          if(parent.contains(search))break;
+          if(getComputedStyle(parent).cursor==='pointer'){target=parent;break;}
+        }
+      }
+      if(target)iconControls.push(target);
+    }
+    const controls=[...new Set([...scope.querySelectorAll(selector),...iconControls])].filter(e=>visible(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true'&&!e.contains(search));
+    // Keep the actual outer clickable control, not both its icon and its button.
+    const candidates=controls.filter(e=>!controls.some(other=>other!==e&&other.contains(e)));
+    const r=search.getBoundingClientRect();
+    const right=candidates.map(el=>{
+      const b=el.getBoundingClientRect();
+      const overlap=Math.min(r.bottom,b.bottom)-Math.max(r.top,b.top);
+      return {el,gap:b.left-r.right,aligned:overlap>=Math.min(r.height,b.height)*0.5&&b.width>0&&b.height>0&&b.width<=Math.max(180,r.width)};
+    }).filter(x=>x.aligned&&x.gap>=-2&&x.gap<=Math.max(120,r.width*0.6)).sort((a,b)=>a.gap-b.gap);
+    if(right.length){
+      const nearest=right[0].el;
+      // The screenshot confirms this immediate neighbour is the three-line filter.
+      // Never substitute refresh/export/financial action controls for that neighbour.
+      if(/refresh|reload|reset|export|download|transfer|withdraw|delete|hapus|logout/.test(qFilterActionMeta(nearest)))throw Error('Tombol di sebelah Search bukan filter tiga garis. Pencarian belum dikirim.');
+      if(right[1]&&Math.abs(right[1].gap-right[0].gap)<2)throw Error('Ada dua tombol bertumpuk di sebelah Search; filter belum ditekan.');
+      return nearest;
+    }
+    const named=candidates.filter(qIsFilterButton);
+    return named.length===1?named[0]:null;
+  }
+  function qDateRole(field){
+    if(['start','end'].includes(field.dataset?.mfQrisDateRole))return field.dataset.mfQrisDateRole;
+    const text=qLabel(field).replace(/([a-z])([A-Z])/g,'$1 $2').toLowerCase().replace(/[^a-z0-9]+/g,' ');
+    const compact=text.replace(/ /g,'');
+    const start=/date\s*start|start\s*date|tanggal\s*awal|tgl\s*awal|date\s*from|from\s*date/.test(text)||/datestart|startdate|datefrom|fromdate|tanggalawal|tglawal/.test(compact);
+    const end=/date\s*end|end\s*date|tanggal\s*akhir|tgl\s*akhir|date\s*to|to\s*date/.test(text)||/dateend|enddate|dateto|todate|tanggalakhir|tglakhir/.test(compact);
+    if(start===end)return '';
+    return start?'start':'end';
+  }
+  function qDateISO(value){
+    const s=String(value||'').trim();
+    let m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(m)return `${m[1]}-${m[2]}-${m[3]}`;
+    m=s.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
+    return m?`${m[3]}-${m[2]}-${m[1]}`:'';
+  }
+  function qCalendarLabels(iso){
+    const date=new Date(iso+'T12:00:00Z'),labels=new Set();
+    for(const locale of ['en-US','en-GB','id-ID'])for(const month of ['long','short','numeric','2-digit']){
+      labels.add(new Intl.DateTimeFormat(locale,{year:'numeric',month,day:'numeric',timeZone:'UTC'}).format(date).toLowerCase().replace(/[^a-z0-9]/g,''));
+    }
+    labels.add(iso.replace(/-/g,''));return labels;
+  }
+  function qCalendarMonth(text){
+    const year=String(text).match(/\b(20\d{2})\b/)?.[1];if(!year)return null;
+    const words=String(text).toLowerCase().replace(/[^a-z]/g,'');
+    for(let month=0;month<12;month++)for(const locale of ['en-US','id-ID'])for(const length of ['short','long']){
+      const name=new Intl.DateTimeFormat(locale,{month:length,timeZone:'UTC'}).format(new Date(Date.UTC(2026,month,15))).toLowerCase().replace(/[^a-z]/g,'');
+      if(words===name)return Number(year)*12+month;
+    }
+    return null;
+  }
+  function qFieldDateISO(field){
+    if(field.dataset?.mfQrisDateShown===field.value&&field.dataset?.mfQrisDateISO)return field.dataset.mfQrisDateISO;
+    return qDateISO(field.value);
+  }
+  function qCalendarIsOpen(calendar){
+    // Angular custom-element hosts may have no rectangle although their days are visible.
+    return !!calendar?.isConnected&&Array.from(calendar.querySelectorAll('button.mat-calendar-body-cell,.mat-calendar-period-button')).some(visible);
+  }
+  function qCalendarSelected(cell){
+    return cell?.getAttribute('aria-selected')==='true'||!!cell?.querySelector('.mat-calendar-body-selected');
+  }
+  async function qSetDate(field,iso,j){
+    qAssert(j);
+    if(field.disabled||field.readOnly)throw Error('Date Start tidak dapat diketik pada halaman ini.');
+    const [year,month,day]=iso.split('-'),text=`${day}-${month}-${year}`;
+    const w=field.ownerDocument.defaultView;
+    delete field.dataset.mfQrisDateISO;delete field.dataset.mfQrisDateShown;
+    field.focus({preventScroll:true});
+    try{field.setSelectionRange(0,field.value.length);}catch(_){}
+    // Clear the entire old date, then enter DD-MM-YYYY through the input's native setter.
+    setNativeValue(field,'');
+    setNativeValue(field,text);
+    field.dispatchEvent(new w.KeyboardEvent('keyup',{key:year.slice(-1),bubbles:true}));
+    field.blur();
+    await qSleep(400);
+    await qWait(j,()=>qDateISO(field.value)===iso&&field.getAttribute('aria-invalid')!=='true'&&!field.classList.contains('ng-invalid'),10000,'Date Start belum menerima tanggal '+text+'. Proses dihentikan sebelum menekan tombol.');
+    qAssert(j);return field.value;
+  }
+  function qUnique(items,label){if(items.length!==1)throw Error(label+' belum dapat dipastikan. Kirim screenshot filter dan judul kolom tabel QRIS untuk penyesuaian.');return items[0];}
+  function qDateValue(el,iso){
+    if(el.type==='date')return iso;
+    const [y,m,d]=iso.split('-');
+    const formats=[el.getAttribute('data-date-format'),el.getAttribute('data-format'),el.placeholder].filter(Boolean).map(v=>v.toLowerCase().trim());
+    for(const f of formats){
+      if(/dd\/mm\/yyyy|d\/m\/y/.test(f))return `${d}/${m}/${y}`;
+      if(/dd-mm-yyyy|d-m-y/.test(f))return `${d}-${m}-${y}`;
+      if(/yyyy-mm-dd|y-m-d/.test(f))return iso;
+    }
+    const current=String(el.value||'').trim();
+    if(/^\d{2}\/\d{2}\/\d{4}$/.test(current))return `${d}/${m}/${y}`;
+    if(/^\d{2}-\d{2}-\d{4}$/.test(current))return `${d}-${m}-${y}`;
+    if(/^\d{4}-\d{2}-\d{2}$/.test(current))return iso;
+    // Confirmed screenshot: M2QRIS Date Start / Date End show DD-MM-YYYY.
+    if(location.hostname==='m2qris.com'&&qDateRole(el))return `${d}-${m}-${y}`;
+    throw Error('Format Date Start / Date End belum dikenali.');
+  }
+  async function qApplyFilters(j){
+    if(!/^\d{5,30}$/.test(j.account))throw Error('Nomor rekening AGWL belum valid; Search QRIS tidak diisi.');
+    qAssert(j);
+    let c=qFilterControls();
+    const endValue=c.end.value,endISO=qDateISO(endValue);
+    if(!endISO)throw Error('Tanggal bawaan Date End belum terbaca. Muat ulang halaman QRIS terlebih dahulu.');
+    // Preserve the site's Date End exactly; never focus, click, or write to it.
+    j.range.end=endISO;qSave(j);
+    await qSetDate(c.start,j.range.start,j);
+    qAssert(j);c=qFilterControls();
+    if(c.end.value!==endValue||qDateISO(c.start.value)!==j.range.start)throw Error('Tanggal berubah setelah Date Start diisi. Pencarian belum dilanjutkan.');
+    const refresh=c.refresh;
+    if(!refresh?.isConnected||refresh.disabled)throw Error('Tombol panah putar QRIS belum siap.');
+    qSay('Memuat ulang Disbursement lewat tombol panah putarâ€¦');
+    refresh.click(); // Exactly once per cycle, before inserting the account.
+    await qSleep(2000);
+    await qWait(j,()=>!Array.from(document.querySelectorAll('[aria-busy="true"],.dataTables_processing,.dt-processing,mat-progress-spinner,mat-spinner,mat-progress-bar')).some(visible),25000,'QRIS masih memuat data setelah tombol panah putar.');
+    qAssert(j);c=qFilterControls();
+    if(c.end.value!==endValue||qDateISO(c.start.value)!==j.range.start)throw Error('Tanggal berubah setelah tombol panah putar. Hasil belum dibaca.');
+    setNativeValue(c.search,j.account);
+    // Support live filters bound to keyup, as after releasing Ctrl+V; never send Enter.
+    const w=c.search.ownerDocument.defaultView;
+    c.search.dispatchEvent(new w.KeyboardEvent('keyup',{key:'Control',code:'ControlLeft',bubbles:true}));
+    await qSleep(400);qAssert(j);c=qFilterControls();
+    if(qDateISO(c.start.value)===j.range.start&&c.end.value===endValue&&c.search.value===j.account){
+      if(!c.button?.isConnected||c.button.disabled)throw Error('Tombol tiga garis belum siap.');
+      qSay('Menekan tombol tiga garis sekali dan menunggu hasilâ€¦');
+      j.stage='qris-result';j.accountPastedAt=Date.now();j.filterClickedAt=Date.now();qSave(j);
+      c.button.click();return c;
+    }
+    throw Error('Date Start atau Search belum tersimpan. Filter belum dijalankan agar hasil tidak salah.');
+  }
+
+  function qTimestamp(raw){
+    const s=String(raw).trim();
+    let m=s.match(/^(\d{4})-(\d{2})-(\d{2})[T\s]+(\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/i);
+    if(!m){const d=s.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);if(d)m=[d[0],d[3],d[2],d[1],d[4],d[5],d[6],null];}
+    if(!m)return null;
+    const [,y,mo,d,h,mi,se='00',tz]=m;
+    const check=new Date(Date.UTC(+y,+mo-1,+d));
+    if(check.getUTCFullYear()!==+y||check.getUTCMonth()!==+mo-1||check.getUTCDate()!==+d||+h>23||+mi>59||+se>59)return null;
+    const time=Date.parse(`${y}-${mo}-${d}T${h.padStart(2,'0')}:${mi}:${se}${tz||'+07:00'}`);
+    return Number.isFinite(time)?{time,day:`${y}-${mo}-${d}`} : null;
+  }
+  async function qWait(j,read,ms=25000,message='Halaman belum selesai dimuat atau data belum dikenali. Periksa login dan hasil pencarian, lalu tekan Cari QRIS lagi.'){const until=Date.now()+ms;while(Date.now()<until){qAssert(j);const value=read();if(value)return value;await qSleep(400);}throw Error(message);}
+  async function qAdmin(j){
+    qSay('Mencari User ID di admin: '+j.id);
+    if(j.stage==='admin'){
+      await qWait(j,()=>resolveNativeField(document,'id'));
+      j.stage='admin-result';qSave(j);
+      mode.value='admin_id';input.value=j.id;runNativeSearch(j.id);
+      if(!$('status').textContent.startsWith('Pencarian dikirim:'))throw Error($('status').textContent);
+      await qSleep(1500);
+    }
+    const account=await qWait(j,()=>{
+      const records=Array.from(document.querySelectorAll('tr,[role="row"]')).map(readAdminRecord).filter(r=>r?.userId?.toLowerCase()===j.id.toLowerCase()&&/^\d{5,30}$/.test(r.number));
+      const unique=[...new Set(records.map(r=>r.number))];
+      if(unique.length>1)throw Error('User ID mempunyai beberapa rekening berbeda. Nomor tujuan QRIS belum dapat dipastikan.');
+      return unique.length===1?records[0]:null;
+    });
+    qAssert(j);j.account=account.number;j.bank=account.bank||'';j.range=qDayRange();j.stage='qris';
+    qSay('Rekening ditemukan: '+j.account+'\nMembuka Disbursementâ€¦');qGo(Q_URL,j);
+  }
+  function qDiagnostic(reason='Pemeriksaan manual'){
+    const short=v=>String(v||'').replace(/\s+/g,' ').trim().slice(0,160);
+    const rect=e=>{const r=e.getBoundingClientRect();return [r.x,r.y,r.width,r.height].map(Math.round);};
+    const attrs=e=>({tag:e.tagName,type:e.type||'',id:short(e.id),name:short(e.name),class:short(e.getAttribute('class')),role:short(e.getAttribute('role')),title:short(e.getAttribute('title')),aria:short(e.getAttribute('aria-label')),visible:visible(e),rect:rect(e)});
+    // Collect control structure only. Never include input values, table rows, cookies or tokens.
+    const inputs=Array.from(document.querySelectorAll('input')).filter(e=>e.type!=='hidden'&&e.type!=='password').slice(0,60).map(e=>{
+      let group=e.parentElement;
+      const wrappers=[];
+      for(let depth=0;group&&depth<3;depth++,group=group.parentElement)wrappers.push({tag:group.tagName,class:short(group.getAttribute('class')),inputs:group.querySelectorAll('input').length});
+      return {...attrs(e),placeholder:short(e.placeholder),labels:Array.from(e.labels||[]).map(e=>short(e.textContent)),detectedLabel:short(qLabel(e)),dateRole:qDateRole(e),readonly:e.readOnly,disabled:e.disabled,hasValue:!!e.value,dateDisplay:e.matches('.mat-datepicker-input')?short(e.value):undefined,invalid:e.getAttribute('aria-invalid'),dateShape:/^\d{4}-\d{2}-\d{2}$/.test(e.value)?'YYYY-MM-DD':/^\d{2}-\d{2}-\d{4}$/.test(e.value)?'DD-MM-YYYY':/^\d{2}\/\d{2}\/\d{4}$/.test(e.value)?'DD/MM/YYYY':'other/empty',wrappers};
+    });
+    const buttons=Array.from(document.querySelectorAll('button,[role="button"],a.btn,input[type="submit"],[onclick]')).filter(visible).slice(0,80).map(e=>({...attrs(e),text:e.tagName==='INPUT'?'':short(qText(e)),icons:Array.from(e.querySelectorAll('svg,i,span')).slice(0,5).map(i=>({tag:i.tagName,class:short(i.getAttribute('class')),icon:short(i.getAttribute('data-icon')),paths:Array.from(i.querySelectorAll('path')).slice(0,3).map(p=>short(p.getAttribute('d')))}))}));
+    const headings=Array.from(document.querySelectorAll('table')).slice(0,8).map(t=>Array.from(t.querySelectorAll('thead th,thead td,th')).slice(0,24).map(e=>short(qText(e))));
+    const captions=[];const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);let n;
+    while((n=walker.nextNode()))if(qDateCaptionRole(n.nodeValue)&&visible(n.parentElement))captions.push({text:short(n.nodeValue),parent:attrs(n.parentElement)});
+    return {version:'3.28.0',page:location.origin+location.pathname,reason:short(reason),ready:document.readyState,visibility:document.visibilityState,calendars:Array.from(document.querySelectorAll('mat-calendar,.mat-calendar')).map(c=>({connected:c.isConnected,open:qCalendarIsOpen(c),selected:Array.from(c.querySelectorAll('button.mat-calendar-body-cell')).filter(qCalendarSelected).map(e=>e.getAttribute('aria-label')),animations:(c.closest('.cdk-overlay-pane')?.getAnimations?.({subtree:true})||[]).map(a=>a.playState)})),iframes:document.querySelectorAll('iframe').length,inputs,buttons,headings,captions:captions.slice(0,12)};
+  }
+  qEl('q-diagnostic').onclick=async()=>{
+    const j=qJob();let diagnostic;
+    try{
+      if(j?.token===qOwnedToken&&j.diagnostic)diagnostic=j.diagnostic;
+      else if(location.hostname==='m2qris.com'||nativeAllowed())diagnostic=qDiagnostic();
+      else diagnostic={version:'3.28.0',stage:j?.stage||'none',reason:'Belum ada laporan halaman. Buka Disbursement, lalu tekan Salin pemeriksaan QRIS di bubble.'};
+      const text=JSON.stringify(diagnostic,null,2);
+      if(typeof GM_setClipboard==='function')GM_setClipboard(text,'text');else await navigator.clipboard.writeText(text);
+      qEl('q-result').textContent='Pemeriksaan tersalin. Tempel hasilnya ke percakapan ini agar bagian yang gagal dapat diperbaiki.';
+    }catch(error){qEl('q-result').textContent='Belum berhasil menyalin pemeriksaan: '+error.message;}
+  };
+  function qDateCaptionRole(text){
+    const t=String(text||'').toLowerCase().replace(/[^a-z]/g,'');
+    if(/^(datestart|startdate|datefrom|fromdate|tanggalawal|tglawal|start|from)$/.test(t))return 'start';
+    if(/^(dateend|enddate|dateto|todate|tanggalakhir|tglakhir|end|to)$/.test(t))return 'end';
+    return '';
+  }
+  function qDateLike(field){
+    return field.type==='date'||!!qDateISO(field.value)||/date|tanggal|tgl|dd.mm|yyyy|flatpickr|datepicker/i.test([qLabel(field),field.className,field.placeholder].join(' '));
+  }
+  function qResolveDates(fields,search){
+    const dates=fields.filter(e=>e!==search&&qDateLike(e));
+    let start=dates.filter(e=>qDateRole(e)==='start'),end=dates.filter(e=>qDateRole(e)==='end');
+    if(start.length===1&&end.length===1&&start[0]!==end[0])return {start:start[0],end:end[0]};
+    // Some layouts render captions as plain DIV text without label/for attributes.
+    const captions=[];
+    const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
+    let node;
+    while((node=walker.nextNode())){
+      const role=qDateCaptionRole(node.nodeValue),parent=node.parentElement;
+      if(!role||!parent||parent.closest('table,script,style,nav,aside')||!visible(parent))continue;
+      const range=document.createRange();range.selectNodeContents(node);
+      const rect=range.getBoundingClientRect();
+      if(rect.width&&rect.height)captions.push({role,parent,rect});
+    }
+    function findByCaption(role){
+      const found=new Set();
+      for(const caption of captions.filter(c=>c.role===role)){
+        // A single editable/displayed input inside a caption's small wrapper is strongest.
+        let group=caption.parent;
+        for(let depth=0;group&&depth<3;depth++,group=group.parentElement){
+          const local=fields.filter(e=>e!==search&&group.contains(e));
+          if(local.length===1){found.add(local[0]);break;}
+          if(local.length>1)break;
+        }
+        if(found.size)continue;
+        const ranked=fields.filter(e=>e!==search&&['date','text','search',''].includes(e.type)).map(field=>{
+          const r=field.getBoundingClientRect(),c=caption.rect;
+          const overlap=Math.min(r.right,c.right)-Math.max(r.left,c.left);
+          const gap=r.top-c.bottom;
+          return {field,score:Math.abs(gap)+Math.abs(r.left-c.left)*0.1,ok:overlap>0&&gap>=-5&&gap<=100};
+        }).filter(v=>v.ok).sort((a,b)=>a.score-b.score);
+        if(ranked.length&&(!ranked[1]||ranked[1].score-ranked[0].score>8))found.add(ranked[0].field);
+      }
+      return [...found];
+    }
+    start=findByCaption('start');end=findByCaption('end');
+    if(start.length===1&&end.length===1&&start[0]!==end[0])return {start:start[0],end:end[0]};
+    // Screenshot-confirmed toolbar: exactly two date boxes before Search, start on the left.
+    // Require both captions in that same toolbar; never guess among multiple date pairs.
+    let scope=search.parentElement;
+    for(let depth=0;scope&&scope!==document.body&&depth<7;depth++,scope=scope.parentElement){
+      const local=dates.filter(e=>scope.contains(e));
+      if(local.length>2)break;
+      if(local.length!==2)continue;
+      const text=qText(scope).toLowerCase();
+      if(!/date\s*start|start\s*date/.test(text)||!/date\s*end|end\s*date/.test(text))continue;
+      const ordered=local.slice().sort((a,b)=>{const x=a.getBoundingClientRect(),y=b.getBoundingClientRect();return Math.abs(x.top-y.top)>12?x.top-y.top:x.left-y.left;});
+      return {start:ordered[0],end:ordered[1]};
+    }
+    throw Error('Kotak Date Start / Date End belum terhubung. Pastikan halaman Disbursement selesai dimuat dan kedua kotak tanggal terlihat.');
+  }
+  function qFilterControls(){
+    const fields=Array.from(document.querySelectorAll('input')).filter(e=>visible(e)&&!e.disabled);
+    const search=qUnique(fields.filter(e=>!qDateLike(e)&&!e.readOnly&&['text','search','tel'].includes(e.type)&&/search|cari|rekening|account.?number/.test(qLabel(e))),'Kolom Search QRIS');
+    const mapped=qResolveDates(fields,search),start=[mapped.start],end=[mapped.end];
+    // Retain the role for blank date fields whose captions were resolved visually.
+    mapped.start.dataset.mfQrisDateRole='start';mapped.end.dataset.mfQrisDateRole='end';
+    const form=search.form;
+    if(form){const url=new URL(form.action||location.href,location.href);if(url.origin!==location.origin||url.pathname.replace(/\/$/,'')!=='/staff/disburstment')throw Error('Form bukan filter Disbursement.');}
+    // Restrict icon recognition to the smallest filter toolbar enclosing both dates and Search.
+    let scope=search.parentElement;
+    while(scope&&(!scope.contains(start[0])||!scope.contains(end[0])))scope=scope.parentElement;
+    scope=scope||form||document;
+    let refresh=null,button=null;
+    for(let depth=0;scope&&depth<4;depth++,scope=scope.parentElement){
+      const matches=Array.from(scope.querySelectorAll('button.btn-refresh')).filter(visible);
+      if(matches.length>1)throw Error('Ada lebih dari satu tombol panah putar pada filter QRIS.');
+      if(matches.length===1)refresh=matches[0];
+      const filters=Array.from(scope.querySelectorAll('button.btn-result')).filter(visible);
+      if(filters.length>1)throw Error('Ada lebih dari satu tombol tiga garis pada filter QRIS.');
+      if(filters.length===1)button=filters[0];
+      if(refresh&&button)break;
+      if(scope===form||scope===document.body)break;
+    }
+    if(!refresh)throw Error('Tombol panah putar di kanan tombol tiga garis belum ditemukan.');
+    if(!button)throw Error('Tombol tiga garis QRIS belum ditemukan.');
+    return {start:start[0],end:end[0],search,refresh,button};
+  }
+
+  function qReadTable(j){
+    const matches=[];
+    for(const table of document.querySelectorAll('table')){
+      const headers=Array.from(table.querySelectorAll('thead tr,tr')).map(r=>Array.from(r.children).map(qText));
+      for(const labels of headers){
+        const norm=labels.map(s=>s.toLowerCase().replace(/[^a-z0-9]/g,''));
+        const account=norm.findIndex(s=>/^(bankno|banknumber|bankaccno|accountnumber|accountno|bankaccountnumber|bankaccount|nomorrekening|norekening|norek|rekening|beneficiaryaccountnumber)$/.test(s));
+        const amount=norm.findIndex(s=>/^(amount|nominal|jumlah)$/.test(s));
+        const status=norm.findIndex(s=>/^(status|withdrawstatus|statuswithdraw|disbursementstatus)$/.test(s));
+        const preferred=norm.findIndex(s=>/^(datetime|tanggalwaktu|dateandtime|createdat)$/.test(s));
+        const date=preferred>=0?preferred:norm.findIndex(s=>/^(createddate|transactiondate|date)$/.test(s));
+        if(account>=0&&status>=0&&date>=0&&amount>=0){matches.push({table,account,status,date,amount});break;}
+      }
+    }
+    const schema=qUnique(matches,'Kolom rekening, status, dan datetime');
+    const records=[];
+    for(const row of schema.table.querySelectorAll('tbody tr')){
+      const cells=Array.from(row.children);if(cells.length<=Math.max(schema.account,schema.status,schema.date,schema.amount))continue;
+      // Trust the completed QRIS search results, including fully or partially masked accounts.
+      // Do not reconstruct private account numbers or discard rows by matching visible digits.
+      if(!visible(row))continue;
+      const raw=qText(cells[schema.date]),date=qTimestamp(raw);
+      if(!date)throw Error('Datetime tidak dikenali: '+raw+'. Hasil terbaru belum dapat dipastikan.');
+      // User rule: a present but empty Status cell means the withdrawal is PENDING.
+      // A missing Status column is still rejected by schema validation above.
+      const rawStatus=qText(cells[schema.status]).replace(/[\u200B-\u200D\u2060\uFEFF]/g,'').trim();
+      const status=rawStatus||'PENDING',amount=qText(cells[schema.amount]);
+      if(!amount)throw Error('Amount pada transaksi kosong; hasil belum dapat dipastikan.');
+      records.push({amount,datetime:raw,status,rawStatus,pendingFromBlank:!rawStatus,time:date.time});
+    }
+    return {table:schema.table,records};
+  }
+  function qNext(table){
+    let area=table.parentElement;
+    for(let depth=0;area&&depth<7;depth++,area=area.parentElement){
+      const material=Array.from(area.querySelectorAll('button.mat-mdc-paginator-navigation-next,button.mat-paginator-navigation-next'));
+      if(material.length>1)break;
+      if(material.length===1){const next=material[0];const disabled=next.disabled||next.getAttribute('aria-disabled')==='true';return {next:disabled?null:next,complete:!!disabled};}
+    }
+    const container=table.closest('.dataTables_wrapper,.dt-container')||table.parentElement;
+    const candidates=Array.from(container.querySelectorAll('button,a')).filter(e=>visible(e)&&/^(next|berikutnya|selanjutnya|â€º|Â»|>)$/i.test(qText(e)||e.getAttribute('aria-label')||''));
+    if(candidates.length>1)throw Error('Navigasi tabel ambigu; hasil terbaru belum dapat dipastikan.');
+    const next=candidates[0];
+    if(!next)return {next:null,complete:false};
+    const disabled=next.disabled||next.getAttribute('aria-disabled')==='true'||next.matches('.disabled')||next.closest('li.disabled');
+    return {next:disabled?null:next,complete:!!disabled};
+  }
+  async function qQRIS(j){
+    if(j.stage==='qris'){
+      qSay('Mengisi Date Start dengan tanggal kemarin (DD-MM-YYYY); Date End tetapâ€¦');
+      await qWait(j,()=>document.querySelector('table')&&document.querySelector('input'));
+      j.range=qDayRange();qSave(j);
+      const c=await qApplyFilters(j);
+      qSay('Rekening AGWL: '+j.account+'\nSearch QRIS: '+c.search.value+'\nDate Start: '+c.start.value+'\nDate End: '+c.end.value+'\nMembaca Disbursementâ€¦');
+      await qSleep(2000); // Wait for the response after the single three-line button click.
+    }
+    const currentFilters=qFilterControls();
+    if(currentFilters.search.value!==j.account||qFieldDateISO(currentFilters.start)!==j.range.start||qFieldDateISO(currentFilters.end)!==j.range.end)throw Error('Filter QRIS berubah atau belum diterapkan. Hasil tidak ditampilkan agar rekening/tanggal tidak tertukar.');
+    const collected=[],seen=new Set();let complete=false;
+    for(let page=0;page<100;page++){
+      qAssert(j);
+      // Require unchanged table content for 1.2 seconds before reading AJAX results.
+      let last='',stable=0;const until=Date.now()+25000;
+      while(Date.now()<until){qAssert(j);const s=Array.from(document.querySelectorAll('table')).map(qText).join('|');const busy=Array.from(document.querySelectorAll('[aria-busy="true"],.dataTables_processing,.dt-processing,mat-progress-spinner,mat-spinner,mat-progress-bar')).some(visible);if(s&&s===last&&!busy)stable++;else stable=0;last=s;if(stable>=3)break;await qSleep(400);}
+      if(stable<3)throw Error('Tabel masih memuat data. Coba lagi setelah halaman siap.');
+      const active=qFilterControls();
+      if(active.search.value!==j.account||qFieldDateISO(active.start)!==j.range.start||qFieldDateISO(active.end)!==j.range.end)throw Error('Pencarian berubah ketika tabel dibaca. Hasil belum ditampilkan.');
+      const {table,records}=qReadTable(j),signature=qText(table);
+      if(seen.has(signature))throw Error('Halaman tabel berulang; hasil terbaru belum dapat dipastikan.');seen.add(signature);collected.push(...records);
+      const nav=qNext(table);if(!nav.next){complete=nav.complete;break;}
+      if(page===99)throw Error('Lebih dari 100 halaman; hasil terbaru belum dapat dipastikan.');
+      qSay('Membaca Disbursement halaman '+(page+2)+'â€¦');nav.next.click();await qWait(j,()=>qText(table)!==signature);await qSleep(500);
+    }
+    qAssert(j);collected.sort((a,b)=>b.time-a.time);
+    const notes=[];
+    if(!collected.length)notes.push('Tidak ada transaksi pada hasil pencarian QRIS untuk rentang tanggal yang dipilih.');
+    if(!complete)notes.push('Hasil hanya mencakup halaman yang berhasil dibaca; kelengkapan semua halaman belum dapat dipastikan.');
+    j.result={records:collected.map(({amount,status,datetime})=>({amount,status,datetime})),note:notes.join('\n')};
+    // Persist the complete result before the owner closes this dedicated worker tab.
+    j.autoRefresh=false;
+    j.stage='done';j.message='';j.progress='';j.finished=Date.now();j.updated=Date.now();qSave(j);qRenderResult(j);
+  }
+  function qScheduleRefresh(j){
+    clearTimeout(qRefreshTimer);
+    if(!j.autoRefresh||j.stage!=='done'||qWorkerToken()!==j.token)return;
+    qRefreshTimer=setTimeout(()=>{
+      const current=qJob();if(!current||current.token!==j.token||current.stage!=='done'||!current.autoRefresh)return;
+      current.stage='qris';current.range=qDayRange();current.message='';current.progress='Memperbarui transaksi QRISâ€¦';current.cycleStarted=Date.now();current.updated=Date.now();qSave(current);qResume();
+    },60000);
+  }
+
+  async function qResume(){
+    if(qRunning||qWorkerReleased)return;
+    let token=new URLSearchParams(location.hash.slice(1)).get('mfq');
+    if(token){sessionStorage.setItem(Q_SESSION,token);history.replaceState(null,'',location.pathname+location.search);}
+    token=token||sessionStorage.getItem(Q_SESSION);
+    const j=qJob();if(!j||j.token!==token)return;
+    if(j.stage==='done'){qScheduleRefresh(j);return;}if(['error','cancelled'].includes(j.stage))return;
+    if(!nativeAllowed()&&!(location.origin==='https://m2qris.com'&&location.pathname.replace(/\/$/,'')==='/staff/disburstment')){
+      j.stage='error';j.message='Sesi login belum aktif atau halaman dialihkan. Login admin dan M2QRIS terlebih dahulu, lalu ulangi pencarian.';qSave(j);return;
+    }
+    qRunning=true;qEl('q-id').value=j.id;
+    try{if(nativeAllowed()&&j.stage.startsWith('admin'))await qAdmin(j);else if(location.hostname==='m2qris.com'&&j.stage.startsWith('qris'))await qQRIS(j);}
+    catch(e){if(qWorkerReleased)return;qSay(e.message);if(qJob()?.token===j.token&&qJob()?.stage!=='cancelled'){j.stage='error';j.message=e.message+'\nTekan Salin pemeriksaan QRIS lalu kirim hasilnya.';try{j.diagnostic=qDiagnostic(e.message);}catch(_){}qSave(j);}}
+    finally{qRunning=false;const current=qJob()||j;if(current.stage==='done'&&current.autoRefresh)qScheduleRefresh(current);else if(qWorkerToken()===j.token&&qTerminal(current))setTimeout(()=>window.close(),500);}
+  }
+  qEl('q-start').onclick=()=>{
+    if(qMenu.hidden)return;
+    const ids=extractSearchValues(qEl('q-id').value,'id');if(ids.length!==1){qSay('Tempel satu User ID yang jelas.');return;}
+    if(qRunning){qSay('Pencarian sedang berjalan.');return;}
+    if(typeof GM_openInTab!=='function'){qSay('Perbarui script di Tampermonkey agar izin tab latar belakang tersedia.');return;}
+    const previous=qJob();if(previous&&!qTerminal(previous)){previous.stage='cancelled';qSave(previous);}
+    qCloseWorker();
+    const j={token:crypto.randomUUID(),created:Date.now(),cycleStarted:Date.now(),autoRefresh:false,id:ids[0],stage:'admin',progress:'Mencari rekening di adminâ€¦'};
+    qOwnedToken=j.token;sessionStorage.setItem(Q_OWNER,j.token);qSave(j);
+    qMenu.open=true;qEl('q-start').disabled=true;
+    try{
+      qTab=GM_openInTab(Q_ADMIN+'#mfq='+encodeURIComponent(j.token),{active:false,insert:true,setParent:true});
+      if(!qTab)throw Error('Tab latar belakang tidak berhasil dibuka. Periksa izin Tampermonkey.');
+      qTab.onclose=()=>{
+        const current=qJob();if(current?.token===j.token&&(!qTerminal(current)||(current.stage==='done'&&current.autoRefresh))){
+          current.stage='error';current.message='Tab pencarian ditutup; pembaruan otomatis berhenti. Tekan Cari QRIS untuk mulai lagi.';qSave(current);
+        }
+      };
+      qWatchOwned();
+    }catch(e){j.stage='error';j.message=e.message||'Tidak dapat memulai pencarian latar belakang.';qSave(j);qDisplayOwned();}
+  };
+  qEl('q-stop').onclick=()=>{
+    const j=qJob();if(j&&j.token===qOwnedToken){j.stage='cancelled';j.autoRefresh=false;j.message='Pencarian dan pembaruan otomatis dihentikan.';qSave(j);qDisplayOwned();}
+  };
+  function qClear(){
+    const j=qJob(),worker=qWorkerToken();
+    const own=j&&(j.token===qOwnedToken||j.token===worker);
+    qOwnedToken='';sessionStorage.removeItem(Q_OWNER);
+    clearInterval(qWatchTimer);qWatchTimer=0;clearTimeout(qRefreshTimer);
+    if(worker){qWorkerReleased=true;sessionStorage.removeItem(Q_SESSION);}
+    if(own)qSave({token:j.token,stage:'cancelled',autoRefresh:false,created:j.created,updated:Date.now(),message:'Pencarian QRIS dihapus.'});
+    qCloseWorker();qRenderedSignature='';
+    qEl('q-id').value='';qEl('q-result').replaceChildren();
+    qEl('q-start').disabled=false;
+    qEl('q-id').focus({preventScroll:true});
+  }
+  qEl('q-clear').onclick=qClear;
+  // Worker tabs own the page automation; the originating tab only displays progress/results.
+  if(qOwnedToken&&!qWorkerToken()){
+    const saved=qJob();if(saved?.token===qOwnedToken){qEl('q-id').value=saved.id;qWatchOwned();}
+  }
+  // Standalone QRIS tabs also refresh data once per minute, without reloading a form mid-edit.
+  if(location.origin==='https://m2qris.com'&&location.pathname.replace(/\/$/,'')==='/staff/disburstment'){
+    setInterval(()=>{
+      if(qWorkerToken()||qRunning)return;
+      if(Array.from(document.querySelectorAll('mat-calendar,.mat-calendar')).some(qCalendarIsOpen)||document.activeElement?.matches('input,textarea,select'))return;
+      const refresh=Array.from(document.querySelectorAll('button.btn-refresh')).filter(e=>visible(e)&&!e.disabled);
+      if(refresh.length===1)refresh[0].click();
+    },60000);
+  }
+  setTimeout(qResume,700);
+  // QRIS_ADDON_END
 })();
