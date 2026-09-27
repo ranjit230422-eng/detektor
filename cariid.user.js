@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Cari ID & Rekening HP \u2014 Emas Hitam
 // @namespace    local.mobile.find
-// @version      3.28.0
+// @version      3.39.0
 // @description  Bubble kecil untuk mencari teks halaman, User ID, dan rekening di HP. Kartu saldo per ID dan permintaan data pendukung di atas Rp10.000. Tanpa OCR.
 // @match        http://*/*
 // @match        https://*/*
@@ -1270,7 +1270,7 @@
   const qMenu=document.createElement('details');
   qMenu.id='qris-menu';
   qMenu.style.cssText='margin-top:12px;border-top:1px solid #cba534;padding-top:12px';
-  qMenu.innerHTML='<summary style="cursor:pointer;font-weight:800;color:#f4cf65;padding:8px 0">PENCARIAN QRIS Â· v3.28.0</summary><div class="row"><textarea id="q-id" placeholder="Tempel User ID / username di sini" aria-label="User ID QRIS"></textarea></div><div class="row"><button id="q-start" type="button">Cari QRIS</button><button id="q-stop" type="button">Batalkan</button><button id="q-clear" type="button">Hapus</button></div><div class="row"><button id="q-diagnostic" type="button">Salin pemeriksaan QRIS</button></div><div id="q-result" role="status" style="white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;padding-top:10px">Hasil muncul di sini. Pencarian berjalan di latar belakang; pastikan admin dan QRIS sudah login.</div>';
+  qMenu.innerHTML='<summary style="cursor:pointer;font-weight:800;color:#f4cf65;padding:8px 0">PENCARIAN QRIS Â· v3.39.0</summary><div class="row"><select id="q-kind" aria-label="Jenis pencarian QRIS"><option value="m2qris">M2QRIS</option><option value="v2him">QRIS V2HIM Â· provider V2MIH</option></select></div><div class="row"><textarea id="q-id" placeholder="Tempel User ID / username di sini" aria-label="User ID QRIS"></textarea></div><div class="row"><button id="q-start" type="button">Cari QRIS</button><button id="q-stop" type="button">Batalkan</button><button id="q-clear" type="button">Hapus</button></div><div class="row"><button id="q-diagnostic" type="button">Salin pemeriksaan QRIS</button></div><div id="q-result" role="status" style="white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;padding-top:10px">Hasil muncul di sini. Pencarian berjalan di latar belakang; pastikan admin dan QRIS sudah login.</div>';
   panel.append(qMenu);
   const qLegacy=document.createElement('div');qLegacy.id='main-search-page';
   for(const child of Array.from(panel.children))if(child.id!=='panel-handle'&&child!==qMenu)qLegacy.append(child);
@@ -1281,7 +1281,7 @@
   qLegacy.setAttribute('role','tabpanel');qLegacy.setAttribute('aria-labelledby','main-search-tab');
   qMenu.setAttribute('role','tabpanel');qMenu.setAttribute('aria-labelledby','qris-search-tab');
   qMenu.open=true;qMenu.querySelector('summary').hidden=true;qMenu.style.cssText='margin-top:0;padding-top:0;border:0;';
-  $('panel-handle').querySelector('span').textContent='PENCARIAN Â· v3.28.0';
+  $('panel-handle').querySelector('span').textContent='PENCARIAN Â· v3.39.0';
   function qShowPage(page){
     const qris=page==='qris';qLegacy.hidden=qris;qMenu.hidden=!qris;qMenu.open=true;
     for(const [id,active] of [['main-search-tab',!qris],['qris-search-tab',qris]]){
@@ -1325,7 +1325,7 @@
   function qStatusStyle(raw){
     const status=String(raw||'').trim().toUpperCase().replace(/[_\s]+/g,'-').replace(/-+/g,'-');
     if(!status||status==='PENDING')return {label:'PENDING',color:'#ffda57',background:'#493b10'};
-    if(status==='SUCCESS')return {label:'SUCCESS',color:'#69efa8',background:'#103e2c'};
+    if(status==='SUCCESS'||status==='APPROVED')return {label:status,color:'#69efa8',background:'#103e2c'};
     if(status==='FAILED-REFUND'||status==='FAILED'||status==='REFUND')return {label:status,color:'#ff9292',background:'#4a2027'};
     return {label:status,color:'#d6dfed',background:'#283345'};
   }
@@ -1339,12 +1339,19 @@
       for(const r of results){
         const card=document.createElement('div');card.style.cssText='background:#171b22;border:1px solid #a58a38;border-radius:12px;padding:12px;margin-bottom:8px;white-space:normal;';
         const status=qStatusStyle(r.status);
-        for(const [label,value] of [['AMOUNT',r.amount],['STATUS',status.label],['DATETIME',r.datetime]]){
+        for(const [label,value] of [['AMOUNT',r.amount],['STATUS',status.label],[j.kind==='v2him'?'DATETIME WD':'DATETIME',r.datetime]]){
           const row=document.createElement('div');row.style.cssText='display:flex;justify-content:space-between;gap:12px;align-items:center;margin:6px 0;';
           const name=document.createElement('span');name.textContent=label;name.style.cssText='font-size:11px;color:#b4bcc8;';
           const val=document.createElement('strong');val.textContent=value||'â€”';val.style.cssText='text-align:right;font-size:14px;overflow-wrap:anywhere;';
           if(label==='STATUS')val.style.cssText+=`color:${status.color};background:${status.background};padding:5px 9px;border-radius:8px;`;
           row.append(name,val);card.append(row);
+        }
+        if(j.kind==='v2him'){
+          const ref=document.createElement('div');ref.textContent='V2MIH Â· '+(r.transferRef||'');ref.style.cssText='font-size:12px;color:#c4c9d2;overflow-wrap:anywhere;margin:8px 0;';card.append(ref);
+          const proof=qvProofURL(r.proofUrl);
+          if(proof&&String(r.status).trim().toLowerCase()==='approved'){
+            const link=document.createElement('a');link.href=proof;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Buka bukti transfer';link.style.cssText='display:inline-block;color:#ffe18a;padding:8px;border:1px solid #a58a38;border-radius:8px;';card.append(link);
+          }
         }
         box.append(card);
       }
@@ -1366,9 +1373,9 @@
       qCloseWorker();qOwnedToken='';sessionStorage.removeItem(Q_OWNER);clearInterval(qWatchTimer);return;
     }
     qRenderResult(j);
-    qEl('q-start').disabled=!qTerminal(j);
+    qEl('q-start').disabled=!qTerminal(j);qEl('q-kind').disabled=!qTerminal(j);
     if(qTerminal(j)){if(j.stage!=='done'||!j.autoRefresh){qCloseWorker();clearInterval(qWatchTimer);}return;}
-    if(Date.now()-(j.cycleStarted||j.created)>180000){
+    if(Date.now()-(j.kind==='v2him'?(j.updated||j.cycleStarted||j.created):(j.cycleStarted||j.created))>(j.kind==='v2him'?240000:180000)){
       j.stage='error';j.message='Pencarian belum selesai. Pastikan admin dan QRIS sudah login, lalu coba lagi. Browser HP mungkin menunda tab latar belakang.';qSave(j);qDisplayOwned();
     }
   }
@@ -1635,14 +1642,15 @@
     const headings=Array.from(document.querySelectorAll('table')).slice(0,8).map(t=>Array.from(t.querySelectorAll('thead th,thead td,th')).slice(0,24).map(e=>short(qText(e))));
     const captions=[];const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);let n;
     while((n=walker.nextNode()))if(qDateCaptionRole(n.nodeValue)&&visible(n.parentElement))captions.push({text:short(n.nodeValue),parent:attrs(n.parentElement)});
-    return {version:'3.28.0',page:location.origin+location.pathname,reason:short(reason),ready:document.readyState,visibility:document.visibilityState,calendars:Array.from(document.querySelectorAll('mat-calendar,.mat-calendar')).map(c=>({connected:c.isConnected,open:qCalendarIsOpen(c),selected:Array.from(c.querySelectorAll('button.mat-calendar-body-cell')).filter(qCalendarSelected).map(e=>e.getAttribute('aria-label')),animations:(c.closest('.cdk-overlay-pane')?.getAnimations?.({subtree:true})||[]).map(a=>a.playState)})),iframes:document.querySelectorAll('iframe').length,inputs,buttons,headings,captions:captions.slice(0,12)};
+    return {version:'3.39.0',zoneCalendar:location.hostname==='smbaz6.zonamain.com'?qvCalendarDiagnostic():undefined,page:location.origin+location.pathname,reason:short(reason),ready:document.readyState,visibility:document.visibilityState,calendars:Array.from(document.querySelectorAll('mat-calendar,.mat-calendar')).map(c=>({connected:c.isConnected,open:qCalendarIsOpen(c),selected:Array.from(c.querySelectorAll('button.mat-calendar-body-cell')).filter(qCalendarSelected).map(e=>e.getAttribute('aria-label')),animations:(c.closest('.cdk-overlay-pane')?.getAnimations?.({subtree:true})||[]).map(a=>a.playState)})),iframes:document.querySelectorAll('iframe').length,inputs,buttons,headings,captions:captions.slice(0,12)};
   }
   qEl('q-diagnostic').onclick=async()=>{
     const j=qJob();let diagnostic;
     try{
-      if(j?.token===qOwnedToken&&j.diagnostic)diagnostic=j.diagnostic;
-      else if(location.hostname==='m2qris.com'||nativeAllowed())diagnostic=qDiagnostic();
-      else diagnostic={version:'3.28.0',stage:j?.stage||'none',reason:'Belum ada laporan halaman. Buka Disbursement, lalu tekan Salin pemeriksaan QRIS di bubble.'};
+      if(location.hostname==='smbaz6.zonamain.com')diagnostic=qDiagnostic();
+      else if(j?.token===qOwnedToken&&j.diagnostic)diagnostic=j.diagnostic;
+      else if(['m2qris.com','smbaz6.zonamain.com','apps.leonpayy.com'].includes(location.hostname)||nativeAllowed())diagnostic=qDiagnostic();
+      else diagnostic={version:'3.39.0',stage:j?.stage||'none',reason:'Belum ada laporan halaman. Buka Disbursement, lalu tekan Salin pemeriksaan QRIS di bubble.'};
       const text=JSON.stringify(diagnostic,null,2);
       if(typeof GM_setClipboard==='function')GM_setClipboard(text,'text');else await navigator.clipboard.writeText(text);
       qEl('q-result').textContent='Pemeriksaan tersalin. Tempel hasilnya ke percakapan ini agar bagian yang gagal dapat diperbaiki.';
@@ -1828,6 +1836,389 @@
     },60000);
   }
 
+  // V2HIM menu uses the exact provider requested by the user: V2MIH.
+  const QV_ZONE='https://smbaz6.zonamain.com/transaksiwd';
+  const QV_LEON='https://apps.leonpayy.com/withdraw-transaction/b2c';
+  function qvNorm(text){return String(text||'').toLowerCase().replace(/[^a-z0-9]/g,'');}
+  function qvField(names,label){
+    const fields=Array.from(document.querySelectorAll('input')).filter(e=>visible(e)&&!e.disabled&&!e.readOnly&&e.type!=='password'&&e.type!=='hidden');
+    const found=fields.filter(e=>names.some(n=>qvNorm(qLabel(e)).includes(qvNorm(n))));
+    return qUnique(found,label);
+  }
+  function qvDayRange(now=new Date()){
+    const end=qDayRange(now).end,start=new Date(end+'T00:00:00Z');
+    start.setUTCDate(start.getUTCDate()-2);
+    return {start:start.toISOString().slice(0,10),end};
+  }
+  function qvDateText(iso){const [y,m,d]=iso.split('-');return `${d} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m)-1]} ${y}`;}
+  function qvRangeText(range){return qvDateText(range.start)+' - '+qvDateText(range.end);}
+  function qvRangeSame(value,range){
+    const norm=v=>String(v).toLowerCase().replace(/[â€“â€”]/g,'-').replace(/\b0(\d)\b/g,'$1').replace(/\s+/g,' ').trim();
+    return norm(value)===norm(qvRangeText(range));
+  }
+  function qvLiveInput(field,value){
+    setNativeValue(field,value);
+    const w=field.ownerDocument.defaultView;
+    field.dispatchEvent(new w.KeyboardEvent('keyup',{key:'Control',code:'ControlLeft',bubbles:true}));
+  }
+  async function qvIdle(j){
+    await qSleep(1800);let last='',same=0;
+    await qWait(j,()=>{
+      const tables=Array.from(document.querySelectorAll('table')).filter(visible);
+      const busy=Array.from(document.querySelectorAll('[aria-busy="true"],.dataTables_processing,.dt-processing,.ant-spin-spinning,mat-progress-spinner')).some(visible);
+      const text=tables.map(qText).join('|');
+      same=!busy&&text&&text===last?same+1:0;last=text;return same>=3;
+    },30000,'Tabel transaksi belum selesai dimuat. Periksa login atau tekan Salin pemeriksaan QRIS.');
+  }
+  function qvUserMatches(text,id){
+    const value=String(text||'').replace(/[\u200B-\u200D\u2060\uFEFF]/g,'').trim().toLowerCase(),target=String(id).trim().toLowerCase();
+    if(!target)return false;
+    if(value===target)return true;
+    // Exact tokens tolerate a User ID label or extra text without matching alice to alice2.
+    return value.split(/[^a-z0-9_.@-]+/).includes(target);
+  }
+  function qvZoneState(j,resultsOnly=false){
+    const tables=Array.from(document.querySelectorAll('table')).filter(visible);
+    const busy=Array.from(document.querySelectorAll('[aria-busy="true"],.dataTables_processing,.dt-processing,.ant-spin-spinning,mat-progress-spinner,.spinner-border,.spinner-grow,[role="progressbar"]')).some(visible)||tables.some(t=>/^(loading|processing|memuat|sedang memuat|mohon tunggu)[.\sâ€¦]*$/i.test(qText(t.querySelector('tbody'))));
+    let rows=[],schema=null,schemaError='';
+    try{schema=qvSchema('zone');rows=qvRows(schema);}catch(e){schemaError=e.message;}
+    const relevant=rows.some(row=>qvUserMatches(qText(row.children[schema.map.user]),j.id));
+    const empty=!!schema&&!rows.length&&/no matching records|no data available|no transactions|no records found|no results|data tidak (?:ada|ditemukan)|tidak ada (?:data|transaksi)|transaksi tidak ditemukan/i.test(qText(schema.table));
+    const dateReady=!!rows.length&&rows.every(row=>{const d=qvTime(qText(row.children[schema.map.date]));return d&&d.day>=j.range.start&&d.day<=j.range.end;});
+    return {signature:resultsOnly&&schema?qText(schema.table):tables.map(qText).join('|'),busy,relevant,empty,dateReady,schemaError};
+  }
+  async function qvWaitZone(j,before,phase='user',allowUnchanged=false){
+    const started=Date.now();let last='',quietSince=started,sawBusy=before.busy,wasBusy=before.busy,announced=0;
+    while(Date.now()-started<180000){
+      qAssert(j);const now=Date.now(),state=qvZoneState(j,true);
+      if(state.busy)sawBusy=true;
+      if(state.busy||wasBusy||state.signature!==last){quietSince=now;last=state.signature;}
+      wasBusy=state.busy;
+      const fresh=state.signature!==before.signature||sawBusy||allowUnchanged;
+      const ready=phase==='date'?state.dateReady:state.relevant;
+      const elapsed=now-started,minWait=state.empty?5000:1500,quiet=state.empty?2500:1000;
+      if(!state.busy&&fresh&&(ready||state.empty)&&elapsed>=minWait&&now-quietSince>=quiet)return;
+      if(!state.busy&&fresh&&state.schemaError&&elapsed>=12000&&now-quietSince>=3000)throw Error(state.schemaError+' Hasil sudah berubah, tetapi kolom belum dikenali. Tekan Salin pemeriksaan QRIS.');
+      if(now-announced>=10000){qSay(state.schemaError?'Menunggu struktur tabel Zonamain siapâ€¦':'Menunggu hasil User ID Zonamain selesai dimuatâ€¦');announced=now;}
+      await qSleep(250);
+    }
+    const state=qvZoneState(j,true);
+    throw Error(state.schemaError||'Belum ada hasil yang dapat dipastikan untuk User ID ini setelah 3 menit. Tidak mengambil b2c dari pengguna lain. Tekan Salin pemeriksaan QRIS.');
+  }
+  function qvSchema(kind){
+    const aliases=kind==='zone'?{
+      user:['userid','username','user','pemain','member','namauser'],provider:['provider','paymentprovider'],ids:['ids','id','transactionids'],date:['time','datetime','tanggalwaktu','createdat','tanggal','date','waktu','transactiondate']
+    }:{ref:['transferref','transferreference','transferreferenceid'],amount:['total','totalamount','amount','nominal'],status:['status','transactionstatus'],action:['action','actions','aksi'],date:['datetime','createdat','date','tanggal','transactiondate']};
+    const candidates=[];
+    for(const table of Array.from(document.querySelectorAll('table')).filter(visible)){
+      const head=table.querySelector('thead tr')||table.querySelector('tr');if(!head)continue;
+      const names=Array.from(head.children).map(e=>qvNorm(qText(e))),map={};
+      for(const [key,list] of Object.entries(aliases))map[key]=list.map(n=>names.indexOf(n)).find(i=>i>=0)??-1;
+      const required=kind==='zone'?['user','provider','ids','date']:['ref','amount','status'];
+      if(required.every(k=>map[k]>=0))candidates.push({table,map});
+    }
+    return qUnique(candidates,kind==='zone'?'Kolom User ID, Provider, IDS, dan tanggal Zonamain':'Kolom Transfer Ref, Total/Amount, dan Status Leonpay');
+  }
+  function qvRows(schema){return Array.from(schema.table.querySelectorAll('tbody tr')).filter(visible).filter(row=>row.children.length>Math.max(...Object.values(schema.map)));}
+  function qvWD(text){
+    const matches=Array.from(String(text).replace(/[\u200B-\u200D\u2060\uFEFF]/g,'').matchAll(/\bWD\s*[:ï¼š]\s*((?:b2c|bc2)[a-z0-9._-]*)/gi),m=>m[1]);
+    return qUnique([...new Set(matches)],'Referensi WD setelah titik dua (b2c/bc2)');
+  }
+  function qvTime(text){
+    const direct=qTimestamp(text);if(direct)return direct;
+    const m=String(text).trim().match(/^(\d{1,2})[\s-]+([A-Za-z]+)[\s,-]+(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+    if(!m)return null;
+    const months={jan:1,feb:2,mar:3,apr:4,may:5,mei:5,jun:6,jul:7,aug:8,agu:8,sep:9,oct:10,okt:10,nov:11,dec:12,des:12};
+    const month=months[m[2].slice(0,3).toLowerCase()];if(!month)return null;
+    return qTimestamp(`${m[3]}-${String(month).padStart(2,'0')}-${m[1].padStart(2,'0')} ${m[4]}:${m[5]}:${m[6]||'00'}`);
+  }
+  function qvZoneRecord(row,map,j){
+    const cell=k=>qText(row.children[map[k]]);
+    if(cell('provider').trim().toUpperCase()!=='V2MIH'||!qvUserMatches(cell('user'),j.id))return null;
+    const date=qvTime(cell('date'));if(!date)throw Error('Waktu WD V2MIH belum dikenali. WD terbaru belum dapat dipastikan.');
+    if(date.day<j.range.start||date.day>j.range.end)return null;
+    return {ref:qvWD(cell('ids')),datetime:cell('date'),time:date.time};
+  }
+  function qvNext(table){
+    const native=qNext(table);if(native.next||native.complete)return native;
+    const scope=table.closest('.dataTables_wrapper,.dt-container')||table.parentElement;
+    const nodes=Array.from(scope.querySelectorAll('button,a')).filter(e=>visible(e)&&/^(next|next page|go to next page|berikutnya|selanjutnya|â€º|Â»|>)$/i.test(e.getAttribute('aria-label')||e.getAttribute('title')||qText(e)));
+    if(nodes.length>1)throw Error('Tombol halaman berikutnya belum dapat dipastikan.');
+    if(nodes.length){const e=nodes[0];const disabled=e.disabled||e.getAttribute('aria-disabled')==='true'||e.closest('.disabled');return {next:disabled?null:e,complete:!!disabled};}
+    if(scope.querySelector('.pagination,[role="navigation"],.paginator,.ant-pagination'))throw Error('Navigasi tabel ada tetapi belum dikenali; WD terbaru belum dapat dipastikan.');
+    return {next:null,complete:true};
+  }
+  function qvCalendarDiagnostic(){
+    // Metadata only: no transaction rows, account values, cookies, links or credentials.
+    const short=x=>String(x||'').replace(/\s+/g,' ').trim().slice(0,120);
+    const meta=e=>({tag:e.tagName,class:short(e.getAttribute('class')),role:short(e.getAttribute('role')),aria:short(e.getAttribute('aria-label')),title:short(e.getAttribute('title')),selected:e.getAttribute('aria-selected'),disabled:e.getAttribute('aria-disabled')||!!e.disabled});
+    const roots=[document],shadowHosts=[];
+    for(let r=0;r<roots.length&&r<25;r++)for(const e of Array.from(roots[r].querySelectorAll('*')).slice(0,15000)){
+      if(e===host)continue;
+      if(e.shadowRoot&&roots.length<25){roots.push(e.shadowRoot);shadowHosts.push(meta(e));}
+    }
+    const calendars=[],headings=[];
+    for(const root of roots){
+      for(const e of root.querySelectorAll('.datepicker,.daterangepicker,.air-datepicker,.datepicker--content,.flatpickr-calendar,.litepicker,.easepick-wrapper,.calendar,mat-calendar,[role="dialog"]')){
+        if(!visible(e))continue;
+        const cells=Array.from(e.querySelectorAll('td,button,span,div,[role="gridcell"]')).filter(n=>visible(n)&&/^([1-9]|[12][0-9]|3[01])$/.test(qText(n))&&!Array.from(n.children).some(c=>qText(c)===qText(n))).slice(0,90);
+        calendars.push({...meta(e),days:cells.map(n=>({...meta(n),day:qText(n),parents:[n.parentElement,n.parentElement?.parentElement].filter(Boolean).map(meta)}))});
+      }
+      for(const e of Array.from(root.querySelectorAll('th,button,span,div')).slice(0,15000)){
+        const text=qText(e);
+        if(text.length<65&&/20\d{2}/.test(text)&&qCalendarMonth(text)!==null&&visible(e))headings.push({...meta(e),text,parents:[e.parentElement,e.parentElement?.parentElement].filter(Boolean).map(meta)});
+        if(headings.length>=30)break;
+      }
+    }
+    const inputs=Array.from(document.querySelectorAll('input')).filter(e=>visible(e)&&e.type!=='password'&&e.type!=='hidden').map(e=>({...meta(e),placeholder:short(e.placeholder),readonly:e.readOnly,dateValue:/^\d{1,2}[\s/-]+(?:[A-Za-z]{3,9}|\d{1,2})[\s/-]+\d{4}(?:\s*[-â€“]\s*\d{1,2}[\s/-]+(?:[A-Za-z]{3,9}|\d{1,2})[\s/-]+\d{4})?$/.test(e.value.trim())?short(e.value):undefined}));
+    return {wanted:qvDayRange(),inputs,shadowHosts,headings:headings.slice(0,30),calendars:calendars.slice(0,12)};
+  }
+  function qvOpenCalendars(){
+    return Array.from(document.querySelectorAll('.daterangepicker,.datepicker,.datepicker-dropdown,.datepicker.datepicker-inline,.litepicker,.air-datepicker,.datepicker--content,.flatpickr-calendar,.ant-picker-dropdown,.react-datepicker,mat-calendar,[role="dialog"]')).filter(visible);
+  }
+  function qvFindDay(iso){
+    const labels=qCalendarLabels(iso),[year,month,day]=iso.split('-').map(Number),found=[];
+    for(const calendar of qvOpenCalendars()){
+      const cells=Array.from(calendar.querySelectorAll('td.available,td.day,.day-item,.datepicker-cell.day,.air-datepicker-cell.-day-,.datepicker--cell-day,button.mat-calendar-body-cell,.flatpickr-day,.ant-picker-cell,.react-datepicker__day,[role="gridcell"],button[aria-label]')).filter(visible);
+      for(const cell of cells){
+        if(cell.disabled||cell.getAttribute('aria-disabled')==='true'||cell.matches('.disabled,.off,.old,.new,.-disabled-,.-other-month-,.notAllowed,.flatpickr-disabled,.ant-picker-cell-disabled,.react-datepicker__day--disabled'))continue;
+        const raw=cell.getAttribute('aria-label')||cell.getAttribute('title')||cell.querySelector('[title]')?.getAttribute('title')||'';
+        const key=String(raw).toLowerCase().replace(/[^a-z0-9]/g,'');
+        if(raw&&(labels.has(key)||qDateISO(raw)===iso)){found.push(cell);continue;}
+        if(Number(qText(cell))!==day)continue;
+        // Numeric day cells must be associated with an explicit month and year.
+        const area=cell.closest('table,.drp-calendar,.month-item,.react-datepicker__month-container')||calendar;
+        const heading=area.querySelector('.month-item-header,th.month,th.datepicker-switch,.datepicker-switch,.view-switch,.air-datepicker-nav--title,.datepicker--nav-title,.month,.react-datepicker__current-month,.mat-calendar-period-button,.ant-picker-header-view');
+        let shown=qCalendarMonth(qText(heading));
+        const monthSelect=area.querySelector('select.monthselect'),yearSelect=area.querySelector('select.yearselect');
+        if(monthSelect&&yearSelect)shown=Number(yearSelect.value)*12+Number(monthSelect.value);
+        if(shown===year*12+month-1)found.push(cell);
+      }
+    }
+    const unique=[...new Set(found)];
+    if(unique.length>1)throw Error('Ada beberapa tanggal kalender yang sama. Pilihan belum dapat dipastikan.');
+    return unique[0]||null;
+  }
+  function qvDateField(){
+    const fields=Array.from(document.querySelectorAll('input')).filter(e=>visible(e)&&!e.disabled&&(qvRangeSame(e.value,qvDayRange())||/\d{1,2}\s+[a-z]{3}\s+\d{4}\s*[-â€“]\s*\d{1,2}\s+[a-z]{3}\s+\d{4}/i.test(e.value)||/daterange|rentangtanggal|tanggal/.test(qvNorm(qLabel(e)))));
+    return qUnique(fields,'Kolom rentang tanggal Zonamain');
+  }
+  function qvClickDateField(date){
+    const box=date.getBoundingClientRect(),w=date.ownerDocument.defaultView;
+    date.focus({preventScroll:true});
+    date.dispatchEvent(new w.MouseEvent('click',{bubbles:true,cancelable:true,view:w,clientX:box.left+box.width/2,clientY:box.top+box.height/2}));
+  }
+  async function qvWaitDateClick(j,iso,before,first){
+    const started=Date.now();let last='',quietSince=started,sawBusy=before.busy,wasBusy=before.busy,announced=0;
+    while(Date.now()-started<180000){
+      qAssert(j);const now=Date.now(),state=qvZoneState(j);
+      let field;try{field=qvDateField();}catch(_){await qSleep(500);continue;}
+      const signature=state.signature+'|'+field.value;
+      if(state.busy)sawBusy=true;
+      if(state.busy||wasBusy||signature!==last){last=signature;quietSince=now;}
+      wasBusy=state.busy;
+      const day=qvFindDay(iso);
+      const selected=!!day&&(day.getAttribute('aria-selected')==='true'||day.matches('.active,.selected,.-selected-,.-range-from-,.-range-to-,.is-start-date,.is-end-date,.is-selected,.start-date,.end-date,.range-start,.range-end,.startRange,.endRange,.ant-picker-cell-range-start,.ant-picker-cell-range-end')||!!day.querySelector('.mat-calendar-body-selected'));
+      const committed=first?(selected||field.value!==before.value):qvRangeSame(field.value,j.range);
+      if(!state.busy&&committed&&(sawBusy||state.signature!==before.signature||selected||field.value!==before.value)&&now-started>=8000&&now-quietSince>=3000)return;
+      if(now-announced>=5000){qSay('Menunggu loading setelah memilih '+(first?'dua hari lalu':'hari ini')+'â€¦ '+Math.floor((now-started)/1000)+' detik.');announced=now;}
+      await qSleep(500);
+    }
+    throw Error('Loading atau pilihan tanggal '+qvDateText(iso)+' belum selesai dalam 3 menit. User ID belum diisi.');
+  }
+  async function qvSelectRange(date,j){
+    qAssert(j);qvClickDateField(date);
+    await qWait(j,()=>qvOpenCalendars().length,15000,'Kalender Zonamain belum terbuka setelah kolom tanggal diklik.');
+    for(const [index,iso] of [j.range.start,j.range.end].entries()){
+      // Reacquire the calendar after the first AJAX update; never reuse a detached day cell.
+      if(index&&!qvOpenCalendars().length){qvClickDateField(qvDateField());await qWait(j,()=>qvOpenCalendars().length,15000,'Kalender belum siap untuk memilih hari ini.');}
+      const cell=await qWait(j,()=>qvFindDay(iso),15000,'Tanggal '+qvDateText(iso)+' belum dikenali pada kalender Zonamain.');
+      const before={...qvZoneState(j),value:qvDateField().value};
+      qAssert(j);cell.click();
+      await qvWaitDateClick(j,iso,before,index===0);
+    }
+    // Some range calendars remain visible after committing both dates. This is not a failure.
+    if(!qvRangeSame(qvDateField().value,j.range))throw Error('Rentang dua hari laluâ€“hari ini belum tersimpan. User ID belum diisi.');
+    qAssert(j);
+  }
+
+  async function qvZone(j){
+    qSay('V2HIM: mengatur tanggal dan mencari User ID di Zonamainâ€¦');
+    let search=await qWait(j,()=>{try{return qvField(['cari transaksi disini','cari transaksi di sini'],'Cari transaksi disini');}catch(_){return null;}});
+    const date=qvDateField();j.range=qvDayRange();
+    qSay('Memilih '+qvDateText(j.range.start)+' sampai '+qvDateText(j.range.end)+' pada kalender Zonamainâ€¦');
+    await qvSelectRange(date,j);
+    // qvSelectRange already waited for both date clicks and their loading to finish.
+    // Table schema and row dates must not block filling the User ID.
+    qAssert(j);
+    qSay('Tanggal tersimpan. Menyiapkan kolom pencarian User IDâ€¦');
+    search=await qWait(j,()=>{try{return qvField(['cari transaksi disini','cari transaksi di sini'],'Cari transaksi disini');}catch(_){return null;}},180000,'Kolom Cari transaksi disini belum siap setelah pemilihan tanggal.');
+    search.focus({preventScroll:true});
+    const beforeSearch=qvZoneState(j,true),sameUser=search.value===j.id;
+    qvLiveInput(search,j.id);
+    if(search.value!==j.id)throw Error('User ID belum tersimpan di kolom Cari transaksi disini.');
+    qSay('User ID sudah diisi. Menunggu hasil WD provider V2MIHâ€¦');
+    await qvWaitZone(j,beforeSearch,'user',sameUser);
+    const records=[],seen=new Set();
+    for(let page=0;page<100;page++){
+      qAssert(j);
+      if(qvField(['cari transaksi disini','cari transaksi di sini'],'Cari transaksi disini').value!==j.id||!qvRangeSame(qvDateField().value,j.range))throw Error('Filter Zonamain berubah; pencarian dihentikan.');
+      const schema=qvSchema('zone'),signature=qText(schema.table);if(seen.has(signature))throw Error('Halaman WD berulang.');seen.add(signature);
+      for(const row of qvRows(schema)){const r=qvZoneRecord(row,schema.map,j);if(r)records.push(r);}
+      const nav=qvNext(schema.table);if(!nav.next)break;
+      if(page===99)throw Error('Terlalu banyak halaman WD. Persempit pencarian di Zonamain.');
+      const beforePage=qvZoneState(j,true);nav.next.click();await qvWaitZone(j,beforePage);
+    }
+    records.sort((a,b)=>b.time-a.time);
+    if(!records.length){qvFinish(j,[],'Tidak ada WD provider V2MIH untuk User ID ini pada rentang dua hari laluâ€“hari ini.');return;}
+    const latest=records.filter(r=>r.time===records[0].time);
+    if(new Set(latest.map(r=>r.ref)).size!==1)throw Error('Ada beberapa WD V2MIH dengan waktu terbaru yang sama. Referensi belum dapat dipilih dengan pasti.');
+    j.transferRef=latest[0].ref;j.sourceDatetime=latest[0].datetime;j.stage='v2-leon';qSave(j);
+    qSay('WD terbaru V2MIH ditemukan.\nTransfer Ref: '+j.transferRef+'\nMembuka Leonpayâ€¦');qGo(QV_LEON,j);
+  }
+  function qvProofURL(raw){try{const url=new URL(raw,location.href);return raw&&!String(raw).startsWith('#')&&/^https?:$/.test(url.protocol)?url.href:'';}catch(_){return '';}}
+  async function qvProof(row,actionIndex,j){
+    if(actionIndex<0)return {note:'Approved, tetapi kolom Action belum dikenali.'};
+    const controls=Array.from(row.children[actionIndex].querySelectorAll('a,button,[role="button"]')).filter(e=>visible(e)&&/^proof$/i.test(qText(e)||e.getAttribute('title')||e.getAttribute('aria-label')||''));
+    if(controls.length!==1)return {note:'Approved, tetapi tombol Proof belum tersedia atau belum dikenali.'};
+    const control=controls[0],href=qvProofURL(control.getAttribute('href'));
+    if(href)return {url:href};
+    const selector='[role="dialog"],.modal.show,.modal.in,.ant-modal,.swal2-popup,.fancybox-container';
+    const old=new Map(Array.from(document.querySelectorAll(selector)).filter(visible).map(e=>[e,e.innerHTML]));
+    control.click();
+    try{
+      const url=await qWait(j,()=>{
+        const dialogs=Array.from(document.querySelectorAll(selector)).filter(visible).filter(e=>!old.has(e)||old.get(e)!==e.innerHTML);
+        const urls=new Set();
+        for(const dialog of dialogs){
+          for(const img of dialog.querySelectorAll('img')){if(visible(img)){const u=qvProofURL(img.currentSrc||img.src);if(u)urls.add(u);}}
+          for(const a of dialog.querySelectorAll('a[href]'))if(/proof|bukti|download|unduh|receipt/i.test(qText(a))){const u=qvProofURL(a.getAttribute('href'));if(u)urls.add(u);}
+        }
+        return urls.size===1?[...urls][0]:null;
+      },10000,'Tautan bukti belum dikenali.');return {url};
+    }catch(e){qAssert(j);return {note:'Status Approved. Proof sudah ditekan, tetapi tautan bukti belum dikenali. Buka Leonpay untuk melihat bukti.'};}
+  }
+  function qvFinish(j,records,note=''){
+    qAssert(j);j.result={records,note};j.stage='done';j.autoRefresh=false;j.message='';j.progress='';j.finished=Date.now();j.updated=Date.now();qSave(j);qRenderResult(j);
+  }
+  function qlDateControls(){
+    const fields=Array.from(document.querySelectorAll('input')).filter(e=>visible(e)&&!e.disabled&&e.type!=='hidden');
+    const named=name=>fields.filter(e=>qvNorm(e.name||e.id)===name);
+    let start=named('datefrom'),end=named('dateto');
+    if(!start.length)start=fields.filter(e=>/datefrom|startdate|datestart|tanggalawal/.test(qvNorm(qLabel(e))));
+    if(!end.length)end=fields.filter(e=>/dateto|enddate|dateend|tanggalakhir/.test(qvNorm(qLabel(e))));
+    if(start.length===1&&end.length===1&&start[0]!==end[0])return {start:start[0],end:end[0]};
+    const ranges=fields.filter(e=>/filterby|daterange|rentangtanggal/.test(qvNorm(qLabel(e))));
+    return {range:qUnique(ranges,'Filter by / Date From dan Date To Leonpay')};
+  }
+  function qlDateDay(value){
+    const raw=String(value||'').trim();
+    const iso=raw.match(/^(\d{4}-\d{2}-\d{2})(?:\s|T|$)/);if(iso)return iso[1];
+    return qDateISO(raw)||qvTime(raw)?.day||qvTime(raw+' 00:00:00')?.day||qDateISO(raw.replace(/\s+\d{1,2}:\d{2}(?::\d{2})?$/,''));
+  }
+  function qlEnter(field){
+    const w=field.ownerDocument.defaultView;
+    field.focus({preventScroll:true});
+    for(const type of ['keydown','keypress','keyup'])field.dispatchEvent(new w.KeyboardEvent(type,{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true,cancelable:true}));
+  }
+  function qlDatesMatch(j){
+    const c=qlDateControls();
+    return c.range?qvRangeSame(c.range.value,j.range):qlDateDay(c.start.value)===j.range.start&&qlDateDay(c.end.value)===j.range.end;
+  }
+  function qlQueryDatesMatch(j){
+    const q=new URLSearchParams(location.search);
+    if(!q.has('dateFrom')||!q.has('dateTo'))return qlDatesMatch(j);
+    const from=qlDateDay(q.get('dateFrom')),to=qlDateDay(q.get('dateTo'));
+    const next=new Date(j.range.end+'T00:00:00Z');next.setUTCDate(next.getUTCDate()+1);
+    // The supplied Leonpay URL represents an inclusive end day as next-day 00:00.
+    const exclusive=to===next.toISOString().slice(0,10)&&/[T\s]00:00(?::00)?$/.test(q.get('dateTo').trim());
+    return from===j.range.start&&(to===j.range.end||exclusive);
+  }
+  function qlNativeDateValue(field,day,end){
+    if(field.type==='date')return day;
+    const step=field.getAttribute('step');
+    const seconds=step==='any'||(step!==null&&Number(step)>0&&Number(step)<60);
+    return day+'T'+(end?(seconds?'23:59:59':'23:59'):(seconds?'00:00:00':'00:00'));
+  }
+  async function qlNativeDates(j,controls){
+    qAssert(j);
+    const values={start:qlNativeDateValue(controls.start,j.range.start,false),end:qlNativeDateValue(controls.end,j.range.end,true)};
+    for(const key of ['start','end']){
+      // Android's native Setel/Oke dialog is outside the page DOM. Commit its input value instead.
+      const field=controls[key];
+      if(field.readOnly||field.disabled)throw Error('Kolom tanggal Leonpay tidak dapat diisi.');
+      setNativeValue(field,values[key]);
+      const w=field.ownerDocument.defaultView;
+      field.dispatchEvent(new w.Event('blur',{bubbles:false}));
+      await qSleep(200);qAssert(j);
+    }
+    await qWait(j,()=>{
+      const current=qlDateControls();
+      return current.start&&current.end&&['start','end'].every(key=>{
+        const f=current[key];
+        return f.value===values[key]&&(!f.validity||f.validity.valid)&&f.getAttribute('aria-invalid')!=='true';
+      });
+    },10000,'Tanggal/waktu Leonpay belum tersimpan atau ditolak oleh kolom. Search belum ditekan.');
+    j.leonDateStep=2;qSave(j);
+  }
+  async function qlCalendarDates(j){
+    j.range=j.range||qvDayRange();
+    const controls=qlDateControls();
+    if(controls.start&&controls.end&&[controls.start,controls.end].every(f=>['datetime-local','date'].includes(f.type))){
+      qSay('Leonpay: mengatur tanggal/waktu dua hari lalu sampai akhir hari iniâ€¦');
+      await qlNativeDates(j,controls);return;
+    }
+    for(let index=j.leonDateStep||0;index<2;index++){
+      qAssert(j);const iso=index===0?j.range.start:j.range.end;
+      qSay('Leonpay: memilih '+qvDateText(iso)+' pada Filter by, lalu Enterâ€¦');
+      const c=qlDateControls(),field=c.range||(index===0?c.start:c.end);
+      if(!qvOpenCalendars().length)qvClickDateField(field);
+      await qWait(j,()=>qvOpenCalendars().length,15000,'Kalender Filter by Leonpay belum terbuka.');
+      const day=await qWait(j,()=>qvFindDay(iso),15000,'Tanggal '+qvDateText(iso)+' belum dikenali pada kalender Leonpay.');
+      day.click();await qSleep(500);qAssert(j);
+      const fresh=qlDateControls(),input=fresh.range||(index===0?fresh.start:fresh.end);
+      // Persist the next step before Enter in case the form reloads the page.
+      j.leonDateStep=index+1;qSave(j);qlEnter(input);
+      await qSleep(1500);qAssert(j);
+    }
+    await qWait(j,()=>{try{return qlDatesMatch(j);}catch(_){return false;}},20000,'Rentang Filter by Leonpay belum tersimpan. Transfer Ref belum dicari.');
+  }
+
+  async function qvLeon(j){
+    if(j.stage==='v2-leon'){
+      await qWait(j,()=>{try{return qlDateControls();}catch(_){return null;}},30000,'Filter by Leonpay belum dikenali. Tekan Salin pemeriksaan QRIS.');
+      await qlCalendarDates(j);
+      qSay('Leonpay: tanggal tersimpan. Mengisi Transfer Ref dan menekan Searchâ€¦');
+      const field=qvField(['transfer ref'],'Transfer Ref Leonpay');
+      qvLiveInput(field,j.transferRef);
+      if(field.value!==j.transferRef)throw Error('Transfer Ref belum tersimpan di Leonpay.');
+      const buttons=Array.from((field.form||document).querySelectorAll('button,input[type="submit"]')).filter(e=>visible(e)&&!e.disabled&&/^(search|cari)$/i.test(e.value||qText(e)));
+      const button=qUnique(buttons,'Tombol Search Leonpay');qAssert(j);
+      // A GET form reload resumes at results instead of submitting Search again.
+      j.stage='v2-leon-result';j.leonSearchAt=Date.now();qSave(j);button.click();
+    }
+    await qvIdle(j);
+    if(!qlQueryDatesMatch(j))throw Error('Tanggal hasil Leonpay berbeda dari rentang yang dipilih.');
+    const field=qvField(['transfer ref'],'Transfer Ref Leonpay');
+    const submitted=new URLSearchParams(location.search).get('transfer_ref');
+    if(submitted!==null&&submitted!==j.transferRef)throw Error('Halaman Leonpay belum memuat Transfer Ref yang diminta.');
+    const seen=new Set();
+    for(let page=0;page<100;page++){
+      qAssert(j);if(field.value!==j.transferRef)throw Error('Transfer Ref berubah. Hasil belum dibaca.');
+      const schema=qvSchema('leon'),signature=qText(schema.table);if(seen.has(signature))throw Error('Halaman Leonpay berulang.');seen.add(signature);
+      const rows=qvRows(schema).filter(row=>qText(row.children[schema.map.ref])===j.transferRef);
+      if(rows.length>1)throw Error('Leonpay mengembalikan lebih dari satu baris dengan Transfer Ref yang sama.');
+      if(rows.length){
+        const row=rows[0],status=qText(row.children[schema.map.status]),amount=qText(row.children[schema.map.amount]);
+        if(!status||!amount)throw Error('Status atau nominal Leonpay kosong; hasil belum lengkap.');
+        const proof=status.trim().toLowerCase()==='approved'?await qvProof(row,schema.map.action,j):{};
+        qvFinish(j,[{amount,status,datetime:j.sourceDatetime,proofUrl:proof.url||'',transferRef:j.transferRef}],proof.note||'');return;
+      }
+      const nav=qvNext(schema.table);if(!nav.next){qvFinish(j,[],'Transfer Ref WD V2MIH tidak ditemukan di Leonpay.');return;}
+      if(page===99)throw Error('Terlalu banyak halaman Leonpay.');nav.next.click();await qvIdle(j);
+    }
+  }
+
   async function qResume(){
     if(qRunning||qWorkerReleased)return;
     let token=new URLSearchParams(location.hash.slice(1)).get('mfq');
@@ -1835,11 +2226,22 @@
     token=token||sessionStorage.getItem(Q_SESSION);
     const j=qJob();if(!j||j.token!==token)return;
     if(j.stage==='done'){qScheduleRefresh(j);return;}if(['error','cancelled'].includes(j.stage))return;
-    if(!nativeAllowed()&&!(location.origin==='https://m2qris.com'&&location.pathname.replace(/\/$/,'')==='/staff/disburstment')){
-      j.stage='error';j.message='Sesi login belum aktif atau halaman dialihkan. Login admin dan M2QRIS terlebih dahulu, lalu ulangi pencarian.';qSave(j);return;
+    const zone=location.origin==='https://smbaz6.zonamain.com'&&location.pathname.replace(/\/$/,'')==='/transaksiwd';
+    const leon=location.origin==='https://apps.leonpayy.com'&&location.pathname.replace(/\/$/,'')==='/withdraw-transaction/b2c';
+    const m2=location.origin==='https://m2qris.com'&&location.pathname.replace(/\/$/,'')==='/staff/disburstment';
+    const valid=j.kind==='v2him'?(zone||leon):(nativeAllowed()||m2);
+    if(!valid){
+      j.stage='error';j.message=j.kind==='v2him'?'Login Zonamain dan Leonpay terlebih dahulu di browser yang sama, lalu ulangi pencarian V2HIM.':'Sesi login belum aktif atau halaman dialihkan. Login admin dan M2QRIS terlebih dahulu, lalu ulangi pencarian.';qSave(j);return;
     }
-    qRunning=true;qEl('q-id').value=j.id;
-    try{if(nativeAllowed()&&j.stage.startsWith('admin'))await qAdmin(j);else if(location.hostname==='m2qris.com'&&j.stage.startsWith('qris'))await qQRIS(j);}
+    qRunning=true;qEl('q-id').value=j.id;qEl('q-kind').value=j.kind||'m2qris';
+    try{
+      if(j.kind==='v2him'){
+        if(zone&&j.stage==='v2-zone')await qvZone(j);
+        else if(leon&&['v2-leon','v2-leon-result'].includes(j.stage))await qvLeon(j);
+        else throw Error('Tahap pencarian V2HIM tidak sesuai dengan halaman. Mulai pencarian lagi.');
+      }else if(nativeAllowed()&&j.stage.startsWith('admin'))await qAdmin(j);
+      else if(m2&&j.stage.startsWith('qris'))await qQRIS(j);
+    }
     catch(e){if(qWorkerReleased)return;qSay(e.message);if(qJob()?.token===j.token&&qJob()?.stage!=='cancelled'){j.stage='error';j.message=e.message+'\nTekan Salin pemeriksaan QRIS lalu kirim hasilnya.';try{j.diagnostic=qDiagnostic(e.message);}catch(_){}qSave(j);}}
     finally{qRunning=false;const current=qJob()||j;if(current.stage==='done'&&current.autoRefresh)qScheduleRefresh(current);else if(qWorkerToken()===j.token&&qTerminal(current))setTimeout(()=>window.close(),500);}
   }
@@ -1850,11 +2252,12 @@
     if(typeof GM_openInTab!=='function'){qSay('Perbarui script di Tampermonkey agar izin tab latar belakang tersedia.');return;}
     const previous=qJob();if(previous&&!qTerminal(previous)){previous.stage='cancelled';qSave(previous);}
     qCloseWorker();
-    const j={token:crypto.randomUUID(),created:Date.now(),cycleStarted:Date.now(),autoRefresh:false,id:ids[0],stage:'admin',progress:'Mencari rekening di adminâ€¦'};
+    const kind=qEl('q-kind').value==='v2him'?'v2him':'m2qris';
+    const j={token:crypto.randomUUID(),created:Date.now(),cycleStarted:Date.now(),autoRefresh:false,id:ids[0],kind,stage:kind==='v2him'?'v2-zone':'admin',progress:kind==='v2him'?'Mencari WD V2MIH di Zonamainâ€¦':'Mencari rekening di adminâ€¦'};
     qOwnedToken=j.token;sessionStorage.setItem(Q_OWNER,j.token);qSave(j);
-    qMenu.open=true;qEl('q-start').disabled=true;
+    qMenu.open=true;qEl('q-start').disabled=true;qEl('q-kind').disabled=true;
     try{
-      qTab=GM_openInTab(Q_ADMIN+'#mfq='+encodeURIComponent(j.token),{active:false,insert:true,setParent:true});
+      qTab=GM_openInTab((kind==='v2him'?QV_ZONE:Q_ADMIN)+'#mfq='+encodeURIComponent(j.token),{active:false,insert:true,setParent:true});
       if(!qTab)throw Error('Tab latar belakang tidak berhasil dibuka. Periksa izin Tampermonkey.');
       qTab.onclose=()=>{
         const current=qJob();if(current?.token===j.token&&(!qTerminal(current)||(current.stage==='done'&&current.autoRefresh))){
@@ -1876,13 +2279,13 @@
     if(own)qSave({token:j.token,stage:'cancelled',autoRefresh:false,created:j.created,updated:Date.now(),message:'Pencarian QRIS dihapus.'});
     qCloseWorker();qRenderedSignature='';
     qEl('q-id').value='';qEl('q-result').replaceChildren();
-    qEl('q-start').disabled=false;
+    qEl('q-start').disabled=false;qEl('q-kind').disabled=false;
     qEl('q-id').focus({preventScroll:true});
   }
   qEl('q-clear').onclick=qClear;
   // Worker tabs own the page automation; the originating tab only displays progress/results.
   if(qOwnedToken&&!qWorkerToken()){
-    const saved=qJob();if(saved?.token===qOwnedToken){qEl('q-id').value=saved.id;qWatchOwned();}
+    const saved=qJob();if(saved?.token===qOwnedToken){qEl('q-id').value=saved.id;qEl('q-kind').value=saved.kind||'m2qris';qWatchOwned();}
   }
   // Standalone QRIS tabs also refresh data once per minute, without reloading a form mid-edit.
   if(location.origin==='https://m2qris.com'&&location.pathname.replace(/\/$/,'')==='/staff/disburstment'){
