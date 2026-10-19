@@ -1,186 +1,221 @@
 // ==UserScript==
-// @name         LiveChat Duplicate Message Highlighter - DANGER ALERT
+// @name         LiveChat Duplicate Blocker - JANGAN ASAL SPAM PK
 // @namespace    https://www.tampermonkey.net/
-// @version      2025-01-21
-// @description  Highlight duplikat yang Jelas, Tegas, dan Berwibawa
-// @author       You
+// @version      2026.10.20.3
+// @description  Popup duplikat, blokir Enter dan tombol kirim pada pesan duplikat.
 // @match        https://my.livechatinc.com/*
-// @icon         https://www.google.com/s2/favicons?sz=64&domain=livechatinc.com
 // @grant        none
-// @run-at       document-idle
+// @run-at       document-start
 // ==/UserScript==
 
-(function () {
-    "use strict";
+(() => {
+    'use strict';
+    // GANTI skrip lama, jangan jalankan keduanya bersamaan.
+    // Hanya pesan agen setelah penanda Started - Today TERAKHIR yang dihitung.
+    // Selector di bawah berasal dari skrip pengguna; sesuaikan bila UI berubah.
+    const EDITOR = '[contenteditable="true"], [contenteditable="plaintext-only"], textarea';
+    const LIST = '[data-testid="messages-list"]';
+    const SEND = '[data-testid="send-button"], [data-testid="send-message-button"], [data-testid="send-message"], button[type="submit"], input[type="submit"]';
+    const ROOT = 'lc-duplicate-warning';
+    let badge, popup, currentEditor, currentList, lastDuplicate = '', dismissed = '';
+    let queued = false;
+    const visible = el => !!el && (el.getClientRects().length > 0 || [...el.children].some(child => child.getClientRects().length > 0));
+    const normalize = text => (text || '').normalize('NFKC')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/[\s\u00a0.,!?;:\-]/g, '').toLowerCase();
+    const read = el => el instanceof HTMLTextAreaElement ? el.value : (el.innerText || el.textContent || '');
+    const editors = () => [...document.querySelectorAll(EDITOR)]
+        .filter(el => visible(el) && !el.closest('#' + ROOT) && !el.closest(LIST))
+        .filter((el, index, all) => !all.some(other => other !== el && other.contains(el)));
 
-    var style = document.createElement("style");
-    style.textContent = ".css-1cmlcj3, .css-1orfco2 { flex: 0 0 350px !important; max-width: 350px !important; min-width: 350px !important; background: transparent !important; }" +
-        ".spam-parent-active { position: relative !important; overflow: visible !important; }" +
-
-        /* PRE-SEND INPUT: BOLD RED GUARD */
-        ".spam-glow-alert { " +
-        "border: 3px solid #ff0000 !important; " +
-        "background: rgba(255, 0, 0, 0.08) !important; " +
-        "box-shadow: 0 0 20px rgba(255, 0, 0, 0.4), 0 0 5px rgba(0,0,0,0.3) !important; " +
-        "border-radius: 12px !important; " +
-        "}" +
-
-        /* HUD PERINGATAN: MODERN FLOATING HUD */
-        ".spam-info-box { " +
-        "position: absolute; bottom: calc(100% + 20px); left: 0; " +
-        "width: 340px; background: #1a0000; " +
-        "border: 2px solid #ff0000; border-radius: 14px; " +
-        "padding: 18px; color: #ffffff; font-size: 12px; z-index: 9999999; " +
-        "box-shadow: 0 15px 45px rgba(0,0,0,0.7), 0 0 10px rgba(255,0,0,0.2); " +
-        "border-left: 10px solid #ff0000; " +
-        "animation: slideUpHUD 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275); " +
-        "pointer-events: none; " +
-        "}" +
-        ".spam-info-box b { color: #ff1111; display: block; margin-bottom: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 900; }" +
-        "@keyframes slideUpHUD { from { transform: translateY(20px) scale(0.95); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }" +
-
-        /* FINAL FORM: THE SPAM ALERT BUBBLE */
-        ".spam-detected-highlight { " +
-        "background: #800000 !important; " +
-        "background: linear-gradient(180deg, #bb0000 0%, #660000 100%) !important; " +
-        "border: 2px solid #ff0000 !important; " +
-        "border-left: 12px solid #ff0000 !important; " +
-        "border-radius: 12px !important; " +
-        "position: relative; overflow: visible !important; z-index: 100; " +
-        "margin: 20px 0 20px 0 !important; " +
-        "box-shadow: 0 12px 35px rgba(0,0,0,0.6), inset 0 0 20px rgba(255,0,0,0.4), 0 0 0 2px rgba(0,0,0,0.2) !important; " +
-        "animation: alertPulse 2s infinite ease-in-out; " +
-        "}" +
-
-        /* FORCE WHITE TEXT ON EVERYTHING INSIDE */
-        ".spam-detected-highlight, .spam-detected-highlight *, .spam-detected-highlight span, .spam-detected-highlight div { " +
-        "color: #ffffff !important; " +
-        "background-color: transparent !important; " +
-        "text-shadow: 1px 1px 2px rgba(0,0,0,0.8) !important; " +
-        "}" +
-
-        /* SYSTEM ALERT HEADER RIBBON */
-        ".spam-detected-highlight::before { " +
-        "content: '⚠️ SYSTEM ALERT: DUPLICATE MESSAGE DETECTED'; " +
-        "position: absolute; top: -14px; left: -10px; right: 0; " +
-        "background: #ff0000; color: #ffffff !important; " +
-        "font-size: 9px; font-weight: 900; padding: 2px 12px; " +
-        "border-radius: 4px 4px 0 0; box-shadow: 0 -2px 10px rgba(255,0,0,0.4); " +
-        "letter-spacing: 1.5px; z-index: 11; width: fit-content; " +
-        "}" +
-
-        "@keyframes alertPulse { 0% { border-color: #ff0000; } 50% { border-color: #ff6666; } 100% { border-color: #ff0000; } }";
-    document.head.appendChild(style);
-
-    function normalizeText(text) {
-        if (!text) return "";
-        return text.replace(/[\s\n\r\t\u00a0.,!?;:-]/g, "").toLowerCase();
+    function context(editor) {
+        // Gunakan panel terdekat yang mempunyai tepat satu daftar pesan.
+        for (let parent = editor.parentElement; parent; parent = parent.parentElement) {
+            const lists = [...parent.querySelectorAll(LIST)].filter(visible);
+            if (lists.length === 1) return { editor, list: lists[0], panel: parent };
+            if (lists.length > 1) return null;
+        }
+        return null;
     }
-
-    function findLastMarker(container) {
-        var elements = container.querySelectorAll("*");
-        var latest = null;
-        var keys = ["started", "today", "dimulai", "hari ini"];
-        for (var i = 0; i < elements.length; i++) {
-            var el = elements[i];
-            var txt = (el.textContent || "").toLowerCase();
-            for (var j = 0; j < keys.length; j++) {
-                if (txt.indexOf(keys[j]) !== -1 && el.children.length <= 4) {
-                    var inner = (el.innerText || "").toLowerCase().trim();
-                    if (inner.indexOf("started") === 0 || inner.indexOf("dimulai") === 0 || (txt.indexOf("started") !== -1 && txt.indexOf("today") !== -1)) {
-                        latest = el;
-                    }
-                }
-            }
+    function activeContext(target) {
+        const all = editors();
+        const chosen = all.find(el => el === target || el.contains(target)) ||
+            all.find(el => el === document.activeElement || el.contains(document.activeElement)) ||
+            all.find(el => el === currentEditor && el.isConnected) ||
+            all.find(el => el.matches('[contenteditable]') && context(el)) ||
+            all.find(el => context(el));
+        return chosen ? context(chosen) : null;
+    }
+    function bubbles(list) {
+        return [...list.querySelectorAll('[data-testid="agent-message"]')]
+            // Pertahankan fallback CSS dari skrip asli pengguna.
+            .map(block => block.querySelector('[data-testid="message-text"]') ||
+                block.querySelector('.message__text') ||
+                block.querySelector('div[class^="css-"]'))
+            .filter(Boolean);
+    }
+    function latestStart(list) {
+        // Jangan mengira isi pesan pelanggan/agen sebagai penanda sistem.
+        const messageSelector = '[data-testid="agent-message"], [data-testid="customer-message"], [data-testid="visitor-message"], [data-testid="message-text"], .message__text';
+        let latest = null;
+        for (const el of list.querySelectorAll('*')) {
+            if (el.closest(messageSelector) || el.querySelector(messageSelector)) continue;
+            const text = (el.textContent || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+            // Mendukung label terpisah dalam beberapa span dan waktu di belakang Today.
+            if (!/^(?:started\s*[-–—·•:]?\s*today|dimulai\s*[-–—·•:]?\s*hari ini)(?:$|[\s,·•:–—-])/i.test(text) || text.length > 160) continue;
+            if (!latest || latest.contains(el) ||
+                (latest.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)) latest = el;
         }
         return latest;
     }
-
-    function getBubbles(container) {
-        var blocks = container.querySelectorAll('[data-testid="agent-message"]');
-        var results = [];
-        for (var i = 0; i < blocks.length; i++) {
-            var b = blocks[i].querySelector('[data-testid="message-text"]') || blocks[i].querySelector('div[class^="css-"]') || blocks[i].querySelector(".message__text");
-            if (b) results.push(b);
+    function inspect(ctx) {
+        if (!ctx) return { duplicate: false, key: '', count: 0, marker: null };
+        const marker = latestStart(ctx.list);
+        const all = bubbles(ctx.list);
+        // Tidak ada fallback ke pesan lama / lima pesan terakhir.
+        // Bila penanda belum termuat, riwayat tidak dihitung.
+        const messages = marker ? all.filter(message => !marker.contains(message) &&
+            !!(marker.compareDocumentPosition(message) & Node.DOCUMENT_POSITION_FOLLOWING)) : [];
+        const counts = new Map();
+        for (const message of messages) {
+            const key = normalize(read(message));
+            if (key) counts.set(key, (counts.get(key) || 0) + 1);
         }
-        return results;
+        const active = new Set(messages);
+        for (const message of all) {
+            message.classList.toggle('lc-duplicate-sent', active.has(message) &&
+                (counts.get(normalize(read(message))) || 0) > 1);
+        }
+        const key = normalize(read(ctx.editor));
+        return { duplicate: !!key && counts.has(key), key, marker, count: messages.length };
     }
-
-    function getMsgsAfter(container) {
-        var marker = findLastMarker(container);
-        var bubbles = getBubbles(container);
-        if (!marker) return bubbles.slice(-5);
-        var filtered = [];
-        for (var i = 0; i < bubbles.length; i++) {
-            if (marker.compareDocumentPosition(bubbles[i]) & Node.DOCUMENT_POSITION_FOLLOWING) filtered.push(bubbles[i]);
-        }
-        return filtered;
+    function initUI() {
+        if (!document.body || popup) return;
+        const style = document.createElement('style');
+        style.textContent = `
+          .lc-duplicate-draft { outline:3px solid #ff2929!important; outline-offset:2px; background:rgba(255,0,0,.07)!important; }
+          .lc-duplicate-sent { border-left:6px solid #f22!important; background:rgba(220,0,0,.18)!important; }
+          #${ROOT} { position:fixed; transform:translate(-50%,-50%); width:390px; max-width:calc(100vw - 32px); box-sizing:border-box; z-index:2147483647; padding:24px; border:3px solid #ff3030; border-radius:16px; background:#240606; color:white; font:14px/1.6 Arial,sans-serif; box-shadow:0 18px 60px #0009; text-align:center; }
+          #${ROOT}[hidden] { display:none!important; }
+          #${ROOT} strong { display:block; color:#ff6565; font-size:21px; line-height:1.3; margin-bottom:12px; }
+          #${ROOT} button { margin-top:16px; border:0; border-radius:8px; padding:10px 20px; background:#d51919; color:white; font-weight:bold; cursor:pointer; }
+        `;
+        document.head.appendChild(style);
+        popup = document.createElement('div');
+        popup.id = ROOT;
+        popup.hidden = true;
+        popup.setAttribute('role', 'alertdialog');
+        popup.setAttribute('aria-modal', 'false');
+        popup.setAttribute('aria-labelledby', ROOT + '-title');
+        popup.setAttribute('aria-describedby', ROOT + '-text');
+        popup.innerHTML = `<strong id="${ROOT}-title">⛔ JANGAN ASAL SPAM PK!</strong><div id="${ROOT}-text">Pesan ini sama dengan pesan agen setelah Started - Today pada percakapan baru ini.<br><b>ENTER DAN KIRIM DIBLOKIR.</b><br>Edit atau hapus pesan duplikat terlebih dahulu.</div><button type="button">Mengerti, edit pesan</button>`;
+        popup.querySelector('button').addEventListener('click', () => {
+            dismissed = lastDuplicate;
+            popup.hidden = true;
+            if (currentEditor?.isConnected) currentEditor.focus();
+        });
+        document.body.appendChild(popup);
+        badge = document.createElement('div');
+        badge.id = 'lc-duplicate-status';
+        badge.style.cssText = 'position:fixed;bottom:10px;right:14px;z-index:2147483646;background:#18212b;color:white;padding:7px 12px;border-radius:8px;font:12px Arial;pointer-events:none;max-width:360px';
+        document.body.appendChild(badge);
     }
-
-    function runHighlight() {
-        if (document.hidden) return;
-        var list = document.querySelector('[data-testid="messages-list"]');
-        if (!list) return;
-        var all = getBubbles(list);
-        for (var i = 0; i < all.length; i++) all[i].classList.remove("spam-detected-highlight");
-        var active = getMsgsAfter(list);
-        if (active.length < 2) return;
-        var counts = {};
-        for (var j = 0; j < active.length; j++) {
-            var n = normalizeText(active[j].innerText || active[j].textContent);
-            if (n.length >= 5) counts[n] = (counts[n] || 0) + 1;
-        }
-        for (var k = 0; k < active.length; k++) {
-            var n2 = normalizeText(active[k].innerText || active[k].textContent);
-            if (counts[n2] > 1) active[k].classList.add("spam-detected-highlight");
-        }
+    function show(ctx) {
+        initUI();
+        if (!popup) return;
+        const rect = ctx.list.getBoundingClientRect();
+        const x = Math.max(0, rect.left) + (Math.min(innerWidth, rect.right) - Math.max(0, rect.left)) / 2;
+        const y = Math.max(0, rect.top) + (Math.min(innerHeight, rect.bottom) - Math.max(0, rect.top)) / 2;
+        const half = Math.min(390, innerWidth - 32) / 2;
+        popup.style.left = Math.max(half + 16, Math.min(innerWidth - half - 16, x)) + 'px';
+        popup.style.top = Math.max(150, Math.min(innerHeight - 150, y)) + 'px';
+        popup.hidden = false;
     }
-
-    function removeAlerts(input) {
-        input.classList.remove("spam-glow-alert");
-        var p = input.parentElement;
-        if (p) {
-            p.classList.remove("spam-parent-active");
-            var f = p.querySelector(".spam-info-box"); if (f) f.remove();
+    function refresh(target, force = false) {
+        const ctx = activeContext(target);
+        if (currentEditor !== ctx?.editor || currentList !== ctx?.list) {
+            currentEditor?.classList.remove('lc-duplicate-draft');
+            currentEditor = ctx?.editor;
+            currentList = ctx?.list;
+            lastDuplicate = dismissed = '';
+            if (popup) popup.hidden = true;
         }
-    }
-
-    function applyAlerts(input) {
-        input.classList.add("spam-glow-alert");
-        var p = input.parentElement; if (!p) return;
-        p.classList.add("spam-parent-active");
-        if (!p.querySelector(".spam-info-box")) {
-            var i = document.createElement("div"); i.className = "spam-info-box";
-            i.innerHTML = "<b>🛡️ NEURAL SHIELD: SPAM ALERT</b>" +
-                "Pesan yang Anda ketik terdeteksi 100% duplikat dengan riwayat chat hari ini. Mohon lakukan variasi kata agar tidak terblokir sistem.";
-            p.appendChild(i);
+        const status = inspect(ctx);
+        if (badge) {
+            const count = status.count;
+            const label = !ctx ? 'ANTI DUPLIKAT: kolom chat belum terbaca' :
+                !status.marker ? 'ANTI DUPLIKAT: Started - Today belum terbaca; riwayat diabaikan' :
+                !count ? 'ANTI DUPLIKAT: percakapan baru, belum ada pesan agen' :
+                status.duplicate ? '⛔ DUPLIKAT — ENTER / KIRIM DIBLOKIR' :
+                '✓ ANTI DUPLIKAT AKTIF · ' + count + ' pesan percakapan baru';
+            if (badge.textContent !== label) badge.textContent = label;
         }
-    }
-
-    function checkPre() {
-        var input = document.querySelector('[contenteditable="true"]') || document.querySelector("textarea");
-        if (!input) return;
-        var raw = input.innerText || input.value || "";
-        if (raw.trim().indexOf("#") === 0) { removeAlerts(input); return; }
-        var norm = normalizeText(raw);
-        if (norm.length < 5) { removeAlerts(input); return; }
-        var list = document.querySelector('[data-testid="messages-list"]') || document.body;
-        var active = getMsgsAfter(list);
-        var sentNorms = [];
-        for (var i = 0; i < active.length; i++) sentNorms.push(normalizeText(active[i].innerText || active[i].textContent));
-        if (sentNorms.indexOf(norm) !== -1) applyAlerts(input); else removeAlerts(input);
-    }
-
-    var observer = new MutationObserver(function () {
-        runHighlight();
-        var input = document.querySelector('[contenteditable="true"]') || document.querySelector("textarea");
-        if (input && !input.dataset.spamListener) {
-            input.addEventListener("input", checkPre);
-            input.dataset.spamListener = "true";
+        ctx?.editor.classList.toggle('lc-duplicate-draft', status.duplicate);
+        if (status.duplicate) {
+            lastDuplicate = status.key;
+            if (force || dismissed !== status.key) show(ctx);
+        } else {
+            lastDuplicate = dismissed = '';
+            if (popup) popup.hidden = true;
         }
-    });
-
-    observer.observe(document.body, { childList: true, subtree: true });
-    setInterval(runHighlight, 2000);
-    setInterval(checkPre, 1000);
+        return status.duplicate;
+    }
+    function cancel(event) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        event.stopPropagation();
+    }
+    function sendButton(target) {
+        const button = target instanceof Element ? target.closest('button, [role="button"], input[type="submit"]') : null;
+        if (!button || button.closest('#' + ROOT)) return null;
+        const labels = [button.getAttribute('aria-label'), button.getAttribute('title'), button.getAttribute('data-testid'), button.textContent].filter(Boolean);
+        const isSend = labels.some(label => /^(send|kirim)(?:[\s_-]*(?:message|pesan|button))?(?:[\s(]|$)/i.test(label.trim()));
+        return button.matches(SEND) || isSend ? button : null;
+    }
+    // Capture di window, sebelum handler aplikasi pada elemen/document.
+    for (const type of ['keydown', 'keypress', 'keyup']) {
+        window.addEventListener(type, event => {
+            if (event.key !== 'Enter' && !(event.key === ' ' && sendButton(event.target))) return;
+            const ctx = activeContext(event.target);
+            if (!ctx) return;
+            const inEditor = ctx.editor === event.target || ctx.editor.contains(event.target);
+            const button = sendButton(event.target);
+            if ((inEditor || (button && ctx.panel.contains(button))) && refresh(ctx.editor, true)) cancel(event);
+        }, true);
+    }
+    window.addEventListener('beforeinput', event => {
+        if (['insertParagraph', 'insertLineBreak'].includes(event.inputType) && refresh(event.target, true)) cancel(event);
+    }, true);
+    for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'click', 'dblclick']) {
+        window.addEventListener(type, event => {
+            const button = sendButton(event.target);
+            if (!button) return;
+            const ctx = activeContext();
+            if (ctx?.panel.contains(button) && refresh(ctx.editor, true)) cancel(event);
+        }, { capture: true, passive: false });
+    }
+    window.addEventListener('submit', event => {
+        const ctx = activeContext();
+        if (ctx && (event.target.contains(ctx.editor) || (event.submitter && ctx.panel.contains(event.submitter))) && refresh(ctx.editor, true)) cancel(event);
+    }, true);
+    window.addEventListener('input', event => refresh(event.target), true);
+    window.addEventListener('focusin', event => {
+        if (!event.target.closest?.('#' + ROOT)) refresh(event.target);
+    }, true);
+    function schedule() {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(() => { queued = false; refresh(); });
+    }
+    function boot() {
+        initUI();
+        // Tidak mengamati class/style agar perubahan highlight tidak memicu loop.
+        new MutationObserver(records => {
+            if (records.some(record => !popup.contains(record.target) && !badge.contains(record.target))) schedule();
+        }).observe(document.body, { childList: true, subtree: true, characterData: true });
+        refresh();
+        setInterval(() => { if (!document.hidden) refresh(); }, 700);
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
+    else boot();
 })();
