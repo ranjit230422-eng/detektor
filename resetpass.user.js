@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AGWL2 Auto Reset Password Member
 // @namespace    tampermonkey-agwl2-reset-password-member
-// @version      1.4.2
+// @version      1.7.0
 // @description  Panel reset password merah hitam; geser judul dengan mouse atau sentuhan, posisi tidak kembali otomatis. Fungsi reset dan salin tetap tersedia.
 // @match        *://agwl2.admitoto.com/*
 // @match        *://agwl2.suksesbogil.com/*
@@ -17,15 +17,15 @@
   const LAST_PASSWORD_KEY = 'agwl2_reset_password_last_generated_v1';
   const BOOT_INTERVAL_MS = 300;
   const BOOT_MAX_TRIES = 120;
-  const PANEL_WIDTH = 252;
+  const PANEL_WIDTH = 350;
   const GAP = 12;
   // Posisi fallback panel saat profil dibuka lewat popup.
   // Dibuat lebih dekat ke sisi kiri popup Edit Player List.
   const OPENER_PANEL_LEFT = 320;
   const OPENER_PANEL_TOP = 24;
   const POPUP_SIDE_GAP = 8;
-  const PANEL_WIN_WIDTH = 294;
-  const PANEL_WIN_HEIGHT = 575;
+  const PANEL_WIN_WIDTH = 392;
+  const PANEL_WIN_HEIGHT = 800;
   const PANEL_WIN_NAME_PREFIX = 'agwl2_reset_password_panel_';
 
   let panelCreated = false;
@@ -160,7 +160,7 @@
   }
 
   function getPanelHostDoc() {
-    // Prioritas 1: mini-window panel terpisah. Ini yang paling mendekati â€œsenyawaâ€
+    // Prioritas 1: mini-window panel terpisah. Ini yang paling mendekati satu kesatuan
     // tetapi tetap seperti awal: panel berada di samping popup, bukan masuk ke dalam tabel.
     const miniDoc = openDetachedPanelWindow();
     if (miniDoc && miniDoc.body) {
@@ -492,117 +492,158 @@
     css.textContent = `
       #agwl2-rp-panel, #agwl2-rp-panel * { box-sizing: border-box; }
       #agwl2-rp-panel {
-        position: fixed; left: 10px; top: 70px; width: ${PANEL_WIDTH}px;
-        max-width: calc(100vw - 16px); max-height: calc(100vh - 16px);
-        display: flex; flex-direction: column; z-index: 999999;
-        color: #f7eeee; background: linear-gradient(155deg, #221317, #100e10 48%, #161012);
-        border: 1px solid #66313c; border-radius: 17px;
-        box-shadow: 0 20px 50px #0009, 0 4px 12px #0008, inset 0 1px 0 #ffffff16;
-        font: 12px/1.45 'Segoe UI', Arial, sans-serif;
-        overflow: hidden; user-select: none; color-scheme: dark;
+        position:fixed; left:10px; top:70px; width:${PANEL_WIDTH}px;
+        max-width:calc(100vw - 20px); max-height:calc(100vh - 20px);
+        display:flex; flex-direction:column; z-index:999999;
+        color:#f5f5f7; background:#141419; border:1px solid #34343e; border-radius:20px;
+        box-shadow:0 24px 70px #0008, 0 4px 16px #0005;
+        font:12px/1.5 'Segoe UI',Arial,sans-serif; overflow:hidden; user-select:none; color-scheme:dark;
       }
-      #agwl2-rp-head {
-        display: flex; align-items: center; gap: 9px; padding: 14px 12px;
-        background: linear-gradient(120deg, #641a29, #35141d 65%, #201015);
-        border-bottom: 1px solid #a13d504d; cursor: grab; touch-action: none; flex-shrink: 0;
-      }
-      #agwl2-rp-panel[data-dragging="1"] #agwl2-rp-head { cursor: grabbing; }
-      #agwl2-rp-panel .agwl2-rp-emblem {
-        display: grid; place-items: center; width: 32px; height: 36px; flex-shrink: 0;
-        border-radius: 10px; background: linear-gradient(145deg, #b43750, #631b2a);
-        border: 1px solid #d6657955; box-shadow: 0 4px 8px #0005, inset 0 1px 0 #ffffff25;
-      }
-      #agwl2-rp-panel .agwl2-rp-heading { flex: 1; min-width: 0; }
-      #agwl2-rp-panel .agwl2-rp-heading strong { display: block; font-size: 11px; letter-spacing: 1px; color: #fff0f2; }
-      #agwl2-rp-panel .agwl2-rp-heading small { display: block; font-size: 10px; color: #d5a5af; margin-top: 2px; }
-      #agwl2-rp-close {
-        width: 28px; height: 28px; padding: 0; flex-shrink: 0; border-radius: 9px;
-        border: 1px solid #ffffff18; background: #0b080b55; color: #e7c4cc; cursor: pointer; font-size: 19px;
-      }
-      #agwl2-rp-body { padding: 13px; overflow-y: auto; min-height: 0; scrollbar-width: thin; scrollbar-color: #70313e #120e11; }
-      #agwl2-rp-mode {
-        padding: 7px 9px; margin-bottom: 12px; border: 1px solid #63313c;
-        border-radius: 8px; background: #3a19234d; color: #e1a9b5; font-size: 10px; line-height: 1.5;
-      }
-      #agwl2-rp-panel .agwl2-rp-small { font-size: 10px; color: #c6aab1; margin-bottom: 7px; font-weight: 600; }
-      #agwl2-rp-user { color: #fff0f3; font-weight: 700; overflow-wrap: anywhere; }
-      #agwl2-rp-passbox {
-        padding: 14px 9px; border: 1px solid #82404e; border-radius: 11px;
-        background: linear-gradient(145deg, #29151c, #100c10);
-        box-shadow: inset 0 2px 7px #0008, 0 1px 0 #ffffff08;
-      }
-      #agwl2-rp-pass { text-align: center; font: 700 16px/1.45 Consolas, monospace; color: #ffe5eb; letter-spacing: 1px; overflow-wrap: anywhere; }
-      #agwl2-rp-panel .agwl2-rp-row { margin-top: 13px; }
-      #agwl2-rp-lenval { float: right; min-width: 24px; text-align: center; padding: 0 5px; border-radius: 5px; color: #ffe4ea; background: #642437; }
-      #agwl2-rp-range { display: block; width: 100%; margin: 0; height: 20px; accent-color: #b93e57; cursor: pointer; }
-      #agwl2-rp-panel .agwl2-rp-checks { display: flex; gap: 5px; }
-      #agwl2-rp-panel .agwl2-rp-checks label {
-        flex: 1; display: flex; justify-content: center; align-items: center; gap: 4px;
-        padding: 7px 3px; border: 1px solid #51313a; border-radius: 8px;
-        background: linear-gradient(#2b1b21, #1d1519); color: #e8ced6; font-size: 11px; cursor: pointer;
-      }
-      #agwl2-rp-panel input[type="checkbox"] { margin: 0; width: 13px; height: 13px; accent-color: #aa304b; }
-      #agwl2-rp-panel .agwl2-rp-actions { display: grid; gap: 8px; margin-top: 15px; }
-      #agwl2-rp-panel .agwl2-rp-btn {
-        width: 100%; min-height: 37px; padding: 9px 8px; border: 1px solid #754050;
-        border-radius: 9px; color: #f7e9ed; background: linear-gradient(#41232e, #2a171f);
-        font: 600 11px/1.4 'Segoe UI', Arial, sans-serif; cursor: pointer;
-        box-shadow: inset 0 1px 0 #ffffff12, 0 3px 6px #0004;
-        transition: filter .15s, transform .15s;
-      }
-      #agwl2-rp-panel .agwl2-rp-btn.danger { border-color: #cc546d; background: linear-gradient(135deg, #b53251, #791e36); color: #fff; }
-      #agwl2-rp-panel .agwl2-rp-btn.secondary { border-color: #4c343d; background: linear-gradient(#2b2027, #1b151a); color: #dbc3cc; }
-      #agwl2-rp-panel button:hover:not(:disabled) { filter: brightness(1.15); }
-      #agwl2-rp-panel button:active:not(:disabled) { transform: translateY(1px); }
-      #agwl2-rp-panel button:disabled { opacity: .45; cursor: not-allowed; }
-      #agwl2-rp-panel :is(button, input, textarea):focus-visible { outline: 2px solid #ed91a7; outline-offset: 2px; }
-      #agwl2-rp-panel .agwl2-rp-output-label { display: block; margin: 15px 0 6px; color: #b89aa5; font-size: 9px; font-weight: 700; letter-spacing: 1.4px; }
-      #agwl2-rp-output {
-        display: block; width: 100%; min-height: 87px; margin: 0; resize: vertical;
-        padding: 10px; color: #ecd9df; background: #0c0a0d; border: 1px solid #443039;
-        border-radius: 9px; font: 11px/1.65 'Segoe UI', Arial, sans-serif; user-select: text;
-        box-shadow: inset 0 2px 6px #0005;
-      }
-      #agwl2-rp-output::placeholder { color: #9b818b; }
-      #agwl2-rp-status { min-height: 16px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #ffffff0c; color: #cfb0ba; font-size: 10px; line-height: 1.5; }
-      @media (prefers-reduced-motion: reduce) { #agwl2-rp-panel button { transition: none !important; } }
+      #agwl2-rp-head { display:flex; align-items:center; gap:11px; padding:18px 16px;
+        background:radial-gradient(ellipse at top left,#572032 0,transparent 75%),#1d171e;
+        border-bottom:1px solid #ffffff0d; cursor:grab; touch-action:none; flex-shrink:0; }
+      #agwl2-rp-panel[data-dragging="1"] #agwl2-rp-head { cursor:grabbing; }
+      #agwl2-rp-panel .agwl2-rp-emblem { display:grid; place-items:center; width:38px; height:40px;
+        flex-shrink:0; border-radius:12px; color:#ff9bab; background:#f34b6a18; border:1px solid #f34b6a40; }
+      #agwl2-rp-panel .agwl2-rp-heading { flex:1; min-width:0; }
+      #agwl2-rp-panel .agwl2-rp-heading strong { display:block; font-size:13px; font-weight:700; letter-spacing:.1px; }
+      #agwl2-rp-panel .agwl2-rp-heading small { display:block; font-size:10px; color:#b6a0ab; margin-top:3px; }
+      #agwl2-rp-close { display:grid; place-items:center; width:28px; height:28px; padding:0; flex-shrink:0;
+        border-radius:8px; border:1px solid #ffffff12; background:#ffffff05; color:#c9bbc3; cursor:pointer; font-size:20px; }
+      #agwl2-rp-body { padding:16px; overflow-y:auto; min-height:0; scrollbar-width:thin; scrollbar-color:#4f3440 #141419; }
+      #agwl2-rp-mode { display:flex; align-items:center; gap:7px; padding:8px 10px; margin-bottom:16px;
+        border:1px solid #68d3ad20; border-radius:8px; background:#68d3ad08; color:#9be0c5; font-size:10px; }
+      #agwl2-rp-mode::before { content:''; width:6px; height:6px; border-radius:50%; background:currentColor; flex-shrink:0; }
+      #agwl2-rp-mode[data-ready="false"] { color:#ebc57c; background:#ebc57c08; border-color:#ebc57c25; }
+      #agwl2-rp-panel .agwl2-rp-small { display:block; font-size:11px; color:#a7a5b3; margin-bottom:8px; font-weight:500; }
+      #agwl2-rp-panel .agwl2-rp-account { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:10px; }
+      #agwl2-rp-user { color:#f3eff3; font-weight:600; overflow-wrap:anywhere; text-align:right; user-select:text; }
+      #agwl2-rp-passbox { padding:13px 12px 15px; border:1px solid #f56b8545; border-radius:12px;
+        background:linear-gradient(120deg,#341d29,#211920); box-shadow:inset 0 1px #ffffff08; }
+      #agwl2-rp-panel .agwl2-rp-caption { text-align:center; color:#c59ba8; font-size:9px; font-weight:600; letter-spacing:1.6px; margin-bottom:6px; }
+      #agwl2-rp-pass { text-align:center; font:600 20px/1.5 Consolas,monospace; color:#ffe6ec; letter-spacing:1px; overflow-wrap:anywhere; user-select:text; }
+      #agwl2-rp-panel .agwl2-rp-row { margin-top:17px; }
+      #agwl2-rp-lenval { float:right; min-width:27px; text-align:center; padding:0 6px; border-radius:6px; color:#ffa8b8; background:#f34b6a18; font-weight:700; }
+      #agwl2-rp-range { display:block; width:100%; margin:0; height:20px; accent-color:#f05b78; cursor:pointer; }
+      #agwl2-rp-panel .agwl2-rp-checks { display:flex; gap:7px; }
+      #agwl2-rp-panel .agwl2-rp-checks label { flex:1; display:flex; justify-content:center; align-items:center; gap:6px;
+        padding:9px 3px; border:1px solid #38343f; border-radius:8px; background:#1c1b22; color:#b8b4c0; font-size:11px; cursor:pointer; }
+      #agwl2-rp-panel .agwl2-rp-checks label:has(input:checked) { border-color:#f05b7850; color:#ffd5de; background:#f05b7810; }
+      #agwl2-rp-panel input[type="checkbox"] { margin:0; width:13px; height:13px; accent-color:#e75271; }
+      #agwl2-rp-panel .agwl2-rp-actions { display:grid; gap:8px; margin-top:18px; }
+      #agwl2-rp-panel .agwl2-rp-btn { display:flex; justify-content:center; align-items:center; gap:8px; width:100%; min-height:40px; padding:10px 9px;
+        border:1px solid #44343f; border-radius:9px; color:#ecd9e1; background:#282029;
+        font:600 12px/1.4 'Segoe UI',Arial,sans-serif; cursor:pointer; transition:background .15s, transform .15s, filter .15s; }
+      #agwl2-rp-panel .agwl2-rp-btn.danger { border-color:#f76e88; background:linear-gradient(110deg,#eb4c6c,#cb3559); color:#fff; box-shadow:0 4px 16px #ed466c20; }
+      #agwl2-rp-panel .agwl2-rp-btn.secondary { border-color:#34323c; background:#1c1c23; color:#c5c1cd; }
+      #agwl2-rp-panel button:hover:not(:disabled) { filter:brightness(1.15); }
+      #agwl2-rp-panel button:active:not(:disabled) { transform:translateY(1px); }
+      #agwl2-rp-panel button:disabled { opacity:.45; cursor:not-allowed; }
+      #agwl2-rp-panel :is(button,input,textarea):focus-visible { outline:2px solid #ff9db4; outline-offset:3px; }
+      #agwl2-rp-panel .agwl2-rp-output-label { display:block; margin:19px 0 8px; color:#9692a3; font-size:9px; font-weight:600; letter-spacing:1.4px; }
+      #agwl2-rp-output { display:block; width:100%; min-height:94px; margin:0; resize:vertical; padding:11px;
+        color:#ded9e4; background:#101014; border:1px solid #302d38; border-radius:9px;
+        font:11px/1.7 'Segoe UI',Arial,sans-serif; user-select:text; }
+      #agwl2-rp-output::placeholder { color:#85808f; }
+      #agwl2-rp-status { min-height:24px; margin-top:13px; padding-top:11px; border-top:1px solid #ffffff0a; color:#b9b0c0; font-size:10px; line-height:1.5; }
+
+
+      /* Crimson Atelier: clear contrast, layered cards, vivid red accents. */
+      #agwl2-rp-panel { border-radius:22px; border:1px solid #6c454a;
+        background:#111216; color:#fff; font-family:'Segoe UI',Arial,sans-serif;
+        box-shadow:0 32px 90px #000a,0 8px 24px #0006,inset 0 1px #ffffff15; }
+      #agwl2-rp-head { position:relative; gap:12px; padding:22px 18px;
+        background:radial-gradient(ellipse at 100% 0,#ff9b7c38,transparent 65%),linear-gradient(120deg,#a5142c,#e33045);
+        border-bottom:1px solid #ff9f9b55; }
+      #agwl2-rp-head::after { content:''; position:absolute; left:18px; right:18px; bottom:0;
+        height:1px; background:linear-gradient(90deg,transparent,#ffddc7aa,transparent); }
+      #agwl2-rp-panel .agwl2-rp-emblem { width:43px; height:46px; border-radius:14px;
+        color:white; background:#ffffff18; border:1px solid #ffffff40; box-shadow:inset 0 1px #ffffff25,0 4px 12px #540a1722; }
+      #agwl2-rp-panel .agwl2-rp-heading strong { color:#fff; font-size:18px; font-weight:700; letter-spacing:-.5px; }
+      #agwl2-rp-panel .agwl2-rp-heading small { color:#ffe2e0; font-size:10px; }
+      #agwl2-rp-panel .agwl2-rp-eyebrow { display:block; color:#ffded8; font-size:8px; font-weight:700; letter-spacing:2px; margin-bottom:4px; }
+      #agwl2-rp-close { color:white; width:28px; height:28px; border-radius:50%; background:#6c102733; border-color:#ffffff35; }
+      #agwl2-rp-body { padding:16px; scrollbar-width:thin; scrollbar-color:#95434c #111216; }
+      #agwl2-rp-mode { color:#a8edca; background:#153029; border-color:#335c4c; border-radius:8px; padding:8px 10px; margin-bottom:13px; font-size:10px; }
+      #agwl2-rp-mode::before { box-shadow:0 0 0 3px #9be0c512; }
+      #agwl2-rp-mode[data-ready="false"] { color:#ffdc96; background:#302819; border-color:#695331; }
+      #agwl2-rp-panel .agwl2-rp-account { align-items:center; border:1px solid #37383f; background:#1b1c22;
+        border-radius:11px; padding:11px 12px; margin-bottom:11px; color:#c1c2cb; }
+      #agwl2-rp-user { font-size:13px; color:#fff; font-weight:700; }
+      #agwl2-rp-passbox { position:relative; overflow:hidden; padding:21px 12px 18px;
+        background:radial-gradient(ellipse at 100% 0,#f4435b28,transparent 70%),linear-gradient(115deg,#302026,#211b21);
+        border:1px solid #b94c5c; border-radius:14px; box-shadow:inset 0 1px #ffc7cb20,0 5px 20px #0002; }
+      #agwl2-rp-passbox::before { content:''; position:absolute; left:0; top:19px; bottom:19px; width:3px; background:#ff5269; border-radius:0 3px 3px 0; }
+      #agwl2-rp-panel .agwl2-rp-caption { color:#ffb8c1; font-size:9px; letter-spacing:2px; margin-bottom:10px; }
+      #agwl2-rp-pass { color:#fff; font-size:25px; letter-spacing:1.5px; line-height:1.4; text-shadow:0 2px 14px #fa4d6240; }
+      #agwl2-rp-panel .agwl2-rp-pass-note { text-align:center; font-size:9px; color:#c6a6b0; margin-top:8px; }
+      #agwl2-rp-panel .agwl2-rp-settings { background:#1a1b21; border:1px solid #36373f; border-radius:14px; padding:13px; margin-top:12px; }
+      #agwl2-rp-panel .agwl2-rp-section { color:#f2f0f5; font-size:10px; font-weight:700; display:flex; align-items:center; gap:8px; letter-spacing:.4px; }
+      #agwl2-rp-panel .agwl2-rp-section::before { content:''; width:5px; height:5px; border-radius:2px; background:#ff6476; }
+      #agwl2-rp-panel .agwl2-rp-row { margin-top:13px; }
+      #agwl2-rp-panel .agwl2-rp-small { font-size:11px; color:#c5c5cf; }
+      #agwl2-rp-lenval { background:#6d2936; color:#fff; border:1px solid #b44c60; border-radius:6px; padding:0 7px; }
+      #agwl2-rp-range { accent-color:#ff5369; height:18px; }
+      #agwl2-rp-panel .agwl2-rp-checks { gap:7px; }
+      #agwl2-rp-panel .agwl2-rp-checks label { padding:9px 3px; background:#121317; border-color:#46464f; border-radius:8px; font-weight:600; }
+      #agwl2-rp-panel .agwl2-rp-checks label:has(input:checked) { color:#fff; background:#54232e; border-color:#b54c60; }
+      #agwl2-rp-panel input[type="checkbox"] { accent-color:#f64d65; }
+      #agwl2-rp-panel .agwl2-rp-actions { margin-top:13px; gap:8px; }
+      #agwl2-rp-panel .agwl2-rp-btn { min-height:41px; border-radius:10px; background:#24252c; color:#f0edf3; border-color:#4b4b57; }
+      #agwl2-rp-panel .agwl2-rp-btn.danger { min-height:46px; background:linear-gradient(110deg,#f33d55,#d51e39); border:1px solid #ff7b8b; color:white;
+        box-shadow:0 5px 17px #eb304034,inset 0 1px #ffffff2a; font-size:13px; }
+      #agwl2-rp-panel .agwl2-rp-btn.secondary { background:#e9e7ed; border-color:#fff; color:#26212c; min-height:39px; }
+      #agwl2-rp-panel .agwl2-rp-btn svg { width:16px; height:16px; flex-shrink:0; }
+      #agwl2-rp-panel button:hover:not(:disabled) { filter:brightness(1.12); }
+      #agwl2-rp-panel .agwl2-rp-output-label { display:flex; align-items:center; gap:9px; margin:17px 0 9px; color:#d8d3df; font-size:9px; letter-spacing:1.5px; }
+      #agwl2-rp-panel .agwl2-rp-output-label::after { content:''; flex:1; height:1px; background:#3b3742; }
+      #agwl2-rp-output { background:#0c0d11; border-color:#41414d; border-radius:11px; color:#eeeaf3; padding:11px 12px; min-height:98px; font-size:11px; line-height:1.75; }
+      #agwl2-rp-output::placeholder { color:#aaa6b5; }
+      #agwl2-rp-status { font-size:10px; line-height:1.6; border-color:#35313c; }
+      #agwl2-rp-panel :is(button,input,textarea):focus-visible { outline:2px solid #ffb7bd; outline-offset:3px; }
+      @media(prefers-reduced-motion:reduce) { #agwl2-rp-panel button { transition:none!important; } }
     `;
     (hostDoc.head || hostDoc.documentElement).appendChild(css);
 
     const panel = hostDoc.createElement('div');
     panel.id = 'agwl2-rp-panel';
+    panel.setAttribute('role', 'region');
+    panel.setAttribute('aria-label', 'Panel Reset Password');
     panel.innerHTML = `
       <div id="agwl2-rp-head" title="Tahan judul ini lalu geser panel">
         <span class="agwl2-rp-emblem" aria-hidden="true"><svg width="18" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg></span>
-        <span class="agwl2-rp-heading"><strong>RESET PASSWORD</strong><small>â ¿ Tahan judul untuk geser</small></span>
-        <button id="agwl2-rp-close" title="Tutup panel dan popup" aria-label="Tutup panel dan popup">Ã—</button>
+        <span class="agwl2-rp-heading"><span class="agwl2-rp-eyebrow">MEMBER ACCESS</span><strong>Reset Password</strong><small>AGWL2 · Geser untuk memindahkan</small></span>
+        <button id="agwl2-rp-close" title="Tutup panel dan popup" aria-label="Tutup panel dan popup">&times;</button>
       </div>
       <div id="agwl2-rp-body">
         <div id="agwl2-rp-mode">Panel aktif di profil member.</div>
-        <div class="agwl2-rp-small">User ID: <span id="agwl2-rp-user">-</span></div>
+        <div class="agwl2-rp-small agwl2-rp-account">User ID: <span id="agwl2-rp-user">-</span></div>
         <div id="agwl2-rp-passbox">
-          <div id="agwl2-rp-pass">-</div>
+          <div class="agwl2-rp-caption">PASSWORD BARU</div>
+          <div id="agwl2-rp-pass">-</div><div class="agwl2-rp-pass-note">Dibuat otomatis sesuai pilihan karakter</div>
         </div>
+        <div class="agwl2-rp-settings"><div class="agwl2-rp-section">Pengaturan password</div>
         <div class="agwl2-rp-row">
-          <div class="agwl2-rp-small">Panjang Password: <span id="agwl2-rp-lenval">10</span></div>
+          <label for="agwl2-rp-range" class="agwl2-rp-small">Panjang password <span id="agwl2-rp-lenval">10</span></label>
           <input id="agwl2-rp-range" type="range" min="6" max="20" value="10">
         </div>
         <div class="agwl2-rp-row">
-          <div class="agwl2-rp-small">Jenis Karakter:</div>
+          <div class="agwl2-rp-small">Karakter yang digunakan</div>
           <div class="agwl2-rp-checks">
             <label><input id="agwl2-rp-upper" type="checkbox" checked> A-Z</label>
             <label><input id="agwl2-rp-lower" type="checkbox" checked> a-z</label>
             <label><input id="agwl2-rp-digit" type="checkbox" checked> 0-9</label>
           </div>
         </div>
+        </div>
         <div class="agwl2-rp-actions">
-          <button class="agwl2-rp-btn" id="agwl2-rp-fill">Isi Password Saja</button>
-          <button class="agwl2-rp-btn danger" id="agwl2-rp-reset">Reset + Buat Kata-kata</button>
+          <button class="agwl2-rp-btn" id="agwl2-rp-fill"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 9 9-9 9-9-9 9-9Z"/><path d="M12 8v8M8 12h8"/></svg>Isi Password Saja</button>
+          <button class="agwl2-rp-btn danger" id="agwl2-rp-reset"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10a9 9 0 1 1 2 8M3 4v6h6"/><path d="M12 8v5l3 2"/></svg>Reset &amp; buat pesan</button>
         </div>
         <label class="agwl2-rp-output-label" for="agwl2-rp-output">PESAN UNTUK MEMBER</label>
-        <textarea id="agwl2-rp-output" placeholder="Kata-kata hasil reset akan muncul di sini..."></textarea>
-        <button class="agwl2-rp-btn secondary" id="agwl2-rp-copy-msg" style="width:100%;margin-top:7px;">Salin Kata-kata</button>
-        <div id="agwl2-rp-status"></div>
+        <textarea id="agwl2-rp-output" placeholder="Pesan untuk member akan muncul setelah reset..."></textarea>
+        <button class="agwl2-rp-btn secondary" id="agwl2-rp-copy-msg" style="width:100%;margin-top:7px;"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M15 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3"/></svg>Salin pesan</button>
+        <div id="agwl2-rp-status" role="status" aria-live="polite"></div>
       </div>
     `;
     hostDoc.body.appendChild(panel);
@@ -627,8 +668,9 @@
 
     function refreshMode() {
       const ready = hasResetForm();
+      modeEl.dataset.ready = String(ready);
       if (ready) {
-        modeEl.textContent = 'Form reset terdeteksi â€¢ Siap digunakan';
+        modeEl.textContent = 'Form terhubung · Siap digunakan';
         fillBtn.disabled = false;
         resetBtnPanel.disabled = false;
       } else {
@@ -704,7 +746,7 @@
 
       if (panelHostType === 'mini') {
         // Mini-window: jika user menutup window panel dari tombol X browser,
-        // popup Edit Player List ikut ditutup agar benar-benar â€œ1 nyawaâ€.
+        // popup Edit Player List ikut ditutup agar benar-benar satu kesatuan.
         if (panelWindowCloseWatch) clearInterval(panelWindowCloseWatch);
         panelWindowCloseWatch = setInterval(() => {
           try {
