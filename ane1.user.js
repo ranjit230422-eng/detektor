@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Admitoto - Cek & Daftar Otomatis
 // @namespace    http://tampermonkey.net/
-// @version      9.10
-// @description  Cek User ID dan rekening langsung dari bubble melalui request Tampermonkey; pendaftaran memakai bridge admin.
+// @version      9.29
+// @description  Cari rekening di agentplayerlist_old.php (pisahkan format koma) → isi User ID/bank/nama otomatis → daftar → verifikasi di agentplayerlist.php. Plus tombol Hapus.
 // @match        https://agwl2.admitoto.com/agentnewplayer.php*
 // @match        https://my.livechatinc.com/*
 // @grant        GM_xmlhttpRequest
@@ -15,13 +15,14 @@
 
     const REG_URL  = 'https://agwl2.admitoto.com/agentnewplayer.php';
     const LIST_URL = 'https://agwl2.admitoto.com/agentplayerlist.php';
+    const OLD_LIST_URL = 'https://agwl2.admitoto.com/agentplayerlist_old.php';
+    const LIST_PATHS = ['/agentplayerlist.php','/agentplayerlist_old.php'];
     const PARENT   = 'https://my.livechatinc.com';
     const ORIGIN   = 'https://agwl2.admitoto.com';
     const BANKS = ['BCA','BRI','BNI','BSI','CIMB','MANDIRI','DANAMON','MAYBANK',
                    'BANK JAGO','SEABANK','DANA','OVO','LINK AJA','GOPAY'];
 
     const norm = s => String(s || '').replace(/\s+/g, ' ').trim();
-
 
     const DEFAULT_REFERRAL = '504rf';
     function generatePassword() {
@@ -33,7 +34,6 @@
             while (password.length < 10) {
                 crypto.getRandomValues(bytes);
                 for (const byte of bytes) {
-                    // 248 habis dibagi 62: tidak memberi bias pada karakter tertentu.
                     if (byte < 248) password += alphabet[byte % alphabet.length];
                     if (password.length === 10) break;
                 }
@@ -49,15 +49,14 @@
             'Note : Saran kami di simpan di memo anda.';
     }
 
-    // Pencarian tidak membutuhkan iframe, popup, atau bridge-ready.
     function adminRequest(url, method = 'GET', body = null) {
         const destination = new URL(url, LIST_URL);
-        if (destination.origin !== ORIGIN || destination.pathname !== new URL(LIST_URL).pathname) {
+        if (destination.origin !== ORIGIN || !LIST_PATHS.includes(destination.pathname)) {
             return Promise.reject(new Error('Tujuan pencarian tidak cocok dengan halaman daftar pemain.'));
         }
         return new Promise((resolve, reject) => {
             if (typeof GM_xmlhttpRequest !== 'function') {
-                reject(new Error('Izin Tampermonkey belum aktif. Simpan seluruh skrip v9.10, lalu muat ulang LiveChat.')); return;
+                reject(new Error('Izin Tampermonkey belum aktif. Simpan seluruh skrip v9.29, lalu muat ulang LiveChat.')); return;
             }
             GM_xmlhttpRequest({
                 method, url: destination.href,
@@ -67,7 +66,7 @@
                 ...(body === null ? {} : {data: body}),
                 onload(response) {
                     const finalURL = new URL(response.finalUrl || destination.href, destination.href);
-                    if (finalURL.origin !== ORIGIN || /login|signin|logout/i.test(finalURL.pathname)) {
+                    if (finalURL.origin !== ORIGIN || finalURL.pathname !== destination.pathname) {
                         reject(new Error('Sesi admin tidak aktif. Login admin sekali, lalu klik Cek Ulang.')); return;
                     }
                     if (response.status < 200 || response.status >= 300) {
@@ -104,8 +103,8 @@
         const key = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
         const names = kind === 'uid'
             ? ['userid','username','user','iduser','searchuserid','searchusername','txtuserid','txtusername']
-            : ['rekening','norek','norekening','nomorrekening','accountnumber','accountno','searchrekening'];
-        const re = kind === 'uid' ? /user\s*id|user\s*name|id\s*user/i : /nomor\s*rekening|no\.?\s*rek|account\s*(number|no)/i;
+            : ['rekening','norek','norekening','nomorrekening','accountnumber','accountno','searchrekening','no_rek','no_rekening','rek'];
+        const re = kind === 'uid' ? /user\s*id|user\s*name|id\s*user/i : /nomor\s*rekening|no\.?\s*rek|account\s*(number|no)|rekening/i;
         const exact = inputs.filter(el => names.includes(key(el.name)) || names.includes(key(el.id)));
         if (exact.length === 1) return {input:exact[0], selector:null};
         const labeled = inputs.filter(el => {
@@ -114,7 +113,6 @@
             return re.test([el.placeholder,el.getAttribute('aria-label'),...labels,prev?.textContent].join(' '));
         });
         if (labeled.length === 1) return {input:labeled[0], selector:null};
-        // Support one keyword box paired with a search-type select.
         for (const form of doc.forms) {
             const boxes = inputs.filter(el => el.form === form && /^(q|search|keyword|searchtext|searchvalue|searchkeyword|cari)$/i.test(key(el.name)));
             if (boxes.length !== 1) continue;
@@ -137,16 +135,10 @@
         const buttons = [...form.querySelectorAll('button,input[type="submit"],input[type="button"]')].filter(el => !el.disabled);
         const submitter = buttons.find(el => /cari|search|filter|tampilkan/i.test(norm(el.textContent || el.value))) ||
             buttons.find(el => el.type === 'submit');
-        const action = submitter?.getAttribute('formaction') || form.getAttribute('action') || page.url;
-        const url = new URL(action, page.url);
-        if (url.origin !== ORIGIN || url.pathname !== new URL(LIST_URL).pathname) {
-            throw new Error('Form pencarian menggunakan endpoint lain; belum dikirim agar tidak salah tujuan.');
-        }
+        const url = new URL(page.url);
         const method = (submitter?.getAttribute('formmethod') || form.getAttribute('method') || 'GET').toUpperCase();
         if (!['GET','POST'].includes(method)) throw new Error('Metode pencarian tidak didukung.');
-        if (submitter?.type === 'button' || (!form.hasAttribute('action') && form.hasAttribute('onsubmit'))) {
-            throw new Error('Pencarian ini memakai JavaScript khusus. Endpoint pencarian perlu disesuaikan dari halaman admin.');
-        }
+
         const params = new URLSearchParams();
         for (const el of form.elements) {
             if (!el.name || el.matches(':disabled') || ['submit','button','reset','file','image'].includes(el.type)) continue;
@@ -159,7 +151,6 @@
                 const values = blank ? [blank] : [...el.selectedOptions].filter(o => !o.disabled);
                 values.forEach(o => params.append(el.name,o.value)); continue;
             }
-            // Keep server tokens and hidden values; remove unrelated text filters.
             params.append(el.name, ['text','search','tel','number','email','textarea'].includes(el.type) ? '' : el.value);
         }
         if (submitter?.name) params.append(submitter.name,submitter.value);
@@ -168,10 +159,208 @@
     }
 
     async function directCheck(kind, value) {
+        if (kind === 'rek') return lookupAccountAt(LIST_URL,value);
         const page = await adminRequest(LIST_URL);
         const request = buildSearch(page, kind, value);
         const result = await adminRequest(request.url,request.method,request.body);
-        return directReadResult(result.doc,kind,value, verifiedSearch(result.doc,kind,value)) || {state:'unknown',message:'Respon admin belum dikenali; hasil tidak dianggap tersedia. Perlu contoh tampilan hasil pencarian admin.'};
+        return directReadResult(result.doc,kind,value, verifiedSearch(result.doc,kind,value)) || {state:'unknown',message:'Respon admin belum dikenali; hasil tidak dianggap tersedia.'};
+    }
+
+    function extractChatAccounts(text) {
+        const found = new Set();
+        const normalized = String(text || '').replace(/\u00a0/g,' ');
+        const re = /(?:nomor\s*rekening|no\.?\s*rekening|no\.?\s*rek\b|norek\b|rekening\b|account\s*(?:number|no\.?))\s*[:=\-]?\s*([0-9][0-9 .-]{3,35}[0-9])(?![0-9])/gi;
+        for (const match of normalized.matchAll(re)) {
+            const digits = match[1].replace(/[^0-9]/g,'');
+            if (/^[0-9]{5,25}$/.test(digits)) found.add(digits);
+        }
+        return [...found];
+    }
+
+    let selectedAccount = null;
+    document.addEventListener('selectionchange', () => {
+        const selection = window.getSelection();
+        const anchor = selection?.anchorNode?.parentElement;
+        if (!selection || selection.isCollapsed || !anchor || anchor.closest('#admitoto-hub,nav,aside,[role="navigation"]')) return;
+        const raw = selection.toString().trim();
+        const digits = raw.replace(/[\s.\-\u200B-\u200D\uFEFF]/g,'');
+        const numbers = /^[0-9]{5,25}$/.test(digits) ? [digits] : extractChatAccounts(raw);
+        selectedAccount = numbers.length === 1 ? {number:numbers[0],route:location.href,time:Date.now()} : null;
+    });
+
+    function activeChatAccounts() {
+        const visible = el => !el.closest('[hidden],[aria-hidden="true"]') && el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden';
+        const selected = window.getSelection();
+        const anchor = selected?.anchorNode?.parentElement;
+        if (selected && !selected.isCollapsed && anchor && !anchor.closest('#admitoto-hub') && !anchor.closest('nav,aside,[role="navigation"]')) {
+            const candidates = extractChatAccounts(selected.toString());
+            if (candidates.length) return candidates;
+            const digits = selected.toString().trim().replace(/[\s.\-\u200B-\u200D\uFEFF]/g,'');
+            if (/^[0-9]{5,25}$/.test(digits)) return [digits];
+        }
+        if (selectedAccount && selectedAccount.route === location.href && Date.now() - selectedAccount.time < 120000) return [selectedAccount.number];
+        const selectors = '[role="log"],[data-testid*="message-list"],[data-testid*="messages-list"],[data-testid*="chat-messages"],[class*="MessageList"],[class*="messageList"],[class*="messagesList"],[aria-label="Chat messages"]';
+        const candidates = [...document.querySelectorAll(selectors)].filter(visible).filter(el => !el.closest('#admitoto-hub,nav,aside,[role="navigation"]'));
+        const roots = candidates.filter(el => !candidates.some(other => other !== el && other.contains(el)));
+        if (roots.length !== 1) return [];
+        return extractChatAccounts(roots[0].innerText);
+    }
+
+    function canonicalBank(text) {
+        const clean = value => norm(value).toUpperCase().replace(/[^A-Z0-9]/g,'');
+        const aliases = {CIMBNIAGA:'CIMB',JAGO:'BANK JAGO',LINKAJA:'LINK AJA'};
+        const value = clean(String(text || '').replace(/^(?:jenis bank|nama bank|bank)\s*[:=]\s*/i,''));
+        return BANKS.find(bank => clean(bank) === value) || aliases[value] || aliases[value.replace(/^BANK/,'')] ||
+            BANKS.find(bank => clean(bank) === value.replace(/^BANK/,'')) || '';
+    }
+
+    function cellLines(cell) {
+        if (!cell) return [];
+        const copy = cell.cloneNode(true);
+        copy.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+        copy.querySelectorAll('div,p,li,tr,td,span,b,strong,font').forEach(el => { el.prepend('\n'); el.append('\n'); });
+        copy.querySelectorAll('script,style,button,input,select').forEach(el => el.remove());
+        return copy.textContent.split(/\r?\n/).map(norm).filter(Boolean);
+    }
+
+    function columnTitle(cell) {
+        const copy = cell.cloneNode(true);
+        copy.querySelectorAll('input,select,textarea,button,script,style,.sort-icon,.sorting-icon,[aria-hidden="true"]').forEach(el => el.remove());
+        return norm(copy.textContent).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+    }
+
+    // ==== PENGURAI CERDAS UNTUK FORMAT BANK,NAMA,NOMOR ====
+    function readAccountRecord(doc, number, verified) {
+        const records = [];
+        for (const table of doc.querySelectorAll('table')) {
+            const rows = [...table.rows].filter(row => row.closest('table') === table);
+            let header = -1, columns;
+            for (let i = 0; i < rows.length; i++) {
+                const titles = [...rows[i].cells].map(columnTitle);
+                const uid = titles.findIndex(t => /^(user\s*id|userid|username|user\s*name|id\s*user|account|player)$/i.test(t));
+                if (uid < 0) continue;
+                columns = {
+                    uid,
+                    bank: titles.findIndex(t => /^(bank|jenis bank|nama bank|bank name|bank account|bank e wallet|bank ewallet|e wallet|ewallet|bank list)$/i.test(t)),
+                    number: titles.findIndex(t => /^(rekening|nomor rekening|no\.?\s*rek(ening)?|norek|account\s*(number|no\.?)|account|no\.?\s*rek)$/i.test(t)),
+                    holder: titles.findIndex(t => /^(nama rekening|nama rek|nama pemilik rekening|atas nama|nama pemilik|account name|nama bank account|pemilik)$/i.test(t))
+                };
+                if (columns.bank < 0 && columns.number < 0) continue;
+                header = i; break;
+            }
+            if (header < 0) continue;
+
+            for (const row of rows.slice(header + 1)) {
+                const uidCell = row.cells[columns.uid];
+                if (!uidCell || uidCell.colSpan !== 1) continue;
+
+                // Bersihkan User ID dari teks tambahan seperti "No Name"
+                const rawLines = cellLines(uidCell);
+                let userid = '';
+                if (rawLines.length > 0) {
+                    userid = rawLines[0].split(/\s+/)[0].replace(/^(?:user\s*id|username|account)\s*[:=]\s*/i, '').trim();
+                }
+                if (!userid || !/^[A-Za-z0-9._-]{3,20}$/.test(userid) || /^(?:userid|username|edit|detail|delete|hapus|ubah|user|id)$/i.test(userid)) {
+                    continue;
+                }
+
+                const bankCell = columns.bank >= 0 ? row.cells[columns.bank] : null;
+                const bankText = bankCell ? norm(bankCell.textContent) : '';
+
+                let bank = '', rekening = '', namarekening = '';
+
+                // Ekstraksi format koma: BANK,NAMA,NOMOR
+                if (bankText) {
+                    const parts = bankText.split(/,/).map(norm);
+                    if (parts.length >= 3) {
+                        const maybeBank = canonicalBank(parts[0]);
+                        const maybeRek = parts[parts.length - 1].replace(/[\s.\-\u200B-\u200D\uFEFF]/g, '');
+                        const maybeName = parts.slice(1, -1).join(', ').trim();
+
+                        if (maybeBank && /^[0-9]{5,25}$/.test(maybeRek) && maybeRek === number) {
+                            bank = maybeBank;
+                            rekening = maybeRek;
+                            namarekening = maybeName;
+                        }
+                    }
+                }
+
+                // Fallback jika format koma gagal tapi nomor ada di baris tersebut
+                if (!rekening) {
+                    const allLines = [...row.cells].flatMap(cell => cellLines(cell));
+                    const foundNumber = allLines.find(line => line.replace(/[^0-9]/g, '') === number);
+                    if (foundNumber) {
+                        rekening = number;
+                        bank = allLines.map(canonicalBank).find(Boolean) || '';
+                        namarekening = allLines.find(line =>
+                            line !== foundNumber &&
+                            line !== userid &&
+                            !canonicalBank(line) &&
+                            /^[A-Za-z\s.,'-]+$/.test(line) &&
+                            !/^(user\s*id|username|no name)$/i.test(line)
+                        ) || '';
+                    }
+                }
+
+                if (rekening === number) {
+                    records.push({ userid, rekening: number, bank, namarekening });
+                }
+            }
+        }
+        const unique = [...new Map(records.map(r => [JSON.stringify(r), r])).values()];
+        unique.sort((a, b) => (b.bank.length + b.namarekening.length) - (a.bank.length + a.namarekening.length));
+        return unique.length > 0 ? unique[0] : null;
+    }
+
+    async function lookupAccountAt(url, number) {
+        const page = await adminRequest(url);
+        const request = buildSearch(page, 'rek', number);
+        const result = await adminRequest(request.url, request.method, request.body);
+        const verified = verifiedSearch(result.doc, 'rek', number);
+        const record = readAccountRecord(result.doc, number, verified);
+        if (record) return { state: 'taken', message: 'NOMOR REKENING SUDAH TERDAFTAR', record };
+        return directReadResult(result.doc, 'rek', number, verified) || { state: 'unknown', message: 'Hasil rekening belum dikenali.' };
+    }
+
+    async function lookupAccount(number, onProgress = () => {}) {
+        onProgress('1/2 — Mencari data pemain di agentplayerlist_old.php…');
+        let old;
+        try { old = await lookupAccountAt(OLD_LIST_URL, number); }
+        catch (error) { old = {state:'unknown', message:error.message}; }
+
+        onProgress('2/2 — Memeriksa status rekening di agentplayerlist.php…');
+        let main;
+        try { main = await lookupAccountAt(LIST_URL, number); }
+        catch (error) { main = {state:'unknown', message:error.message}; }
+
+        if (main.state === 'taken') {
+            return {
+                state:'taken', source:'utama', record:main.record || null,
+                message:'NOMOR REKENING SUDAH TERDAFTAR DI ADMIN UTAMA'
+            };
+        }
+        if (old.state === 'taken') {
+            return {
+                state:'old', source:'lama', record:old.record || null,
+                message: old.record
+                    ? 'Data pemain ditemukan di daftar lama; rekening belum ada di admin utama.'
+                    : 'Rekening ada di daftar lama, tetapi data pemain tidak dapat dibaca otomatis.'
+            };
+        }
+        if (main.state === 'free') {
+            return {
+                state:'free', source:'utama', record:null,
+                message:'NOMOR REKENING BELUM TERDAFTAR DI DAFTAR LAMA MAUPUN UTAMA'
+            };
+        }
+        return {
+            state:'unknown', source:'utama', record:null,
+            message:main.message || old.message || 'Status rekening tidak dapat dipastikan.'
+        };
+    }
+
+    function primaryAccountStatus(result) {
+        return {state:result.state, source:result.source, message:result.message};
     }
 
     function verifiedSearch(doc, kind, value) {
@@ -187,47 +376,60 @@
         const rekHeader = /^(nomor\s*rekening|no\.?\s*rekening|rekening|norek|account\s*(number|no\.?)|bank\s*account|accountno|accountnumber|no\.?\s*rek)$/i;
         const empty = /^(no (data|records?)( available| found)?|no data available in table|no matching records found|tidak ada data( yang ditemukan)?|data (tidak ditemukan|kosong)|data not found|tidak ditemukan|tidak ada hasil|no results?( found)?)[.!]?$/i;
         const candidates = [];
+
         for (const table of doc.querySelectorAll('table')) {
             const rows = [...table.rows].filter(row => row.closest('table') === table);
             for (const header of rows) {
-                if (header.querySelector('input,select,textarea,button')) continue;
-                const labels = [...header.cells].map(c => norm(c.textContent));
+                const labels = [...header.cells].map(columnTitle);
                 const uidIndex = labels.findIndex(t => uidHeader.test(t));
                 const index = labels.findIndex(t => (kind === 'uid' ? uidHeader : rekHeader).test(t));
                 const noIndex = labels.findIndex(t => /^no\.?$/i.test(t));
-                const playerTable = uidIndex >= 0 && noIndex >= 0 && labels.some(t => /^bank$/i.test(t)) && labels.some(t => /^tools$/i.test(t));
+                const playerTable = uidIndex >= 0 && labels.some(t => /^(bank|jenis bank|nama bank|bank account|bank e wallet|bank ewallet|e wallet|ewallet|bank list)$/.test(t));
                 if (index >= 0 || (kind === 'rek' && playerTable)) {
-                    candidates.push({rows,header,index,uidIndex,noIndex,playerTable}); break;
+                    candidates.push({rows,header,index,uidIndex,noIndex,playerTable});
+                    break;
                 }
             }
         }
+
         const answer = state => ({state,message:(kind === 'uid' ? 'USER ID' : 'NOMOR REKENING') + (state === 'taken' ? ' TERDAFTAR' : ' BELUM TERDAFTAR')});
         const unknown = message => ({state:'unknown',message});
-        if (candidates.length !== 1) return unknown('Tabel hasil belum dikenali secara pasti (' + candidates.length + ' tabel cocok).');
-        const {rows,header,index,uidIndex,noIndex,playerTable} = candidates[0];
-        const data = rows.slice(rows.indexOf(header)+1).filter(r => norm(r.textContent));
-        const subtotal = r => /^sub\s*total\s*:?$/i.test(norm(r.cells[0]?.textContent));
-        const content = data.filter(r => !subtotal(r));
-        const want = kind === 'uid' ? value.toLowerCase() : value;
-        const matches = text => (kind === 'uid' ? norm(text).toLowerCase() : norm(text)) === want;
-        if (index >= 0 && content.some(row => {
-            const cell = row.cells[index];
-            if (!cell || cell.colSpan !== 1) return false;
-            if (matches(cell.textContent)) return true;
-            if (kind !== 'uid') return false;
-            const first = [...cell.childNodes].find(n => norm(n.textContent));
-            return first && matches(first.textContent);
-        })) return answer('taken');
-        if (filterVerified && content.length === 1 && empty.test(norm(content[0].textContent))) return answer('free');
-        if (playerTable && filterVerified) {
-            if (content.length === 0 && data.some(subtotal)) return answer('free');
-            const players = content.filter(row => row.cells[noIndex]?.colSpan === 1 && /^\d+[.)]?$/.test(norm(row.cells[noIndex]?.textContent)) && norm(row.cells[uidIndex]?.textContent));
-            if (kind === 'rek' && index < 0 && players.length) return answer('taken');
-        }
-        if (!filterVerified) return unknown('Filter belum terkonfirmasi di balasan admin. Klik Cek Ulang.');
-        return unknown('Balasan belum memberi hasil pasti. Klik Cek Ulang.');
-    }
 
+        if (candidates.length === 0) {
+            const tables = [...doc.querySelectorAll('table')];
+            const headers = tables.flatMap(table => [...table.rows].filter(row => row.querySelector('th') || [...row.cells].some(cell => /^(user id|userid|username|user name|id user)$/.test(columnTitle(cell)))).slice(0,2).map(row => [...row.cells].map(columnTitle).join(' | '))).slice(0,3);
+            return unknown('Tabel hasil belum dikenali (0 cocok, '+tables.length+' tabel diterima). '+(headers.length ? 'Judul kolom: '+headers.join(' / ').slice(0,300) : 'Tidak ada judul kolom User ID yang terbaca.'));
+        }
+
+        for (const candidate of candidates) {
+            const {rows,header,index,uidIndex,noIndex,playerTable} = candidate;
+            const data = rows.slice(rows.indexOf(header)+1).filter(r => norm(r.textContent));
+            const subtotal = r => /^(?:sub\s*)?total\s*:?$/i.test(norm(r.cells[0]?.textContent));
+            const content = data.filter(r => !subtotal(r));
+            const want = kind === 'uid' ? value.toLowerCase() : value;
+            const matches = text => (kind === 'uid' ? norm(text).toLowerCase() : norm(text)) === want;
+
+            if (index >= 0 && content.some(row => {
+                const cell = row.cells[index];
+                if (!cell || cell.colSpan !== 1) return false;
+                if (matches(cell.textContent)) return true;
+                if (kind !== 'uid') return false;
+                const first = [...cell.childNodes].find(n => norm(n.textContent));
+                return first && matches(first.textContent);
+            })) return answer('taken');
+
+            if (playerTable && filterVerified && kind === 'rek' && index < 0) {
+                const embeddedNumber = content.some(row => [...row.cells].some(cell => {
+                    const text = norm(cell.textContent).replace(/[\s.\-\u200B-\u200D\uFEFF]/g, '');
+                    return text.includes(value);
+                }));
+                if (embeddedNumber) return answer('taken');
+            }
+        }
+
+        if (filterVerified) return answer('free');
+        return unknown('Filter belum terkonfirmasi di balasan admin. Klik Cek Ulang.');
+    }
 
     function registrationRequest(url, method = 'GET', body = null) {
         const target = new URL(url, REG_URL);
@@ -268,7 +470,6 @@
             }
             return true;
         };
-
         const labelTexts = el => {
             const out = [];
             for (const l of (el.labels || [])) out.push(norm(l.textContent));
@@ -289,7 +490,6 @@
             }
             return out.map(t => t.replace(/[:*]+$/g, '').trim()).filter(Boolean);
         };
-
         const setValue = (el, value) => {
             try { el.focus({ preventScroll: true }); } catch {}
             el.value = value;
@@ -298,8 +498,6 @@
             el.dispatchEvent(new Event('keyup', { bubbles: true }));
             try { el.blur(); } catch {}
         };
-
-        // ---------- KONFIG SELEKTOR ----------
         const FIELD_SELECTORS = {
             userid: ['input[name="userid"]','input[name="user_id"]','input[name="username"]','input[name="user"]'],
             password: ['input[name="password"]','input[name="pass"]','input[name="sandi"]','input[type="password"]'],
@@ -327,8 +525,6 @@
             rekening: /^(nomor\s*rekening|no\.?\s*rekening|rekening|norek|account\s*(number|no\.?))$/i,
             namarekening: /^(nama\s*rekening|atas\s*nama|nama\s*pemilik(\s*rekening)?|pemilik\s*rekening|account\s*name)$/i
         };
-
-        // ---------- CARI INPUT FORM ----------
         function findField(key) {
             for (const sel of (FIELD_SELECTORS[key] || [])) {
                 let list;
@@ -338,7 +534,6 @@
             const allInputs = [...document.querySelectorAll(
                 'input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]):not([type="file"])'
             )].filter(visible);
-
             const re = LABELS[key];
             if (re) {
                 const byLabel = allInputs.filter(el => labelTexts(el).some(t => re.test(t)));
@@ -359,7 +554,6 @@
             }
             return null;
         }
-
         function setBank(el, name) {
             if (el.tagName !== 'SELECT') {
                 if (el.tagName === 'INPUT') { setValue(el, name); return true; }
@@ -388,47 +582,38 @@
             el.dispatchEvent(new Event('change', { bubbles: true }));
             return true;
         }
-
-            // Isi form
-            const els = {};
-            const missing = [];
-            for (const key of ['userid','password','email','telepon','rekening','namarekening']) {
-                const el = findField(key);
-                if (!el) { missing.push(key); continue; }
-                els[key] = el;
-                setValue(el, key === 'password' ? String(data[key] || '') : String(data[key] || '').trim());
-            }
-            if (missing.length) {
-                throw new Error('Kolom tidak ditemukan: ' + missing.join(', '));
-            }
-            const referralField = findField('referral');
-            if (referralField && !data.referral) setValue(referralField, '');
-            if (data.referral) {
-                const ref = referralField;
-                if (!ref) throw new Error('Kolom referral tidak ditemukan.');
-                setValue(ref, String(data.referral).trim());
-            }
-            // Bank
-            let bankEl = null;
-            for (const sel of BANK_SELECTORS) {
-                const list = [...document.querySelectorAll(sel)].filter(visible);
-                if (list.length) { bankEl = list[0]; break; }
-            }
-            if (!bankEl) {
-                bankEl = [...document.querySelectorAll('select')].filter(visible)
-                    .find(s => labelTexts(s).some(t => /^(bank|nama\s*bank)$/i.test(t)));
-            }
-            if (!bankEl) throw new Error('Pilihan bank tidak ditemukan.');
-            if (!setBank(bankEl, data.bank)) throw new Error(`Bank "${data.bank}" tidak ada di form.`);
-
-            // Cari form & submit button
-            const form = els.userid.form || els.userid.closest('form');
-            if (!form) throw new Error('Formulir pendaftaran tidak ditemukan.');
-
-            if (new Set(Object.values(els)).size !== Object.keys(els).length || Object.values(els).some(el => el.form !== form) || bankEl.form !== form) throw new Error('Pemetaan kolom tidak cocok. Periksa formulir admin.');
-
-
-        // Konfirmasi password, jika disediakan form admin.
+        const els = {};
+        const missing = [];
+        for (const key of ['userid','password','email','telepon','rekening','namarekening']) {
+            const el = findField(key);
+            if (!el) { missing.push(key); continue; }
+            els[key] = el;
+            setValue(el, key === 'password' ? String(data[key] || '') : String(data[key] || '').trim());
+        }
+        if (missing.length) {
+            throw new Error('Kolom tidak ditemukan: ' + missing.join(', '));
+        }
+        const referralField = findField('referral');
+        if (referralField && !data.referral) setValue(referralField, '');
+        if (data.referral) {
+            const ref = referralField;
+            if (!ref) throw new Error('Kolom referral tidak ditemukan.');
+            setValue(ref, String(data.referral).trim());
+        }
+        let bankEl = null;
+        for (const sel of BANK_SELECTORS) {
+            const list = [...document.querySelectorAll(sel)].filter(visible);
+            if (list.length) { bankEl = list[0]; break; }
+        }
+        if (!bankEl) {
+            bankEl = [...document.querySelectorAll('select')].filter(visible)
+                .find(s => labelTexts(s).some(t => /^(bank|nama\s*bank)$/i.test(t)));
+        }
+        if (!bankEl) throw new Error('Pilihan bank tidak ditemukan.');
+        if (!setBank(bankEl, data.bank)) throw new Error(`Bank "${data.bank}" tidak ada di form.`);
+        const form = els.userid.form || els.userid.closest('form');
+        if (!form) throw new Error('Formulir pendaftaran tidak ditemukan.');
+        if (new Set(Object.values(els)).size !== Object.keys(els).length || Object.values(els).some(el => el.form !== form) || bankEl.form !== form) throw new Error('Pemetaan kolom tidak cocok. Periksa formulir admin.');
         for (const el of form.querySelectorAll('input[type="password"]')) {
             if (el !== els.password && /confirm|repeat|retype|konfirmasi|password2|pass2/i.test(el.name+' '+el.id)) el.value = data.password;
         }
@@ -453,7 +638,13 @@
 
     function registrationMessages(doc) {
         const messages = [...doc.querySelectorAll('[role="alert"],.alert,.success,.error,.notification')].map(el => norm(el.textContent));
-        // Baca alert statis dari balasan PHP tanpa menjalankan kode situs.
+        const copy = doc.body?.cloneNode(true);
+        if (copy) {
+            copy.querySelectorAll('script,style,form,table,nav,header,footer').forEach(el => el.remove());
+            for (const line of (copy.innerText || copy.textContent || '').split(/\r?\n/).map(norm)) {
+                if (line && line.length <= 400 && /(?:email|e-mail|user\s*id|rekening|pendaftaran|password|telepon|referral).{0,100}(?:(?:sudah|telah)\s+(?:terdaftar|digunakan|ada)|tidak valid|gagal|ditolak)|(?:gagal|invalid|error|ditolak)/i.test(line)) messages.push(line);
+            }
+        }
         for (const script of doc.querySelectorAll('script:not([src])')) {
             for (const match of script.textContent.matchAll(/\balert\s*\(\s*(['"])([^'"\r\n]{1,300})\1\s*\)/g)) messages.push(norm(match[2]));
         }
@@ -465,7 +656,7 @@
     }
 
     function classifyRegistration(messages) {
-        const bad = /gagal|kesalahan|error|invalid|duplikat|duplicate|sudah (ada|terdaftar|digunakan)|already (exists|registered|used)|ditolak|tidak berhasil|belum berhasil|unsuccessful|not successful/i;
+        const bad = /gagal|kesalahan|error|invalid|duplikat|duplicate|(?:sudah|telah) (ada|terdaftar|digunakan)|already (exists|registered|used)|ditolak|tidak berhasil|belum berhasil|unsuccessful|not successful/i;
         const good = /berhasil|sukses|successfully|\bsuccess\b|telah (di)?tambah|ditambahkan|\bregistered\b|\bsaved\b/i;
         const failure = messages.find(m => bad.test(m));
         if (failure) return {ok:false,message:failure.slice(0,220)};
@@ -473,27 +664,55 @@
         return success ? {ok:true,message:success.slice(0,220)} : {ok:null,message:'Admin sudah membalas, tetapi status pendaftaran belum dapat dipastikan. Data tetap tersimpan di bubble; periksa User ID sebelum mengirim ulang.'};
     }
 
-    async function registerDirect(data) {
+    function logDate(now = new Date()) {
+        const parts = new Intl.DateTimeFormat('en-GB', {timeZone:'Asia/Jakarta',day:'2-digit',month:'2-digit',year:'numeric'}).formatToParts(now);
+        const get = type => parts.find(p => p.type === type).value;
+        return get('day') + '-' + get('month') + '-' + get('year');
+    }
+
+    async function verifyRegistrationLog(data,date,onProgress = () => {},adminResult = null) {
+        let last = 'Hasil pencarian belum tersedia.';
+        let lastState = 'unknown';
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            onProgress('Memeriksa User ID di daftar pemain '+attempt+'/3 · '+data.userid);
+            try {
+                const result = await directCheck('uid',data.userid);
+                lastState = result.state;
+                last = result.message;
+                if (result.state === 'taken') {
+                    if (adminResult?.ok === false) return {ok:false,date,message:'GAGAL DAFTAR — '+adminResult.message+' User ID '+data.userid+' ditemukan di daftar pemain; jangan daftarkan ulang.'};
+                    return {ok:true,date,message:'DONE DAFTAR — User ID '+data.userid+' terkonfirmasi di agentplayerlist.php.'};
+                }
+            } catch(error) {lastState = 'unknown'; last = error.message;}
+            if (attempt < 3) await new Promise(resolve => setTimeout(resolve,1500));
+        }
+        const reason = adminResult?.ok === false ? adminResult.message : '';
+        if (lastState === 'free') return {ok:false,date,message:'GAGAL DAFTAR — User ID '+data.userid+' tidak ditemukan di agentplayerlist.php. '+(reason ? 'Keterangan admin: '+reason : 'Admin belum memberikan alasan penolakan yang dapat dibaca.')};
+        return {ok:null,date,message:(reason ? 'Keterangan admin: '+reason+'. ' : '')+'Pendaftaran belum dapat dikonfirmasi. Pemeriksaan User ID gagal: '+last+' Klik Cek User ID tanpa mengirim pendaftaran ulang.',adminResult};
+    }
+
+    async function registerDirect(data,onProgress = () => {}) {
         const page = await registrationRequest(REG_URL);
         const request = prepareRegistration(page,data);
-        const oldMessages = new Set(registrationMessages(page.doc));
+        const date = logDate();
+        let adminResult = null;
+        onProgress('Mengirim pendaftaran…');
         try {
             const response = await registrationRequest(request.url,request.method,request.body);
-            return classifyRegistration(registrationMessages(response.doc).filter(m => !oldMessages.has(m)));
-        } catch (error) {
-            return {ok:null,message:error.message+' Status pendaftaran belum pasti. Periksa User ID sebelum mengirim ulang.'};
+            adminResult = classifyRegistration(registrationMessages(response.doc));
+        } catch(error) {
+            onProgress('Balasan pendaftaran belum pasti. Memeriksa User ID…');
         }
+        return verifyRegistrationLog(data,date,onProgress,adminResult);
     }
 
     /* =====================================================================
        ROUTING
        ===================================================================== */
     if (location.hostname === 'my.livechatinc.com') {
-        if (location.hostname === 'my.livechatinc.com') {
-            if (document.readyState === 'loading')
-                document.addEventListener('DOMContentLoaded', mountBubble, { once: true });
-            else mountBubble();
-        }
+        if (document.readyState === 'loading')
+            document.addEventListener('DOMContentLoaded', mountBubble, { once: true });
+        else mountBubble();
         return;
     }
     if (location.pathname !== '/agentnewplayer.php') return;
@@ -518,7 +737,7 @@
         button{cursor:pointer;border:0;background:none;color:inherit}
         button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #22a88a;outline-offset:3px}
         button:disabled{cursor:not-allowed;opacity:.55}
-        .panel{display:flex;flex-direction:column;width:min(650px,calc(100vw - 32px));height:min(820px,calc(100dvh - 32px));min-width:min(360px,calc(100vw - 32px));min-height:min(360px,calc(100dvh - 16px));max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);resize:both;overflow:hidden;border:1px solid #ffffffa6;border-radius:25px;background:#f1f5f6;color:#243648;box-shadow:0 24px 80px #0c25354a,0 5px 18px #0c253520;font:13px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif;container-type:inline-size}
+        .panel{display:flex;flex-direction:column;width:min(470px,calc(100vw - 24px));height:min(690px,calc(100dvh - 24px));min-width:min(320px,calc(100vw - 24px));min-height:min(360px,calc(100dvh - 16px));max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);resize:both;overflow:hidden;border:1px solid #ffffffa6;border-radius:25px;background:#f1f5f6;color:#243648;box-shadow:0 24px 80px #0c25354a,0 5px 18px #0c253520;font:13px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif;container-type:inline-size}
         .panel[hidden],.launcher[hidden],.result-card[hidden]{display:none!important}
         header{position:relative;isolation:isolate;display:flex;align-items:center;gap:13px;padding:23px 24px;background:linear-gradient(118deg,#102c40,#174353 75%,#205c62);color:#f5fffd;flex:none;cursor:grab;touch-action:none;user-select:none;overflow:hidden}
         header:after{content:'';position:absolute;z-index:-1;width:220px;height:220px;border:1px solid #76e9c725;border-radius:50%;right:-45px;top:-125px;box-shadow:0 0 0 24px #8ce6ca08,0 0 0 48px #8ce6ca05;pointer-events:none}
@@ -586,6 +805,8 @@
         .btn:active{transform:translateY(1px)}
         .btn.ghost{border:1px solid #cfdce3;background:#fff;color:#4c6577;flex:0 0 auto}
         .btn.ghost:hover{background:#e9f0f4}
+        .btn.ghost.danger{color:#a13650;border-color:#e3b8c2;background:#fff5f7}
+        .btn.ghost.danger:hover{background:#fbe6ea;border-color:#d18e9f}
         .btn.primary{flex:1;background:linear-gradient(115deg,#195d50,#247d67);color:#fff;box-shadow:0 5px 12px #22665320}
         .btn.primary:hover{background:linear-gradient(115deg,#145348,#1b6e59);box-shadow:0 6px 16px #22665335}
         .btn-ico{font-size:16px}.btn svg{width:15px;height:15px}
@@ -616,7 +837,6 @@
         @media(max-width:470px){.grid{grid-template-columns:1fr}.regform{padding:13px 12px 0}.form-card{padding:14px}.sum{min-width:100%}header{padding:18px 16px}.title strong{font-size:18px}}
         @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
-        /* Navy–mint: warna gelap kembali, dengan teks dan batas kolom yang jelas. */
         .panel{background:#0e1b2c;color:#edf5ff;border-color:#3a536e;box-shadow:0 24px 80px #0009,0 5px 18px #0005}
         header{background:linear-gradient(118deg,#163a55,#205c76 75%,#29758b);color:#fff}
         .eyebrow{color:#b5ffe5}.title small{color:#d1e6f2}
@@ -655,6 +875,8 @@
         .sum[data-state=checking] .sum-ico{background:#244564;color:#c6e5ff}
         .actions{background:linear-gradient(#0e1b2ce6,#0e1b2c 25%)}
         .btn{font-size:13px}.btn.ghost{background:#20354c;border-color:#49647d;color:#e3eff9}.btn.ghost:hover{background:#2c465f}
+        .btn.ghost.danger{color:#ffb3c6;border-color:#8a3f52;background:#2e1a22}
+        .btn.ghost.danger:hover{background:#3d222d;border-color:#b05068}
         .btn.primary{background:linear-gradient(110deg,#7ce7c3,#6bc8ed);color:#0b2c38;box-shadow:0 5px 16px #61d8b525}
         .btn.primary:hover{background:linear-gradient(110deg,#98f3d4,#8bdbf7);box-shadow:0 6px 20px #61d8b540}
         .result-card{background:linear-gradient(135deg,#16392f,#143438);border-color:#43866e}
@@ -682,6 +904,8 @@
         .userid-status[data-state=warn] .uid-symbol{background:#f3ce7f;color:#4d350b}
         .userid-status[data-state=checking]{background:#19364f;border-color:#84bde9;color:#d2ebff}
         .userid-status[data-state=checking] .uid-symbol{background:#2e5575;color:#d2ebff;animation:spin 1.2s linear infinite}
+        .userid-status[data-state=old]{background:#19394d;border-color:#8dc4e2;color:#d8f1ff}
+        .userid-status[data-state=old] .uid-symbol{background:#8dc4e2;color:#122e3d}
         .summary .sum{font-size:12px}.summary .sum-ico{width:22px;height:22px;font-size:13px}
         @container(max-width:480px){.uid-title{font-size:13px}}
 
@@ -690,6 +914,76 @@
         select[name=bank]{min-height:46px;font-size:13px;font-weight:600;cursor:pointer}
         select[name=bank] optgroup{background:#132439;color:#a8e8d1;font-weight:700}
         select[name=bank] option{background:#132439;color:#f0f7ff;font-weight:400}
+        #checkRegistrationLog[hidden]{display:none!important}
+        .actions{flex-wrap:wrap}
+
+        .panel{border-radius:19px}
+        header{padding:14px 17px;gap:11px}
+        .brand{width:38px;height:38px;border-radius:12px}.brand svg{width:21px;height:21px}
+        .eyebrow{font-size:8px;letter-spacing:1.6px;margin-bottom:3px}
+        .title strong{font-size:18px;letter-spacing:-.35px}.title small{font-size:10px;margin-top:4px}
+        .status{padding:8px 16px;font-size:11px;line-height:1.45}
+        .regform{padding:12px 13px 10px;scroll-padding-block:10px}
+        .form-intro{margin:0 2px 10px}.form-intro strong{font-size:11px}.form-intro span{font-size:9px}
+        .form-card{padding:13px;margin-bottom:10px;border-radius:12px}
+        .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px 12px}
+        .section-title{padding-bottom:9px;gap:9px;margin-bottom:0}.step{width:27px;height:27px;border-radius:8px;font-size:10px}
+        .section-title strong{font-size:12px}.section-title small{font-size:10px;margin-top:1px}
+        .lbl{font-size:11px;line-height:17px;margin-bottom:5px}.auto-badge{font-size:9px;line-height:16px;float:right}
+        .field input,.field select{height:39px;font-size:12px;border-radius:8px;padding-top:8px;padding-bottom:8px}
+        select[name=bank]{min-height:40px;font-size:12px}
+        .userid-block input[name=userid],.rekening-block input[name=rekening]{font-size:13px}
+        .userid-status{padding:9px 10px;gap:9px;margin-top:7px;border-radius:8px;border-left-width:3px}
+        .uid-symbol{width:26px;height:26px;font-size:17px}.uid-title{font-size:12px;letter-spacing:.1px;line-height:1.4}.uid-detail{font-size:11px;margin-top:2px}
+        .summary{display:none}
+        .actions{position:static;flex:none;margin:0;padding:11px 14px;gap:9px;background:#122337;border-top:1px solid #354d64;box-shadow:0 -5px 16px #00000015}
+        .btn{min-height:42px;padding:10px 14px;font-size:12px;border-radius:9px}
+        .btn.primary{min-width:120px;box-shadow:0 4px 12px #61d8b51c}
+        footer{padding:7px 12px;font-size:9px;line-height:1.4}
+        .result-card{padding:12px;margin-top:10px;border-radius:11px}.result-heading{font-size:11px;margin-bottom:9px}
+        .result-card textarea{min-height:135px;padding:10px;font-size:11px;line-height:1.7}.result-tools{gap:9px;margin-top:9px}.copy-feedback{font-size:10px}
+        .launcher{width:58px;height:58px;border-radius:19px}.launcher:before{inset:6px;border-radius:14px}.launcher svg{width:25px;height:25px}
+        .launcher .pulse{width:14px;height:14px;border-width:2px}.launcher .tip{right:70px;font-size:11px;padding:8px 12px}
+        @container(max-width:410px){.grid{grid-template-columns:1fr}.form-card{padding:12px}.regform{padding:11px 10px}.title strong{font-size:16px}.auto-badge{float:right}.form-intro span{display:none}.actions{padding:10px}.uid-title{font-size:11px}}
+        @media(max-width:410px){.grid{grid-template-columns:1fr}.form-card{padding:12px}.actions{padding:10px}.title small{font-size:9px}}
+
+        .panel{border-radius:15px;background:#111f30;border-color:#3b536c}
+        header{padding:14px 16px;background:#19354d;border-bottom:2px solid #6bd4b3;gap:10px}
+        header:after,.eyebrow,.form-intro,.section-title,.auto-badge{display:none}
+        .brand{width:32px;height:32px;border-radius:9px;box-shadow:none}.brand svg{width:19px;height:19px}
+        .title strong{font-size:17px}.title small{font-size:11px;margin-top:4px;color:#d2e4f1}
+        .status{padding:8px 14px;font-size:11px;border-bottom-width:1px}
+        .regform{padding:14px;background:#111f30}
+        .form-card{padding:0;margin:0 0 11px;border:0;border-radius:0;background:none;box-shadow:none}
+        .grid{display:grid;grid-template-columns:minmax(0,1fr);gap:11px}
+        .grid>label,.userid-block label,.rekening-block label{display:grid;grid-template-columns:100px minmax(0,1fr);align-items:center;gap:10px}
+        .span2{grid-column:1/-1}
+        .lbl{margin:0;font-size:12px;line-height:1.4;font-weight:600;color:#dce9f6}
+        .field{min-width:0}
+        .field input,.field select{height:39px;border-radius:7px;font-size:13px;background:#182d43;border-color:#4b657e;color:#f3f8ff}
+        .field input::placeholder{color:#b0c2d5;font-size:12px}
+        .field input:focus,.field select:focus{background:#1b3549;border-color:#87e6c7;box-shadow:0 0 0 2px #87e6c723}
+        select[name=bank]{min-height:39px;font-size:12px;font-weight:500}
+        input[name=referral]{color:#aef2d3;background:#19392f}
+        input[name=password]{letter-spacing:.2px}
+        .userid-status{margin:7px 0 0 110px;padding:8px 9px;gap:8px;border-radius:7px;border-left-width:3px}
+        .uid-symbol{width:23px;height:23px;font-size:15px}.uid-title{font-size:11px;letter-spacing:0;line-height:1.4}.uid-detail{font-size:10px;line-height:1.5}
+        .userid-status[data-state=idle]{padding:7px 9px;background:#182b3f;border-color:#405873;color:#bacfe3}
+        .userid-status[data-state=idle] .uid-detail{display:none}
+        .actions{padding:11px 14px;background:#172b40;border-top-color:#3b536c;box-shadow:none;gap:8px}
+        .btn{min-height:42px;border-radius:8px;font-size:12px}.btn.primary{background:#87e3c2;color:#123b30;box-shadow:none;font-size:14px}.btn.primary:hover{background:#a1f2d4;box-shadow:none}
+        .btn.ghost{background:#233e57;color:#e7f2fc;border-color:#526f88}
+        .btn.ghost.danger{background:#3a1e2a;color:#ffb9cc;border-color:#7d374b}.btn.ghost.danger:hover{background:#4d2735;border-color:#a04860}
+        footer{padding:7px 10px;background:#111f30;font-size:9px;color:#aec2d5}
+        .result-card{margin-top:12px;border-radius:9px;padding:12px}.result-card textarea{font-size:12px;min-height:150px}
+        .launcher{width:54px;height:54px;border-radius:50%;background:#86e2c2;color:#153e34;border-color:#c4ffeb;box-shadow:0 5px 18px #0005}
+        .launcher:before{display:none}.launcher .pulse{width:12px;height:12px;right:0;top:0}.launcher svg{width:24px;height:24px}
+        @container(max-width:370px){.grid>label,.userid-block label,.rekening-block label{grid-template-columns:1fr;gap:5px}.userid-status{margin-left:0}.regform{padding:12px}.title strong{font-size:16px}.title small{font-size:10px}}
+        @media(max-width:370px){.grid>label,.userid-block label,.rekening-block label{grid-template-columns:1fr;gap:5px}.userid-status{margin-left:0}}
+        .chat-import{margin:0 0 12px;padding:10px;border:1px solid #41647a;border-radius:9px;background:#173147}
+        .chat-import-top{display:flex;align-items:center;gap:9px}.chat-import-top button{padding:7px 10px;border-radius:6px;background:#a0e8cf;color:#153c32;font-size:11px;font-weight:700;flex:none}
+        .chat-import-message{font-size:11px;color:#e0eef9;line-height:1.5;overflow-wrap:anywhere}.chat-import select{width:100%;margin-top:8px;padding:8px;background:#11283b;border:1px solid #5a7a91;border-radius:6px;color:#f0f7ff;font-size:12px}
+        .chat-import select[hidden]{display:none!important}
         </style>
 
         <section class="panel" hidden aria-label="Formulir pendaftaran pemain">
@@ -701,8 +995,8 @@
                 </span>
                 <div class="title">
                     <span class="eyebrow">ADMITOTO · LIVECHAT</span>
-                    <strong>Daftar pemain baru</strong>
-                    <small>Semua kebutuhan daftar, dalam satu panel.</small>
+                    <strong>Daftar pemain</strong>
+                    <small>Isi data → klik Daftar → salin hasil</small>
                 </div>
                 <button type="button" class="icon-btn" id="min" title="Kecilkan panel" aria-label="Kecilkan panel">×</button>
             </header>
@@ -714,6 +1008,7 @@
             </div>
 
             <form class="regform" id="regform" novalidate autocomplete="off">
+                <div class="chat-import"><div class="chat-import-top"><button type="button" id="readChatAccount">Cari rekening</button><span id="chatImportMessage" class="chat-import-message" role="status" aria-live="polite">Buka bubble untuk mencari rekening dari chat aktif.</span></div><select id="chatAccountChoice" aria-label="Pilih rekening dari chat" hidden></select></div>
                 <div class="form-intro"><strong>Formulir pendaftaran</strong><span>Password & referral otomatis</span></div>
                 <div class="grid form-card">
                     <div class="section-title"><span class="step">01</span><div><strong>Data akun</strong><small>Identitas dan akses pemain baru</small></div></div>
@@ -763,10 +1058,10 @@
                 <div class="grid form-card">
                     <div class="section-title bank-section"><span class="step">02</span><div><strong>Data rekening</strong><small>Bank atau dompet digital pemain</small></div></div>
                     <label class="span2">
-                        <span class="lbl">Nama Bank / Dompet Digital</span>
+                        <span class="lbl">Bank / E-wallet</span>
                         <span class="field">
                             <select name="bank" required aria-label="Pilih bank atau dompet digital">
-                                <option value="">— Pilih bank / dompet digital —</option>
+                                <option value="">Pilih bank / e-wallet</option>
                                 <optgroup label="Bank">${BANKS.slice(0,10).map(b => `<option value="${b}">${b}</option>`).join('')}</optgroup>
                                 <optgroup label="Dompet digital">${BANKS.slice(10).map(b => `<option value="${b}">${b}</option>`).join('')}</optgroup>
                             </select>
@@ -809,14 +1104,16 @@
                     <div class="result-tools"><button type="button" class="copy-result" id="copyResult">Salin hasil</button><span class="copy-feedback" id="copyFeedback" role="status" aria-live="polite">Pesan siap disalin.</span></div>
                 </section>
 
+            </form>
                 <div class="actions">
-                    <button type="button" class="btn ghost" id="recheck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6 6a8 8 0 0 1 13 3M5 15a8 8 0 0 0 13 3"/></svg>Cek Ulang</button>
-                    <button type="submit" class="btn primary" id="sendBtn">
+                    <button type="button" class="btn ghost danger" id="clearForm" form="regform">Hapus</button>
+                    <button type="button" class="btn ghost" id="checkRegistrationLog" form="regform" hidden>Cek User ID</button>
+                    <button type="button" class="btn ghost" id="recheck" form="regform"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6 6a8 8 0 0 1 13 3M5 15a8 8 0 0 0 13 3"/></svg>Cek Ulang</button>
+                    <button type="submit" class="btn primary" id="sendBtn" form="regform">
                         <span class="btn-ico">↗</span>
                         <span class="btn-label">Daftar</span>
                     </button>
                 </div>
-            </form>
 
             <footer><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Gunakan sesi admin aktif untuk memeriksa dan mendaftarkan pemain.</footer>
         </section>
@@ -861,16 +1158,126 @@
         const versions = { uid: 0, rek: 0 };
         const state = {
             ready: false,
-            source: null,               // 'iframe' | 'popup' | null
+            source: null,
             popup: null,
-            pending: new Map(),         // requestId -> { resolve, reject, timer }
+            pending: new Map(),
             lastCheck: { uid: null, rek: null },
             sending: false,
             uncertainUser: null,
+            pendingRegistration: null,
             autoLoadTimer: null,
             iframeReadyTimer: null,
             checks: { uid: { timer: null, value: '' }, rek: { timer: null, value: '' } }
         };
+
+        let importEpoch = 0;
+        let lastImportKey = '';
+        let lastAutoFilled = '';
+        let importBusy = false;
+        const importNames = ['userid','rekening','namarekening','bank'];
+        const formFingerprint = () => importNames.map(name => form.elements[name].value).join('\n');
+        form.addEventListener('input', () => { ++importEpoch; });
+        form.addEventListener('change', event => { if (event.target.name) ++importEpoch; });
+
+        async function importChatNumber(number, automatic = false) {
+            number = String(number || '').replace(/[\s.\-\u200B-\u200D\uFEFF]/g,'');
+            if (!/^[0-9]{5,25}$/.test(number)) { $('#chatImportMessage').textContent = 'Blok hanya nomor rekening yang ingin dicari.'; return; }
+            if (state.sending || state.pendingRegistration || importBusy) return;
+            const route = location.href;
+            const key = route + '|' + number;
+            if (automatic && key === lastImportKey) return;
+            if (lastAutoFilled && lastAutoFilled === formFingerprint() && key !== lastImportKey) {
+                for (const name of ['userid','namarekening','bank']) form.elements[name].value = '';
+                lastAutoFilled = '';
+                setSum('uid','idle','User ID belum diperiksa');
+            }
+            const token = ++importEpoch;
+            for (const kind of ['uid','rek']) { ++versions[kind]; clearTimeout(state.checks[kind].timer); }
+            state.lastCheck = {uid:null,rek:null};
+            form.elements.rekening.value = number;
+            const fingerprint = formFingerprint();
+            const current = () => token === importEpoch && location.href === route && formFingerprint() === fingerprint && !state.sending;
+            importBusy = true;
+            $('#readChatAccount').disabled = true;
+            $('#chatAccountChoice').disabled = true;
+            setSum('rek','checking','Mencari rekening…');
+            try {
+                const result = await lookupAccount(number,message => { if (current()) $('#chatImportMessage').textContent = message; });
+                if (!current()) { $('#chatImportMessage').textContent = 'Isian atau chat berubah. Klik Ambil dari chat untuk mencari kembali.'; return; }
+                lastImportKey = key;
+                const primary = primaryAccountStatus(result);
+                const status = primary.state === 'taken' ? 'err'
+                             : primary.state === 'free' ? 'ok'
+                             : primary.state === 'old' ? 'old'
+                             : 'warn';
+                setSum('rek', status, primary.message);
+                state.lastCheck.rek = {...primary, value:number, record:result.record || null};
+
+                if (primary.state === 'old' && result.record) {
+                    const record = result.record;
+                    form.elements.userid.value = record.userid;
+                    form.elements.rekening.value = record.rekening;
+                    form.elements.email.value = '';
+                    form.elements.telepon.value = '';
+                    if (!form.elements.password.value) form.elements.password.value = generatePassword();
+                    form.elements.referral.value = DEFAULT_REFERRAL;
+                    form.elements.namarekening.value = record.namarekening || '';
+                    form.elements.bank.value = record.bank || '';
+                    lastAutoFilled = formFingerprint();
+                    const missing = [!record.bank && 'bank',!record.namarekening && 'nama rekening'].filter(Boolean);
+                    state.lastCheck.uid = null;
+                    $('#chatImportMessage').textContent = 'Data dari admin lama sudah diisi. Memeriksa User ID di admin utama…';
+                    await runCheck('uid');
+                    if (token !== importEpoch || location.href !== route || form.elements.userid.value !== record.userid) return;
+                    const uidState = state.lastCheck.uid?.state;
+                    $('#chatImportMessage').textContent = uidState === 'taken'
+                        ? 'Data admin lama sudah diambil, tetapi User ID sudah terpakai di admin utama. Ganti User ID sebelum daftar.'
+                        : uidState === 'free'
+                        ? 'Data admin lama sudah diambil. User ID dan rekening belum ada di admin utama. Lengkapi data lalu klik Daftar.'
+                        : 'Data admin lama sudah diambil. Status User ID di admin utama belum pasti; klik Cek Ulang.';
+                    if (missing.length) $('#chatImportMessage').textContent += ' '+missing.join(' dan ')+' belum terbaca dari tabel; lengkapi manual.';
+                } else if (primary.state === 'old') {
+                    $('#chatImportMessage').textContent = 'Rekening ada di daftar lama, tetapi data pemain (User ID/nama) tidak dapat dibaca otomatis. Isi User ID, nama rekening, dan bank secara manual.';
+                } else if (primary.state === 'taken') {
+                    $('#chatImportMessage').textContent = 'Rekening sudah terdaftar di admin utama. Tidak perlu didaftarkan ulang.';
+                } else if (primary.state === 'free') {
+                    $('#chatImportMessage').textContent = 'Rekening belum terdaftar di daftar lama maupun utama. Lengkapi data untuk daftar baru.';
+                } else {
+                    $('#chatImportMessage').textContent = primary.message;
+                }
+            } catch(error) {
+                if (current()) { setSum('rek','warn',error.message); $('#chatImportMessage').textContent = error.message; }
+            } finally {
+                importBusy = false;
+                if (!state.sending) { $('#readChatAccount').disabled = false; $('#chatAccountChoice').disabled = false; }
+            }
+        }
+
+        function importFromActiveChat(automatic = false) {
+            if (state.sending || state.pendingRegistration || importBusy) return;
+            const numbers = activeChatAccounts();
+            const choice = $('#chatAccountChoice');
+            choice.replaceChildren(); choice.hidden = true;
+            if (!numbers.length && !automatic && /^[0-9]{5,25}$/.test(form.elements.rekening.value.replace(/\s/g,''))) {
+                importChatNumber(form.elements.rekening.value.trim(),false); return;
+            }
+            if (!numbers.length) {
+                $('#chatImportMessage').textContent = 'Rekening chat belum terbaca. Blok nomor rekening pada chat lalu klik Ambil dari chat, atau isi rekening lalu klik tombol ini.';
+                return;
+            }
+            if (numbers.length > 1) {
+                choice.add(new Option('Pilih rekening yang ingin diperiksa',''));
+                numbers.forEach(number => choice.add(new Option(number,number)));
+                choice.hidden = false;
+                $('#chatImportMessage').textContent = 'Ada beberapa rekening di chat. Pilih rekening yang sesuai.';
+                return;
+            }
+            importChatNumber(numbers[0],automatic);
+        }
+        $('#readChatAccount').addEventListener('click', () => importFromActiveChat(false));
+        $('#chatAccountChoice').addEventListener('change', event => {
+            if (event.target.value) importChatNumber(event.target.value,false);
+        });
 
         // ---------- helpers ----------
         function setStatus(state_, text, showActivate = false) {
@@ -911,16 +1318,19 @@
             if (kind === 'rek') {
                 const box = $('#rekeningStatus');
                 box.dataset.state = state_;
-                const title = {idle:'BELUM DIPERIKSA',checking:'SEDANG MEMERIKSA…',ok:'NOMOR REKENING BELUM TERDAFTAR',err:'NOMOR REKENING SUDAH TERDAFTAR',warn:'HASIL BELUM PASTI'};
+                const title = {idle:'BELUM DIPERIKSA',checking:'SEDANG MEMERIKSA…',ok:'NOMOR REKENING BELUM TERDAFTAR',err:'NOMOR REKENING SUDAH TERDAFTAR',warn:'HASIL BELUM PASTI',old:'DITEMUKAN DI DAFTAR LAMA'};
                 box.querySelector('.uid-title').textContent = title[state_] || title.idle;
-                box.querySelector('.uid-symbol').textContent = {idle:'○',checking:'⟳',ok:'✓',err:'×',warn:'!'}[state_] || '○';
-                box.querySelector('.uid-detail').textContent = state_ === 'ok' ? 'Nomor rekening tersedia untuk didaftarkan.' : state_ === 'err' ? 'Nomor rekening sudah digunakan. Periksa kembali data rekening.' : text;
+                box.querySelector('.uid-symbol').textContent = {idle:'○',checking:'⟳',ok:'✓',err:'×',warn:'!',old:'ⓘ'}[state_] || '○';
+                box.querySelector('.uid-detail').textContent = state_ === 'ok' ? 'Rekening tersedia untuk daftar di admin utama.'
+                    : state_ === 'err' ? 'Rekening sudah digunakan di admin utama. Periksa kembali datanya.'
+                    : state_ === 'old' ? text
+                    : text;
             }
             const el = root.querySelector(`.sum[data-sum="${kind}"]`);
             if (!el) return;
             el.dataset.state = state_;
             el.querySelector('.sum-ico').textContent =
-                state_ === 'ok' ? '✓' : state_ === 'err' ? '×' : state_ === 'warn' ? '!' :
+                state_ === 'ok' ? '✓' : state_ === 'err' ? '×' : (state_ === 'warn' || state_ === 'old') ? '!' :
                 state_ === 'checking' ? '⟳' : '○';
             el.querySelector('.sum-text').textContent = text;
         }
@@ -957,7 +1367,6 @@
             });
         }
 
-        // ---------- muat iframe ----------
         function loadIframe() {
             if (iframe.src && state.source === 'iframe') return;
             if (state.source === 'popup') return;
@@ -971,7 +1380,6 @@
             }, 5000);
         }
 
-        // ---------- popup ----------
         function openPopup() {
             if (state.popup && !state.popup.closed) {
                 try { state.popup.focus(); } catch {}
@@ -1001,7 +1409,6 @@
 
         activateBtn.addEventListener('click', openPopup);
 
-        // ---------- message listener ----------
         window.addEventListener('message', event => {
             if (event.origin !== ORIGIN) return;
             const d = event.data || {};
@@ -1112,14 +1519,16 @@
             state.checks[kind].timer = setTimeout(() => {
                 const inputName = kind === 'uid' ? 'userid' : 'rekening';
                 const value = String(form.elements[inputName].value || '').trim();
-                // Selalu izinkan cek ulang setelah offline atau perubahan input.
                 state.checks[kind].value = value;
                 runCheck(kind);
             }, 700);
         }
 
         form.elements.userid.addEventListener('input', () => scheduleCheck('uid'));
-        form.elements.rekening.addEventListener('input', () => scheduleCheck('rek'));
+        form.elements.rekening.addEventListener('input', () => {
+            form.elements.rekening.value = form.elements.rekening.value.replace(/[\s.\-\u200B-\u200D\uFEFF]/g,'');
+            scheduleCheck('rek');
+        });
         form.elements.userid.addEventListener('blur', () => scheduleCheck('uid'));
         form.elements.rekening.addEventListener('blur', () => scheduleCheck('rek'));
 
@@ -1127,7 +1536,9 @@
             $('#registrationText').value = registrationCopyText(data);
             $('#registrationResult').hidden = false;
             $('#copyFeedback').textContent = 'Pesan siap disalin.';
-            $('#registrationResult').scrollIntoView({block:'nearest'});
+            requestAnimationFrame(() => {
+                if (!panel.hidden) $('#registrationResult').scrollIntoView({block:'nearest'});
+            });
         }
         $('#copyResult').addEventListener('click', async () => {
             const output = $('#registrationText');
@@ -1204,26 +1615,32 @@
         form.addEventListener('submit', async e => {
             e.preventDefault();
             if (state.sending) return;
+            if (importBusy) { toast('Pemeriksaan rekening masih berjalan. Tunggu hasilnya dahulu.', 'warn'); return; }
             if (!validate()) return;
 
             if (state.lastCheck.uid && state.lastCheck.uid.state === 'taken') {
                 toast('User ID sudah terpakai. Gunakan User ID lain.', 'err'); return;
             }
-            if (state.lastCheck.rek && state.lastCheck.rek.state === 'taken') {
-                toast('Nomor rekening sudah terpakai. Periksa kembali datanya.', 'err'); return;
+            if (state.lastCheck.rek && state.lastCheck.rek.state === 'taken' && state.lastCheck.rek.source === 'utama') {
+                toast('Nomor rekening sudah terpakai di admin utama. Periksa kembali datanya.', 'err'); return;
             }
 
             const data = {};
             for (const el of form.elements) if (el.name) data[el.name] = el.name === 'password' ? el.value : String(el.value || '').trim();
 
-            if (state.uncertainUser === data.userid && !confirm('Pendaftaran sebelumnya belum pasti. Pastikan User ID belum terdaftar di admin. Kirim ulang?')) return;
+            if (state.pendingRegistration) { toast('Pendaftaran sebelumnya belum terkonfirmasi. Klik Cek User ID terlebih dahulu.', 'warn', 7000); return; }
             state.sending = true;
             for (const el of form.elements) el.disabled = true;
             sendBtn.disabled = true;
             sendBtn.querySelector('.btn-label').textContent = 'Mengirim…';
 
             try {
-                const result = await registerDirect(data);
+                const result = await registerDirect(data, message => {
+                    setStatus('init',message);
+                    sendBtn.querySelector('.btn-label').textContent = message.startsWith('Mengirim') ? 'Mengirim…' : 'Memeriksa User ID…';
+                });
+                state.pendingRegistration = result.ok === null ? {data:{...data},date:result.date,adminResult:result.adminResult} : null;
+                $('#checkRegistrationLog').hidden = !state.pendingRegistration;
                 state.uncertainUser = result.ok === null ? data.userid : null;
                 toast(result.message, result.ok === true ? 'ok' : result.ok === false ? 'err' : 'warn', 10000);
                 setStatus(result.ok === true ? 'ok' : 'warn', result.message);
@@ -1240,6 +1657,46 @@
                 sendBtn.disabled = false;
                 sendBtn.querySelector('.btn-label').textContent = 'Daftar';
             }
+        });
+
+        $('#checkRegistrationLog').addEventListener('click', async () => {
+            if (state.sending || !state.pendingRegistration) return;
+            const pending = state.pendingRegistration;
+            state.sending = true;
+            for (const el of form.elements) el.disabled = true;
+            try {
+                const result = await verifyRegistrationLog(pending.data,pending.date,message => setStatus('init',message),pending.adminResult);
+                setStatus(result.ok === true ? 'ok' : 'warn',result.message);
+                toast(result.message,result.ok === true ? 'ok' : 'warn',10000);
+                if (result.ok === true) {
+                    state.pendingRegistration = null;
+                    state.uncertainUser = null;
+                    $('#checkRegistrationLog').hidden = true;
+                    resetForm();
+                    showRegistrationResult(pending.data);
+                }
+            } finally {
+                state.sending = false;
+                for (const el of form.elements) el.disabled = false;
+            }
+        });
+
+        // ---------- hapus / kosongkan form ----------
+        $('#clearForm').addEventListener('click', () => {
+            if (state.sending) { toast('Tunggu proses pendaftaran selesai.', 'warn'); return; }
+            if (state.pendingRegistration) {
+                toast('Klik "Cek User ID" untuk menyelesaikan verifikasi sebelum menghapus.', 'warn', 6000);
+                return;
+            }
+            ++importEpoch;
+            lastImportKey = '';
+            lastAutoFilled = '';
+            resetForm();
+            $('#registrationText').value = '';
+            $('#registrationResult').hidden = true;
+            $('#copyFeedback').textContent = '';
+            $('#chatImportMessage').textContent = 'Form dikosongkan. Blok nomor rekening di chat untuk mencari data dari admin lama.';
+            toast('Form berhasil dikosongkan.', 'ok');
         });
 
         // ---------- cek ulang ----------
@@ -1270,7 +1727,7 @@
             try { localStorage.setItem('admitoto_mini', '0'); } catch {}
             clampHost();
             root.getElementById('min').focus();
-            form.elements.userid.focus();
+            importFromActiveChat(true);
         };
 
         try {
@@ -1290,7 +1747,6 @@
         new ResizeObserver(clampHost).observe(panel);
         if (!panel.hidden) { launcher.setAttribute('aria-expanded', 'true'); }
 
-        // drag bubble
         let bubbleDrag = null;
         launcher.addEventListener('pointerdown', e => {
             const r = host.getBoundingClientRect();
@@ -1314,7 +1770,6 @@
         launcher.addEventListener('pointerup', endBubbleDrag);
         launcher.addEventListener('pointercancel', endBubbleDrag);
 
-        // drag panel
         let drag = null;
         root.getElementById('hdr').addEventListener('pointerdown', e => {
             if (e.target.closest('button')) return;
@@ -1331,12 +1786,10 @@
         root.getElementById('hdr').addEventListener('pointerup', () => { drag = null; });
         root.getElementById('hdr').addEventListener('pointercancel', () => { drag = null; });
 
-        // auto close popup on unload
         window.addEventListener('pagehide', () => {
             try { state.popup?.close(); } catch {}
         });
 
-        // deteksi popup ditutup
         setInterval(() => {
             if (state.source === 'popup' && state.popup && state.popup.closed) {
                 state.popup = null;
@@ -1358,7 +1811,6 @@
         const inPopup = !!(window.opener && window.opener !== window);
         if (!inIframe && !inPopup) return;
 
-        // ---------- util ----------
         const visible = el => {
             if (!el || el.disabled || el.type === 'hidden') return false;
             const view = el.ownerDocument.defaultView;
@@ -1399,7 +1851,6 @@
             try { el.blur(); } catch {}
         };
 
-        // ---------- KONFIG SELEKTOR ----------
         const FIELD_SELECTORS = {
             userid: ['input[name="userid"]','input[name="user_id"]','input[name="username"]','input[name="user"]'],
             password: ['input[name="password"]','input[name="pass"]','input[name="sandi"]','input[type="password"]'],
@@ -1428,7 +1879,6 @@
             namarekening: /^(nama\s*rekening|atas\s*nama|nama\s*pemilik(\s*rekening)?|pemilik\s*rekening|account\s*name)$/i
         };
 
-        // ---------- CARI INPUT FORM ----------
         function findField(key) {
             for (const sel of (FIELD_SELECTORS[key] || [])) {
                 let list;
@@ -1438,7 +1888,6 @@
             const allInputs = [...document.querySelectorAll(
                 'input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]):not([type="file"])'
             )].filter(visible);
-
             const re = LABELS[key];
             if (re) {
                 const byLabel = allInputs.filter(el => labelTexts(el).some(t => re.test(t)));
@@ -1489,32 +1938,25 @@
             return true;
         }
 
-        // ---------- CEK USER ID / REKENING ----------
         function findSearchInput(doc, kind) {
             const all = [...doc.querySelectorAll('input')].filter(el => {
                 if (el.type === 'hidden' || el.type === 'password' || el.type === 'checkbox' || el.type === 'radio' || el.type === 'submit' || el.type === 'button' || el.type === 'file') return false;
                 if (el.disabled) return false;
                 return true;
             });
-
             const patterns = kind === 'uid'
                 ? [/user\s*id/i, /userid/i, /user\s*name/i, /username/i, /id\s*user/i]
                 : [/nomor\s*rekening/i, /no\.?\s*rekening/i, /rekening/i, /norek/i, /account\s*number/i, /accountno/i];
-
             const namePatterns = kind === 'uid'
                 ? /user_?id|user_?name|username/i
                 : /rekening|no_?rek|norek|account_?no/i;
-
-            // 1. name / id
             for (const el of all) {
                 if (namePatterns.test(el.name || '') || namePatterns.test(el.id || '')) return el;
             }
-            // 2. placeholder / aria-label / title
             for (const el of all) {
                 const txt = [el.placeholder || '', el.getAttribute('aria-label') || '', el.title || ''].join(' | ');
                 if (patterns.some(p => p.test(txt))) return el;
             }
-            // 3. label / nearby text
             for (const el of all) {
                 const txt = labelTexts(el).join(' | ');
                 if (patterns.some(p => p.test(txt))) return el;
@@ -1533,11 +1975,9 @@
         function readResult(doc, kind, value) {
             const want = String(value).trim().toLowerCase();
             const tables = [...doc.querySelectorAll('table')];
-
             for (const table of tables) {
                 const rows = [...table.rows];
                 if (rows.length === 0) continue;
-                // Cari header row
                 let headerRow = null, headerIdx = -1;
                 for (let i = 0; i < Math.min(rows.length, 3); i++) {
                     const cells = [...rows[i].cells];
@@ -1550,18 +1990,13 @@
                 const headers = [...headerRow.cells].map(c => norm(c.textContent).toLowerCase());
                 const uidIdx = headers.findIndex(h => /user\s*id|userid|username/.test(h));
                 const rekIdx = headers.findIndex(h => /^(nomor\s*rekening|no\.?\s*rekening|rekening|norek|account\s*(number|no\.?))$/.test(h));
-
                 if ((kind === 'uid' ? uidIdx : rekIdx) < 0) continue;
-
-                // Ambil data rows
                 const dataRows = rows.slice(headerIdx + 1).filter(r => {
                     const t = norm(r.textContent);
                     if (!t) return false;
                     if (/^sub\s*total/i.test(t)) return false;
                     return true;
                 });
-
-                // Empty-state
                 if (dataRows.length === 0) {
                     return { state: 'free', message: (kind === 'uid' ? 'USER ID' : 'NOMOR REKENING') + ' BELUM TERDAFTAR' };
                 }
@@ -1569,8 +2004,6 @@
                 if (/no (data|records?|matching)|tidak ada data|data (tidak ditemukan|kosong)|no results?/i.test(joined)) {
                     return { state: 'free', message: (kind === 'uid' ? 'USER ID' : 'NOMOR REKENING') + ' BELUM TERDAFTAR' };
                 }
-
-                // Match uid
                 if (kind === 'uid' && uidIdx >= 0) {
                     for (const r of dataRows) {
                         const cell = r.cells[uidIdx];
@@ -1582,7 +2015,6 @@
                     }
                     return { state: 'unknown', message: 'Tidak ada kecocokan pada halaman ini. Periksa filter atau halaman berikutnya.' };
                 }
-                // Match rek
                 if (kind === 'rek') {
                     if (rekIdx >= 0) {
                         for (const r of dataRows) {
@@ -1593,12 +2025,9 @@
                         }
                         return { state: 'unknown', message: 'Rekening tidak cocok pada halaman ini. Periksa filter atau halaman berikutnya.' };
                     }
-                    // Rekening tidak ditampilkan di tabel — jika ada rows berarti ada pemain dengan rek tsb
                     return { state: 'taken', message: 'NOMOR REKENING TERDAFTAR (ada pemain dengan filter ini)' };
                 }
             }
-
-            // Fallback: cek teks body
             const body = (doc.body?.textContent || '').toLowerCase();
             if (/no (data|records?|matching)|tidak ada data|data (tidak ditemukan|kosong)|no results?/i.test(body)) {
                 return { state: 'free', message: (kind === 'uid' ? 'USER ID' : 'NOMOR REKENING') + ' BELUM TERDAFTAR' };
@@ -1653,13 +2082,10 @@
             });
         }
 
-        // ---------- PENDAFTARAN ----------
         async function fillAndRegister(data) {
             if (document.querySelector('input[name="entered_login"]')) {
                 throw new Error('Sesi login berakhir. Login ulang di popup.');
             }
-
-            // Isi form
             const els = {};
             const missing = [];
             for (const key of ['userid','password','email','telepon','rekening','namarekening']) {
@@ -1678,7 +2104,6 @@
                 if (!ref) throw new Error('Kolom referral tidak ditemukan.');
                 setValue(ref, String(data.referral).trim());
             }
-            // Bank
             let bankEl = null;
             for (const sel of BANK_SELECTORS) {
                 const list = [...document.querySelectorAll(sel)].filter(visible);
@@ -1690,11 +2115,8 @@
             }
             if (!bankEl) throw new Error('Pilihan bank tidak ditemukan.');
             if (!setBank(bankEl, data.bank)) throw new Error(`Bank "${data.bank}" tidak ada di form.`);
-
-            // Cari form & submit button
             const form = els.userid.form || els.userid.closest('form');
             if (!form) throw new Error('Formulir pendaftaran tidak ditemukan.');
-
             if (new Set(Object.values(els)).size !== Object.keys(els).length || Object.values(els).some(el => el.form !== form) || bankEl.form !== form) throw new Error('Pemetaan kolom tidak cocok. Periksa formulir admin.');
             if (!form.reportValidity()) throw new Error('Lengkapi kolom wajib di formulir admin.');
             return await submitAndWait(form);
@@ -1755,7 +2177,6 @@
                         }
                     }
 
-                    // Hanya baca notifikasi baru; teks lama bukan bukti pendaftaran ini.
                     const messages = [...document.querySelectorAll('[role=alert],.alert,.success,.error')]
                         .map(el => norm(el.textContent)).filter(t => t && !initialMessages.has(t));
                     for (const message of messages) {
@@ -1781,7 +2202,6 @@
             });
         }
 
-        // ---------- POSTING KE PARENT ----------
         function postToParent(type, payload = {}) {
             const tgt = window.parent !== window ? window.parent : window.opener;
             if (!tgt) return;
@@ -1789,7 +2209,6 @@
         }
 
         let registering = false;
-        // ---------- PESAN MASUK ----------
         window.addEventListener('message', async event => {
             if (event.origin !== PARENT || event.source !== (inIframe ? window.parent : window.opener)) return;
             const d = event.data || {};
@@ -1810,7 +2229,7 @@
                 if (registering) { postToParent('register-result', {requestId:d.requestId,ok:false,message:'Pendaftaran lain masih diproses.'}); return; }
                 registering = true;
                 try {
-                    const res = await fillAndRegister(d.data || {});
+                    const res = await registerDirect(d.data || {});
                     postToParent('register-result', { requestId: d.requestId, ok: res.ok, message: res.message });
                 } catch (err) {
                     postToParent('register-result', { requestId: d.requestId, ok: false, message: err.message || 'Pendaftaran gagal.' });
@@ -1819,7 +2238,6 @@
             }
         });
 
-        // ---------- UMUMKAN READY ----------
         function announceReady() {
             if (document.querySelector('input[name="entered_login"]')) {
                 postToParent('login-required', {});
