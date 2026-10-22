@@ -1,11 +1,23 @@
 // ==UserScript==
-// @name         Admitoto - Cek & Daftar Otomatis
+// @name         DeepSeek Original + Gopath Email TurboCheck AutoClose v12.3
 // @namespace    http://tampermonkey.net/
-// @version      9.29
-// @description  Cari rekening di agentplayerlist_old.php (pisahkan format koma) → isi User ID/bank/nama otomatis → daftar → verifikasi di agentplayerlist.php. Plus tombol Hapus.
+// @version      12.3
+// @description  DeepSeek lengkap + pemeriksaan email Gopath segera setelah paste; tanpa pemeriksaan duplikat; tab pekerja otomatis ditutup; indikator centang/X saja.
 // @match        https://agwl2.admitoto.com/agentnewplayer.php*
 // @match        https://my.livechatinc.com/*
+// @match        https://gopath.id/link_linetogel/register*
+// @match        https://www.gopath.id/link_linetogel/register*
+// @match        https://gopath.id/register*
+// @match        https://www.gopath.id/register*
+// @match        https://line38602.com/register*
+// @match        https://www.line38602.com/register*
+// @match        https://*.line38602.com/register*
 // @grant        GM_xmlhttpRequest
+// @grant        GM_openInTab
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_addValueChangeListener
+// @grant        unsafeWindow
 // @connect      agwl2.admitoto.com
 // @run-at       document-idle
 // ==/UserScript==
@@ -13,6 +25,9 @@
 (function () {
     'use strict';
 
+    /* =====================================================================
+       ============ BAGIAN 1: ADMITOTO — KONSTANTA & UTIL ============
+       ===================================================================== */
     const REG_URL  = 'https://agwl2.admitoto.com/agentnewplayer.php';
     const LIST_URL = 'https://agwl2.admitoto.com/agentplayerlist.php';
     const OLD_LIST_URL = 'https://agwl2.admitoto.com/agentplayerlist_old.php';
@@ -41,7 +56,6 @@
             do { crypto.getRandomValues(bytes); } while (bytes[0] >= limit);
             return bytes[0] % max;
         };
-        // Pastikan setiap kelompok yang dipilih muncul, lalu acak posisinya.
         const chars = groups.map(group => group[randomIndex(group.length)]);
         while (chars.length < 10) chars.push(alphabet[randomIndex(alphabet.length)]);
         for (let i = chars.length - 1; i > 0; i--) {
@@ -238,7 +252,6 @@
         return norm(copy.textContent).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
     }
 
-    // ==== PENGURAI CERDAS UNTUK FORMAT BANK,NAMA,NOMOR ====
     function readAccountRecord(doc, number, verified) {
         const records = [];
         for (const table of doc.querySelectorAll('table')) {
@@ -263,7 +276,6 @@
                 const uidCell = row.cells[columns.uid];
                 if (!uidCell || uidCell.colSpan !== 1) continue;
 
-                // Bersihkan User ID dari teks tambahan seperti "No Name"
                 const rawLines = cellLines(uidCell);
                 let userid = '';
                 if (rawLines.length > 0) {
@@ -278,7 +290,6 @@
 
                 let bank = '', rekening = '', namarekening = '';
 
-                // Ekstraksi format koma: BANK,NAMA,NOMOR
                 if (bankText) {
                     const parts = bankText.split(/,/).map(norm);
                     if (parts.length >= 3) {
@@ -294,7 +305,6 @@
                     }
                 }
 
-                // Fallback jika format koma gagal tapi nomor ada di baris tersebut
                 if (!rekening) {
                     const allLines = [...row.cells].flatMap(cell => cellLines(cell));
                     const foundNumber = allLines.find(line => line.replace(/[^0-9]/g, '') === number);
@@ -716,19 +726,48 @@
     }
 
     /* =====================================================================
-       ROUTING
+       ============ BAGIAN 2: ROUTER UTAMA ============
        ===================================================================== */
-    if (location.hostname === 'my.livechatinc.com') {
+    const _host = location.hostname.toLowerCase();
+    const _path = location.pathname;
+
+    // (A) LiveChat → bubble Admitoto
+    if (_host === 'my.livechatinc.com') {
         if (document.readyState === 'loading')
             document.addEventListener('DOMContentLoaded', mountBubble, { once: true });
         else mountBubble();
         return;
     }
-    if (location.pathname !== '/agentnewplayer.php') return;
-    installBridge();
+
+    // (B) Halaman admin Admitoto → bridge
+    if (_host === 'agwl2.admitoto.com' && _path === '/agentnewplayer.php') {
+        installBridge();
+        return;
+    }
+
+    // (C) Halaman register Linetogel → cek email
+    const isLinetogelHost =
+        _host === 'gopath.id' || _host === 'www.gopath.id' ||
+        _host === 'line38602.com' || _host === 'www.line38602.com' ||
+        _host.endsWith('.line38602.com');
+    if (isLinetogelHost && /\/register/i.test(_path)) {
+        if (document.readyState === 'loading')
+            document.addEventListener('DOMContentLoaded', startGopathRegisterTools, { once: true });
+        else startGopathRegisterTools();
+        return;
+    }
+
+    function startGopathRegisterTools() {
+        if (window.top !== window.self) return;
+        installGopathBackgroundWorker();
+        // Pada tab pekerja latar belakang tidak tampilkan bubble kedua.
+        if (!new URLSearchParams(location.search).has('tm_email_worker')) {
+            mountLinetogelEmailChecker();
+        }
+    }
 
     /* =====================================================================
-       ██ BUBBLE DI LIVECHAT
+       ██ BUBBLE DI LIVECHAT (ADMITOTO) + EMAIL CHECKER
        ===================================================================== */
     function mountBubble() {
         if (window.top !== window.self || document.getElementById('admitoto-hub')) return;
@@ -740,7 +779,6 @@
 
         root.innerHTML = `
         <style>
-        /* Tema terang: navy, teal, dan permukaan putih dengan kontras tinggi. */
         *{box-sizing:border-box}
         :host{color-scheme:light}
         button,input,select,textarea{font:inherit}
@@ -783,6 +821,11 @@
         .eye,.regen{position:absolute;right:5px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:29px;height:30px;border-radius:6px;color:#47657b}.regen{right:36px;font-size:20px;color:#176b5b}.eye svg{width:17px;height:17px}
         .eye:hover,.regen:hover{background:#e0eee9}.eye[aria-pressed=true]{color:#14664f;background:#e0f3ea}
         .chip{display:none!important}
+        .email-check-status{margin:-3px 0 3px 116px;padding:7px 10px;border:1px solid #cbd7e2;border-radius:8px;background:#f2f6fa;color:#486075;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+        .email-check-status[data-state=checking]{border-color:#a3bce3;background:#eef5ff;color:#235787}
+        .email-check-status[data-state=ok]{border-color:#87caa3;background:#e8f8ed;color:#216141;font-weight:700}
+        .email-check-status[data-state=err]{border-color:#e6a2ad;background:#fff0f2;color:#ad3047;font-weight:700}
+        .email-check-status[data-state=warn]{border-color:#e1c37e;background:#fff7e6;color:#805b10}
         .userid-status{display:flex;align-items:flex-start;gap:8px;margin:8px 0 0 116px;padding:9px 10px;border:1px solid #c9d7e3;border-left-width:3px;border-radius:8px;background:#f0f5fa;color:#425e76}
         .uid-symbol{display:grid;place-items:center;flex:none;width:24px;height:24px;border-radius:50%;background:#dce7f0;color:#3a5871;font-size:16px;font-weight:750}
         .uid-title{display:block;font-size:11px;font-weight:750;line-height:1.5;overflow-wrap:anywhere}.uid-detail{display:block;font-size:11px;line-height:1.55;margin-top:2px;overflow-wrap:anywhere}
@@ -813,8 +856,7 @@
         @container(max-width:390px){.grid>label,.userid-block label,.rekening-block label{grid-template-columns:1fr;gap:5px}.userid-status{margin-left:0}.regform{padding:12px}.form-card{padding:12px}.title strong{font-size:18px}.chat-import-top{align-items:flex-start;flex-wrap:wrap}}
         @media(max-width:390px){.panel{border-radius:15px}header{padding:14px}.actions{padding:10px}.btn{padding:10px}.title small{font-size:10px}}
         @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-        
-        /* Midnight violet — latar berlapis dengan teks berkontras tinggi. */
+
         :host{color-scheme:dark}
         .panel{background:radial-gradient(ellipse at 100% 0%,#51417a45,transparent 55%),radial-gradient(ellipse at 0% 100%,#245b6a30,transparent 50%),#191a29;color:#eeeaf8;border-color:#57516f;box-shadow:0 25px 75px #10101c80,0 0 0 1px #c7b5ff0c,inset 0 1px 0 #ffffff12}
         header{background:linear-gradient(115deg,#29253f,#453660 65%,#33445d);border-bottom-color:#bca4ed}
@@ -858,8 +900,7 @@
         .launcher:before{content:'';position:absolute;inset:5px;border:1px solid #e9d5ff25;border-radius:16px;pointer-events:none}.launcher:hover{box-shadow:0 12px 32px #68428d60,inset 0 1px 0 #ffffff50}
         .launcher .pulse{background:#b4eccf;border-color:#393149}.launcher .tip{background:#39304e;color:#f5eaff;border:1px solid #8f78ac}
         .toast{background:#302b43;color:#f3eafa;border-color:#726383;box-shadow:0 12px 35px #09071466}.t-ico{background:#49405f;color:#e7d6ff}.toast-ok .t-ico{background:#365642;color:#d0f5de}.toast-err .t-ico{background:#6c3c51;color:#ffdae7}.toast-warn .t-ico{background:#655131;color:#ffe6b5}
-        
-        /* Form menyatu, tulisan lebih besar, palet slate dan champagne. */
+
         .panel{width:min(540px,calc(100vw - 24px));height:min(790px,calc(100dvh - 24px));background:radial-gradient(ellipse at top right,#45657930,transparent 60%),#1c2935;border-color:#566775;font-size:15px}
         header{background:linear-gradient(115deg,#243645,#354c5d);border-bottom-color:#d5b77c;padding:19px 20px}
         .brand{background:linear-gradient(135deg,#efdbad,#cdb27b);color:#3d3524;border-color:#ead5a4}.eyebrow{color:#ecd6aa;font-size:11px}.title strong{font-size:23px}.title small{font-size:13px;color:#d9e3e9}
@@ -888,8 +929,7 @@
         .toast{background:#293e4d;color:#f2f6f9;border-color:#708593;font-size:14px}.t-ico{background:#485b68;color:#f1dab0}
         button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline-color:#e5c78c}
         @container(max-width:440px){.grid>label,.userid-block label,.rekening-block label{grid-template-columns:1fr;gap:7px}.userid-status{margin-left:0}.regform{padding:16px}.title strong{font-size:21px}.chat-import-top{flex-wrap:wrap}.form-card{padding:0}}
-        
-        /* Refined midnight / champagne finish. */
+
         .panel{border-radius:24px;border:1px solid #8d815f;background:radial-gradient(ellipse at 100% 0%,#b89b6120,transparent 45%),linear-gradient(155deg,#1d2c3b,#152331 70%);box-shadow:0 28px 80px #07111b80,0 8px 24px #07111b40,inset 0 1px 0 #fce4b72b}
         header{padding:23px 22px 21px;gap:14px;background:radial-gradient(ellipse at 95% 0%,#bda26d28,transparent 65%),linear-gradient(115deg,#1d3043,#294252);border-bottom:1px solid #bba16d6b}
         header:after{width:240px;height:240px;right:-100px;top:-150px;border-color:#ebd39e25;box-shadow:0 0 0 22px #ebd39e09,0 0 0 44px #ebd39e05}
@@ -914,7 +954,7 @@
         .result-card{border-radius:14px;padding:16px;background:linear-gradient(130deg,#29453b,#233c3d);box-shadow:0 5px 18px #0001}.result-card textarea{border-radius:10px;padding:13px}
         .launcher{width:66px;height:66px;border-radius:23px;background:radial-gradient(circle at 20% 5%,#e3c48c35,transparent 50%),linear-gradient(135deg,#3c5667,#192f40 70%);border:1px solid #d5b77e;color:#f3dcae;box-shadow:0 10px 28px #0a172760,inset 0 1px 0 #f6e1b75c,0 0 0 4px #d5b77e0b}.launcher:before{inset:6px;border-radius:17px;border-color:#ddc28d40}.launcher svg{width:29px;height:29px;filter:drop-shadow(0 2px 4px #0003)}.launcher:hover{box-shadow:0 14px 36px #0a172775,0 0 0 4px #d5b77e1a;transform:translateY(-2px)}.launcher .pulse{top:1px;right:1px;width:13px;height:13px;border-color:#253c4b;background:#eed39b}.launcher .tip{right:79px;border-radius:11px;border-color:#b9a374;color:#f3e1bb;background:#263d4d}
         @container(max-width:440px){header{padding:18px 16px;gap:10px}.title strong{font-size:21px}.title small{font-size:12px}.regform{padding:17px 16px}.actions{padding:14px 16px}.brand{width:40px;height:40px;border-radius:12px}.status{padding:10px 16px}.chat-import-top{flex-wrap:wrap}}
-        
+
         .password-options{min-width:0;margin:0 0 2px 140px;padding:0;border:0}
         .password-options legend{padding:0;margin-bottom:9px;font-size:13px;font-weight:600;color:#d4dbe2}
         .password-choices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
@@ -991,8 +1031,12 @@
 
                     <label>
                         <span class="lbl">Email</span>
-                        <span class="field"><input name="email" type="email" required placeholder="player@email.com"></span>
+                        <span class="field">
+                            <input name="email" type="email" required placeholder="player@email.com">
+                            <span id="gopathEmailStatus" aria-hidden="true" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:20px;display:none;font-weight:800;"></span>
+                        </span>
                     </label>
+                    <div class="email-check-status" id="gopathEmailMessage" data-state="idle" role="status" aria-live="polite">Tempel email untuk memeriksa otomatis di formulir Gopath.</div>
 
                     <label>
                         <span class="lbl">Telepon</span>
@@ -1083,7 +1127,6 @@
 
         document.body.appendChild(host);
 
-        // ---------- refs ----------
         const $ = s => root.querySelector(s);
         const panel = $('.panel');
         const iframe = $('#bridge');
@@ -1120,7 +1163,6 @@
         const sendBtn = $('#sendBtn');
         const toasts = $('#toasts');
 
-        // ---------- state ----------
         const versions = { uid: 0, rek: 0 };
         const state = {
             ready: false,
@@ -1144,6 +1186,215 @@
         const formFingerprint = () => importNames.map(name => form.elements[name].value).join('\n');
         form.addEventListener('input', () => { ++importEpoch; });
         form.addEventListener('change', event => { if (event.target.name) ++importEpoch; });
+
+        // === PERBAIKAN v12: pemeriksaan email dari tab Gopath yang tidak aktif ===
+        // Iframe dihapus karena situs dapat memakai X-Frame-Options / frame-ancestors.
+        // Tab latar belakang dibuka saat dibutuhkan dan otomatis ditutup setelah hasil diterima.
+        const EMAIL_REQ_KEY = 'tm_gopath_email_req_v12';
+        const EMAIL_RES_KEY = 'tm_gopath_email_res_v12';
+        const EMAIL_HEARTBEAT_KEY = 'tm_gopath_email_heartbeat_v12';
+        const EMAIL_WORKER_URL = 'https://line38602.com/register?referral_code=504rf&tm_email_worker=1';
+        const emailStatusInd = $('#gopathEmailStatus');
+        const emailMessage = $('#gopathEmailMessage');
+        const emailField = form.elements.email;
+        let emailDebounce = null;
+        let emailSequence = 0;
+        let emailPending = null;
+        let emailWorkerLaunchAt = 0;
+        let emailWorkerTab = null;
+        // Penanda agar heartbeat milik tab yang baru saja ditutup tidak membuat
+        // pemeriksaan berikutnya keliru mengira tab pekerja masih aktif.
+        let emailWorkerNeedsLaunch = false;
+        let observedEmailValue = emailField.value;
+        let emailLastResolved = null; // Hindari membuka tab lagi untuk email yang baru saja memperoleh hasil.
+
+        function closeOwnedEmailWorker() {
+            // HANYA tab yang dibuat lewat GM_openInTab; tab pengguna tidak disentuh.
+            const tab = emailWorkerTab;
+            if (!tab) return;
+            emailWorkerTab = null;
+            emailWorkerNeedsLaunch = true;
+            emailWorkerLaunchAt = 0;
+            try {
+                if (typeof tab.close === 'function') tab.close();
+                else console.warn('[Gopath email] Pengendali tab tidak menyediakan metode close().');
+            } catch (e) {
+                console.warn('[Gopath email] Gagal menutup tab pemeriksaan:', e);
+            }
+        }
+
+        function emailIndicator(status, message) {
+            const icons = { idle:'', checking:'⟳', ok:'✓', err:'✕', warn:'?' };
+            const colors = { checking:'#69a9ff', ok:'#31c888', err:'#ff667f', warn:'#e8b65e' };
+            emailStatusInd.style.display = icons[status] ? 'block' : 'none';
+            emailStatusInd.textContent = icons[status] || '';
+            emailStatusInd.style.color = colors[status] || '';
+            // Untuk hasil email: hanya indikator ✓ atau ✕ di dalam kolom.
+            // Pesan panjang tetap digunakan saat proses berjalan atau ada kendala.
+            const finalResult = status === 'ok' || status === 'err';
+            emailStatusInd.title = finalResult ? '' : message;
+            emailStatusInd.setAttribute('aria-label', status === 'ok' ? 'Email tersedia' : status === 'err' ? 'Email sudah digunakan' : message);
+            emailMessage.dataset.state = status;
+            emailMessage.textContent = finalResult ? '' : message;
+            emailMessage.hidden = finalResult;
+        }
+
+        function stopEmailCheck() {
+            clearTimeout(emailDebounce);
+            if (emailPending) clearTimeout(emailPending.timeout);
+            emailPending = null;
+            ++emailSequence;
+        }
+
+        function workerFresh() {
+            try {
+                const hb = GM_getValue(EMAIL_HEARTBEAT_KEY, null);
+                return hb && typeof hb.at === 'number' && Date.now() - hb.at < 5500;
+            } catch { return false; }
+        }
+
+        function ensureEmailWorker() {
+            // Sesudah tab ditutup, abaikan heartbeat sementara dari tab lama.
+            if (!emailWorkerNeedsLaunch && workerFresh()) return true;
+            if (!emailWorkerNeedsLaunch && Date.now() - emailWorkerLaunchAt < 10500) return true;
+            if (typeof GM_openInTab !== 'function') {
+                emailIndicator('warn', 'GM_openInTab tidak tersedia. Periksa izin Tampermonkey.');
+                return false;
+            }
+            try {
+                emailWorkerLaunchAt = Date.now();
+                emailWorkerTab = GM_openInTab(EMAIL_WORKER_URL, {
+                    active: false, insert: true, setParent: true
+                });
+                emailWorkerNeedsLaunch = false;
+                return true;
+            } catch (e) {
+                emailIndicator('warn', 'Tidak bisa membuka tab pemeriksaan di latar belakang: ' + (e.message || e));
+                return false;
+            }
+        }
+
+        function runBackgroundEmailCheck() {
+            const email = emailField.value.trim().toLowerCase();
+            clearTimeout(emailDebounce);
+            observedEmailValue = emailField.value;
+            // Event input, change, paste, dan blur sering dipicu oleh satu aksi paste.
+            // Jangan membatalkan atau mengirim request yang identik dua kali.
+            if (emailPending && emailPending.email === email) return;
+            if (emailLastResolved && emailLastResolved.email === email &&
+                Date.now() - emailLastResolved.at < 60000) {
+                emailIndicator(emailLastResolved.state, 'Hasil pemeriksaan terakhir untuk email ini.');
+                return;
+            }
+            stopEmailCheck();
+            if (!email) {
+                emailIndicator('idle', 'Tempel alamat email untuk memeriksa otomatis.');
+                return;
+            }
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+                emailIndicator('warn','Format alamat email belum lengkap.');
+                return;
+            }
+            if (typeof GM_setValue !== 'function' || typeof GM_addValueChangeListener !== 'function') {
+                emailIndicator('warn','Izin komunikasi antar-tab Tampermonkey belum aktif.');
+                return;
+            }
+            const id = Date.now().toString(36) + '-' + (++emailSequence);
+            const current = { id, email, timeout:null };
+            emailPending = current;
+            emailIndicator('checking','Memeriksa ' + email + ' menggunakan halaman Gopath di tab latar belakang…');
+            if (!ensureEmailWorker()) {
+                emailPending = null;
+                return;
+            }
+            try {
+                GM_setValue(EMAIL_REQ_KEY, { id, email, at:Date.now() });
+            } catch (e) {
+                emailPending = null;
+                emailIndicator('warn','Gagal mengirim email ke pemeriksa: ' + (e.message || e));
+                closeOwnedEmailWorker();
+                return;
+            }
+            current.timeout = setTimeout(() => {
+                if (emailPending !== current) return;
+                emailPending = null;
+                const reason = workerFresh()
+                    ? 'Halaman Gopath terbuka, tetapi belum ada konfirmasi status email dari situs.'
+                    : 'Halaman Gopath belum siap atau membuka tab latar belakang diblokir. Periksa tab Gopath.';
+                emailIndicator('warn', reason + ' Status tidak dianggap tersedia.');
+                closeOwnedEmailWorker();
+            }, 16000);
+        }
+
+        function emailEdited(immediate = false) {
+            observedEmailValue = emailField.value;
+            const email = emailField.value.trim().toLowerCase();
+            if (!email) {
+                if (emailPending) closeOwnedEmailWorker();
+                stopEmailCheck();
+                emailLastResolved = null;
+                emailIndicator('idle','Tempel email untuk memeriksa otomatis.');
+                return;
+            }
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+                if (emailPending) closeOwnedEmailWorker();
+                stopEmailCheck();
+                emailLastResolved = null;
+                emailIndicator('warn','Format email belum benar.');
+                return;
+            }
+            if (emailPending && emailPending.email === email) return;
+            if (emailLastResolved && emailLastResolved.email === email &&
+                Date.now() - emailLastResolved.at < 60000) {
+                clearTimeout(emailDebounce);
+                emailIndicator(emailLastResolved.state, 'Hasil pemeriksaan terakhir untuk email ini.');
+                return;
+            }
+            clearTimeout(emailDebounce);
+            // Paste langsung: 0 ms. Ketik manual: 100 ms agar request tidak
+            // berjalan berkali-kali di tengah pengetikan.
+            emailIndicator('checking','Memulai pemeriksaan email…');
+            if (immediate) runBackgroundEmailCheck();
+            else emailDebounce = setTimeout(runBackgroundEmailCheck, 100);
+        }
+
+        emailField.addEventListener('input', event => {
+            // Chrome biasanya mengirim insertFromPaste untuk satu aksi paste.
+            emailEdited(event.inputType === 'insertFromPaste' || event.inputType === 'insertFromDrop');
+        });
+        emailField.addEventListener('change', () => emailEdited(true));
+        // Fallback browser yang tidak menyediakan inputType; default paste
+        // harus selesai dulu sebelum membaca value.
+        emailField.addEventListener('paste', () => setTimeout(() => emailEdited(true), 0));
+        emailField.addEventListener('blur', () => {
+            if (emailField.value.trim()) emailEdited(true);
+        });
+        setInterval(() => {
+            if (!emailField.isConnected || !emailMessage.isConnected) return;
+            if (emailField.value !== observedEmailValue) emailEdited(true);
+        }, 350);
+
+        GM_addValueChangeListener(EMAIL_RES_KEY, (_name, _old, result) => {
+            if (!emailPending || !result || typeof result !== 'object') return;
+            if (result.id !== emailPending.id || result.email !== emailPending.email ||
+                emailField.value.trim().toLowerCase() !== emailPending.email) return;
+            clearTimeout(emailPending.timeout);
+            const checkedEmail = emailPending.email;
+            emailPending = null;
+            emailLastResolved = (result.state === 'ok' || result.state === 'err')
+                ? {email:checkedEmail, at:Date.now(), state:result.state} : null;
+            if (result.state === 'ok') {
+                emailIndicator('ok','✓ EMAIL BELUM DIGUNAKAN — ' + (result.message || 'Dikonfirmasi oleh Gopath.'));
+            } else if (result.state === 'err') {
+                emailIndicator('err','✕ EMAIL SUDAH DIGUNAKAN — ' + (result.message || 'Dikonfirmasi oleh Gopath.'));
+            } else {
+                emailIndicator('warn','Status belum pasti — ' + (result.message || 'Tidak ada jawaban khusus email.'));
+            }
+            // Hasil diterima dan sudah muncul di bubble: tab Gopath ditutup.
+            closeOwnedEmailWorker();
+        });
+        emailIndicator('idle','Tempel email. Tab Gopath akan ditutup otomatis setelah hasil diperoleh.');
+        // =====================================================================
 
         async function importChatNumber(number, automatic = false) {
             number = String(number || '').replace(/[\s.\-\u200B-\u200D\uFEFF]/g,'');
@@ -1245,7 +1496,6 @@
             if (event.target.value) importChatNumber(event.target.value,false);
         });
 
-        // ---------- helpers ----------
         function setStatus(state_, text, showActivate = false) {
             statusBar.dataset.state = state_;
             statusText.textContent = text;
@@ -1301,7 +1551,6 @@
             el.querySelector('.sum-text').textContent = text;
         }
 
-        // ---------- koneksi ke bridge ----------
         function target() {
             if (state.source === 'popup' && state.popup) return state.popup;
             if (state.source === 'iframe') return iframe.contentWindow;
@@ -1432,7 +1681,6 @@
             }
         });
 
-        // ---------- cek otomatis ----------
         async function runCheck(kind) {
             const version = ++versions[kind];
             const inputName = kind === 'uid' ? 'userid' : 'rekening';
@@ -1528,7 +1776,6 @@
             $('#copyFeedback').textContent = '';
         });
 
-        // ---------- toggle password ----------
         root.getElementById('eye').addEventListener('click', e => {
             const inp = form.elements.password;
             const show = inp.type === 'password';
@@ -1537,7 +1784,6 @@
             e.currentTarget.setAttribute('aria-label', show ? 'Sembunyikan password' : 'Tampilkan password');
         });
 
-        // ---------- validasi + submit ----------
         const REQUIRED = [
             ['userid', 'User ID', /^[A-Za-z0-9._-]{3,20}$/],
             ['password', 'Password (10 karakter A-Z, a-z, atau 0-9)', /^[A-Za-z0-9]{10}$/],
@@ -1647,7 +1893,6 @@
             }
         });
 
-        // ---------- hapus / kosongkan form ----------
         $('#clearForm').addEventListener('click', () => {
             if (state.sending) { toast('Tunggu proses pendaftaran selesai.', 'warn'); return; }
             if (state.pendingRegistration) {
@@ -1665,7 +1910,6 @@
             toast('Form berhasil dikosongkan.', 'ok');
         });
 
-        // ---------- cek ulang ----------
         root.getElementById('recheck').addEventListener('click', () => {
             state.checks.uid.value = '__force__';
             state.checks.rek.value = '__force__';
@@ -1673,7 +1917,6 @@
             runCheck('rek');
         });
 
-        // ---------- buka/tutup ----------
         let suppressClick = false;
         root.getElementById('min').onclick = () => {
             panel.hidden = true;
@@ -2218,6 +2461,954 @@
         } else {
             window.addEventListener('load', () => setTimeout(announceReady, 200));
         }
+    }
+
+    /* =====================================================================
+       ██ BUBBLE CEK EMAIL LINETOGEL & GOPATH BRIDGE
+       ===================================================================== */
+    function mountLinetogelEmailChecker() {
+        const isBridge = window.top !== window.self && (window.name === 'gopath-email-bridge' || new URLSearchParams(location.search).has('gopath_bridge'));
+
+        if (isBridge) {
+            installGopathBridge();
+            return;
+        }
+
+        if (window.top !== window.self) return;
+        if (document.getElementById('lt-email-bubble')) return;
+
+        const host = document.createElement('div');
+        host.id = 'lt-email-bubble';
+        host.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:2147483647;';
+        const shadow = host.attachShadow({ mode: 'open' });
+
+        shadow.innerHTML = `
+        <style>
+        *{box-sizing:border-box}
+        :host{color-scheme:dark}
+        button,input,select{font:inherit}
+        button{cursor:pointer;border:0;background:none;color:inherit}
+        button:focus-visible,input:focus-visible{outline:3px solid #e0c58e;outline-offset:2px}
+        button:disabled{cursor:not-allowed;opacity:.55}
+        .bubble{width:min(360px,calc(100vw - 24px));background:radial-gradient(ellipse at top right,#b89b6120,transparent 55%),linear-gradient(155deg,#1d2c3b,#152331 70%);color:#e8eef3;border:1px solid #8d815f;border-radius:18px;box-shadow:0 20px 60px #07111b90,0 4px 16px #07111b40,inset 0 1px 0 #fce4b72b;overflow:hidden;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;transition:box-shadow .2s}
+        .bubble.minimized .body{display:none}
+        .header{display:flex;align-items:center;gap:10px;padding:14px 16px;background:radial-gradient(ellipse at 95% 0%,#bda26d28,transparent 65%),linear-gradient(115deg,#1d3043,#294252);border-bottom:1px solid #bba16d6b;cursor:grab;touch-action:none;user-select:none}
+        .header:active{cursor:grabbing}
+        .brand{display:grid;place-items:center;flex:none;width:34px;height:34px;border-radius:10px;background:linear-gradient(145deg,#f5e3b8,#bea16c);color:#3d3524;font-size:18px;font-weight:800;box-shadow:0 3px 10px #0003,inset 0 1px 0 #fff8}
+        .title{flex:1;min-width:0}
+        .title strong{display:block;font-size:14px;line-height:1.3;color:#f3e1bb}
+        .title small{display:block;font-size:11px;color:#b6c6d1;margin-top:1px}
+        .hdr-btn{display:grid;place-items:center;flex:none;width:28px;height:28px;border-radius:7px;background:#12243350;border:1px solid #c6d8e12b;color:#eee6d6;font-size:16px;line-height:1}
+        .hdr-btn:hover{background:#ffffff20}
+        .body{padding:14px}
+        .field{display:flex;gap:8px;margin-bottom:10px}
+        .field input{flex:1;min-width:0;height:42px;padding:9px 11px;border:1px solid #536a7b;border-radius:10px;background-color:#142330;color:#f5f7fa;font-size:14px;box-shadow:inset 0 2px 5px #050c141a,0 1px 0 #ffffff06;transition:border-color .15s,background-color .15s}
+        .field input::placeholder{color:#a8b9c6}
+        .field input:hover{background-color:#1b2e3d;border-color:#899da9}
+        .field input:focus{outline:none;background-color:#1e3241;border-color:#e1c78f;box-shadow:0 0 0 3px #d7b97b20}
+        .btn-check{flex:none;padding:0 16px;height:42px;border-radius:10px;background:linear-gradient(115deg,#f0deb4,#d9bc83 60%,#c4a56c);color:#30291e;font-weight:800;font-size:13px;border:1px solid #f3dfb4;box-shadow:0 3px 10px #0002,inset 0 1px 0 #fff6;transition:background .15s,transform .15s}
+        .btn-check:hover{background:linear-gradient(115deg,#f9eac9,#e5cd9a)}
+        .btn-check:active{transform:translateY(1px)}
+        .btn-check:disabled{opacity:.6;cursor:wait}
+        .status{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-radius:10px;font-size:13px;line-height:1.55;background:#293d4b;border:1px solid #526b7c;color:#c8d7e1;border-left-width:3px;transition:background .2s,border-color .2s,color .2s}
+        .status .icon{display:grid;place-items:center;flex:none;width:26px;height:26px;border-radius:50%;background:#3b5363;color:#dbe5ec;font-size:15px;font-weight:800}
+        .status .txt{flex:1;min-width:0;overflow-wrap:anywhere}
+        .status .txt strong{display:block;font-size:12px;font-weight:700;margin-bottom:2px}
+        .status .txt span{display:block;font-size:12px;line-height:1.5}
+        .status.info{background:#293d4b;border-color:#526b7c;color:#c8d7e1}
+        .status.info .icon{background:#3b5363;color:#dbe5ec}
+        .status.checking{background:#29364b;border-color:#6e88af;color:#cee2ff}
+        .status.checking .icon{background:#405674;color:#e3eeff;animation:spin 1.2s linear infinite}
+        .status.ok{background:#1f3d2f;border-color:#5b9e7a;color:#c6f0d8}
+        .status.ok .icon{background:#365f47;color:#d2ffe0}
+        .status.err{background:#442630;border-color:#b26b82;color:#ffd0dc}
+        .status.err .icon{background:#713e54;color:#ffe0e9}
+        .status.warn{background:#3f3723;border-color:#a68b56;color:#ffe4ad}
+        .status.warn .icon{background:#665231;color:#ffedc7}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .tools{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+        .tool{flex:1;min-width:78px;padding:8px 10px;border-radius:8px;background:#2e4352;border:1px solid #627887;color:#e0e9ee;font-size:11px;font-weight:600;transition:background .15s}
+        .tool:hover{background:#3b5363}
+        .tool:disabled{opacity:.45;cursor:not-allowed}
+        .note{margin-top:10px;padding:8px 10px;border-radius:8px;background:#1d2c3b80;border:1px solid #3f5869;font-size:10.5px;line-height:1.55;color:#a9b8c4}
+        .toasts{position:fixed;right:16px;bottom:calc(20px + 100% + 10px);display:flex;flex-direction:column;gap:8px;z-index:2147483647;width:min(340px,calc(100vw - 32px));pointer-events:none}
+        .toast{display:flex;align-items:flex-start;gap:9px;padding:11px 13px;border:1px solid #708593;border-radius:11px;background:#293e4d;color:#f2f6f9;box-shadow:0 10px 30px #09071466;font-size:12px;line-height:1.5;opacity:0;transform:translateY(10px);transition:opacity .2s,transform .2s;pointer-events:auto}
+        .toast.show{opacity:1;transform:translateY(0)}
+        .t-ico{display:grid;place-items:center;flex:none;width:22px;height:22px;border-radius:6px;background:#485b68;color:#f1dab0;font-weight:800;font-size:13px}
+        .t-msg{flex:1;overflow-wrap:anywhere}
+        .toast-ok .t-ico{background:#365642;color:#d0f5de}
+        .toast-err .t-ico{background:#6c3c51;color:#ffdae7}
+        .toast-warn .t-ico{background:#655131;color:#ffe6b5}
+        @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+        </style>
+        <div class="bubble" id="bubble" role="complementary" aria-label="Cek email Linetogel">
+          <div class="header" id="hdr">
+            <span class="brand" aria-hidden="true">@</span>
+            <div class="title">
+              <strong>Cek Email Register</strong>
+              <small>Linetogel / Gopath · cek otomatis</small>
+            </div>
+            <button type="button" class="hdr-btn" id="minBtn" title="Kecilkan" aria-label="Kecilkan">−</button>
+            <button type="button" class="hdr-btn" id="closeBtn" title="Tutup" aria-label="Tutup">×</button>
+          </div>
+          <div class="body">
+            <div class="field">
+              <input type="email" id="emailInput" placeholder="contoh@email.com" autocomplete="off" spellcheck="false" aria-label="Alamat email yang ingin diperiksa">
+              <button type="button" class="btn-check" id="checkBtn">Cek</button>
+            </div>
+            <div class="status info" id="statusBox" role="status" aria-live="polite">
+              <span class="icon" id="statusIcon" aria-hidden="true">ℹ</span>
+              <div class="txt">
+                <strong id="statusTitle">BELUM DIPERIKSA</strong>
+                <span id="statusText">Tempel email; pemeriksaan akan berjalan otomatis.</span>
+              </div>
+            </div>
+            <div class="tools">
+              <button type="button" class="tool" id="clearBtn">Kosongkan</button>
+              <button type="button" class="tool" id="copyBtn" disabled>Salin email</button>
+              <button type="button" class="tool" id="fillBtn" disabled>Isi ke form</button>
+            </div>
+            <div class="note">
+              Status diambil dari respons validasi server (AJAX) dan indikator visual form.
+              Jika situs tidak menampilkan indikator apa pun, periksa manual di form register.
+            </div>
+          </div>
+        </div>
+        <div class="toasts" id="toasts" aria-live="polite"></div>
+        `;
+
+        document.body.appendChild(host);
+
+        const $ = id => shadow.getElementById(id);
+        const bubble = $('bubble');
+        const emailInput = $('emailInput');
+        const checkBtn = $('checkBtn');
+        const clearBtn = $('clearBtn');
+        const copyBtn = $('copyBtn');
+        const fillBtn = $('fillBtn');
+        const statusBox = $('statusBox');
+        const statusIcon = $('statusIcon');
+        const statusTitle = $('statusTitle');
+        const statusText = $('statusText');
+        const minBtn = $('minBtn');
+        const closeBtn = $('closeBtn');
+        const toasts = $('toasts');
+        const hdr = $('hdr');
+
+        let lastEmail = '';
+        let lastState = null;
+        let checking = false;
+        let ajaxDetected = null;
+        let ajaxSource = null;
+
+        function toast(msg, kind = 'info', ms = 3800) {
+            const el = document.createElement('div');
+            el.className = 'toast toast-' + kind;
+            const ico = { ok: '✓', err: '✕', warn: '!', info: 'ℹ' }[kind] || 'ℹ';
+            el.innerHTML = `<span class="t-ico">${ico}</span><span class="t-msg"></span>`;
+            el.querySelector('.t-msg').textContent = msg;
+            toasts.appendChild(el);
+            requestAnimationFrame(() => el.classList.add('show'));
+            setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 300); }, ms);
+        }
+
+        function setStatus(kind, title, detail) {
+            statusBox.className = 'status ' + kind;
+            const icons = { ok: '✓', err: '✕', warn: '!', info: 'ℹ', checking: '⟳' };
+            statusIcon.textContent = icons[kind] || 'ℹ';
+            statusTitle.textContent = title;
+            statusText.textContent = detail || '';
+            lastState = kind;
+        }
+
+        function updateButtons() {
+            const has = !!lastEmail;
+            copyBtn.disabled = !has;
+            fillBtn.disabled = !has;
+        }
+
+        function analyzeResponse(url, body) {
+            if (!body) return false;
+            const lower = String(body).toLowerCase();
+            const urlStr = String(url || '').toLowerCase();
+
+            if (!/email|mail|register|check|available|exist|taken|used|valid/.test(urlStr) &&
+                !/email|mail|available|exist|taken|used|tersedia|digunakan|terdaftar/.test(lower)) {
+                return false;
+            }
+
+            const usedPatterns = [
+                /"available"\s*:\s*false/,
+                /"exists"\s*:\s*true/,
+                /"taken"\s*:\s*true/,
+                /"used"\s*:\s*true/,
+                /email\s*(sudah|telah)\s*(di)?gunakan/i,
+                /email\s*sudah\s*terdaftar/i,
+                /email\s*(tidak|sudah tidak)\s*(tersedia|valid|boleh)/i,
+                /already\s*(used|registered|exists|taken)/i,
+                /email.*(is\s*)?(already\s*)?(used|taken|registered|exists)/i,
+                /(used|taken|registered|exists).*email/i,
+                /not\s*available/i
+            ];
+
+            const availablePatterns = [
+                /"available"\s*:\s*true/,
+                /"exists"\s*:\s*false/,
+                /"taken"\s*:\s*false/,
+                /"used"\s*:\s*false/,
+                /email\s*tersedia/i,
+                /email\s*belum\s*(di)?gunakan/i,
+                /email\s*belum\s*terdaftar/i,
+                /not\s*(used|registered|exists|taken)/i,
+                /email\s*(is\s*)?(available|valid|free|ok)/i,
+                /(available|free)\s*email/i
+            ];
+
+            if (usedPatterns.some(p => p.test(lower))) {
+                ajaxDetected = 'err';
+                ajaxSource = urlStr;
+                if (checking) {
+                    setStatus('err', '✕ EMAIL SUDAH DIGUNAKAN', 'Email sudah dipakai orang lain. Gunakan email lain.');
+                }
+                return true;
+            }
+            if (availablePatterns.some(p => p.test(lower))) {
+                ajaxDetected = 'ok';
+                ajaxSource = urlStr;
+                if (checking) {
+                    setStatus('ok', '✓ EMAIL BELUM DIGUNAKAN', 'Email tersedia dan bisa didaftarkan.');
+                }
+                return true;
+            }
+            return false;
+        }
+
+        const originalFetch = window.fetch;
+        if (typeof originalFetch === 'function') {
+            window.fetch = async function (...args) {
+                const response = await originalFetch.apply(this, args);
+                try {
+                    const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
+                    const clone = response.clone();
+                    const text = await clone.text();
+                    analyzeResponse(url, text);
+                } catch {}
+                return response;
+            };
+        }
+
+        const XHR = XMLHttpRequest.prototype;
+        const originalOpen = XHR.open;
+        const originalSend = XHR.send;
+        XHR.open = function (method, url, ...rest) {
+            this._lt_url = url;
+            return originalOpen.call(this, method, url, ...rest);
+        };
+        XHR.send = function (...args) {
+            this.addEventListener('load', function () {
+                try {
+                    const url = this._lt_url || '';
+                    if (/email|mail|check|available|exist|taken|used|valid|register/i.test(url)) {
+                        analyzeResponse(url, this.responseText);
+                    }
+                } catch {}
+            });
+            return originalSend.apply(this, args);
+        };
+
+        function findEmailInput() {
+            const selectors = [
+                'input[type="email"]',
+                'input[name*="email" i]',
+                'input[id*="email" i]',
+                'input[name*="mail" i]',
+                'input[id*="mail" i]',
+                'input[placeholder*="email" i]',
+                'input[placeholder*="mail" i]'
+            ];
+            for (const sel of selectors) {
+                const list = document.querySelectorAll(sel);
+                for (const el of list) {
+                    if (el === emailInput) continue;
+                    if (el.offsetParent !== null && !el.disabled && !el.readOnly && el.type !== 'hidden') {
+                        return el;
+                    }
+                }
+            }
+            const all = document.querySelectorAll('input');
+            for (const el of all) {
+                if (el === emailInput) continue;
+                const meta = ((el.name || '') + ' ' + (el.id || '') + ' ' + (el.placeholder || '')).toLowerCase();
+                if (meta.includes('email') && el.offsetParent !== null && !el.disabled && el.type !== 'hidden') {
+                    return el;
+                }
+            }
+            return null;
+        }
+
+        function waitForEmailInput(timeout = 15000) {
+            return new Promise((resolve, reject) => {
+                const existing = findEmailInput();
+                if (existing) return resolve(existing);
+
+                const observer = new MutationObserver(() => {
+                    const el = findEmailInput();
+                    if (el) {
+                        observer.disconnect();
+                        clearTimeout(timer);
+                        resolve(el);
+                    }
+                });
+                observer.observe(document.body, { childList: true, subtree: true });
+
+                const timer = setTimeout(() => {
+                    observer.disconnect();
+                    reject(new Error('Kolom email tidak ditemukan dalam ' + Math.round(timeout / 1000) + ' detik. Halaman mungkin belum selesai dimuat.'));
+                }, timeout);
+            });
+        }
+
+        function findVisualIndicator(emailEl) {
+            let container = emailEl.parentElement;
+            let best = null;
+            for (let i = 0; i < 5 && container; i++) {
+                const text = (container.innerText || container.textContent || '').toLowerCase();
+                if (/tersedia|digunakan|terdaftar|available|used|registered|valid|invalid|sudah|belum/i.test(text)) {
+                    best = container;
+                    break;
+                }
+                container = container.parentElement;
+            }
+            container = best || emailEl.parentElement;
+            if (!container) return null;
+
+            const text = (container.innerText || container.textContent || '').toLowerCase();
+
+            if (/sudah\s*(di)?gunakan|telah\s*(di)?gunakan|sudah\s*terdaftar|already\s*(used|registered|taken)|email\s*(tidak|sudah tidak)\s*(tersedia|valid)|email.*sudah.*(dipakai|digunakan|terdaftar)/i.test(text)) {
+                return { state: 'err', message: 'Email sudah digunakan' };
+            }
+            if (/tersedia|belum\s*(di)?gunakan|belum\s*terdaftar|available|not\s*used|email\s*(is\s*)?(available|valid|free|ok)/i.test(text)) {
+                return { state: 'ok', message: 'Email tersedia (belum digunakan)' };
+            }
+
+            const icons = container.querySelectorAll(
+                'i,svg,span,img,.icon,.fa,[class*="check"],[class*="valid"],[class*="error"],[class*="times"],[class*="success"],[class*="danger"],[class*="ok"],[class*="remove"]'
+            );
+            for (const el of icons) {
+                if (el === emailEl) continue;
+                const cls = String(el.className?.baseVal || el.className || '') + ' ' + (el.getAttribute('class') || '');
+                const iconText = (el.textContent || '').trim();
+                const aria = (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || '') + ' ' + (el.getAttribute('data-icon') || '');
+
+                if (/fa-check|fa-circle-check|check-circle|checkmark|check-mark|is-valid|valid-feedback|valid-tooltip|icon-success|icon-ok|glyphicon-ok|bi-check|success|text-success|text-green|has-success/i.test(cls) ||
+                    /^[✓✔]$/.test(iconText) ||
+                    /valid|available|tersedia|ok|success|benar|hijau/i.test(aria)) {
+                    return { state: 'ok', message: 'Email tersedia (belum digunakan)' };
+                }
+
+                if (/fa-times|fa-xmark|fa-circle-xmark|times-circle|xmark|is-invalid|invalid-feedback|invalid-tooltip|icon-error|icon-remove|glyphicon-remove|bi-x|error|danger|text-danger|text-red|has-error/i.test(cls) ||
+                    /^[✕×✖❌]$/.test(iconText) ||
+                    /invalid|error|used|taken|registered|digunakan|salah|merah/i.test(aria)) {
+                    return { state: 'err', message: 'Email sudah digunakan' };
+                }
+            }
+
+            return null;
+        }
+
+        function fireEvents(el) {
+            ['input', 'change', 'blur', 'keyup'].forEach(type => {
+                try { el.dispatchEvent(new Event(type, { bubbles: true })); } catch {}
+            });
+            try { el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Tab', bubbles: true })); } catch {}
+            try { el.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); } catch {}
+            try { el.dispatchEvent(new Event('input', { bubbles: true, composed: true })); } catch {}
+        }
+
+        async function checkEmail() {
+            if (checking) return;
+            const email = emailInput.value.trim();
+
+            if (!email) {
+                toast('Masukkan email terlebih dahulu.', 'warn');
+                emailInput.focus();
+                return;
+            }
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+                setStatus('warn', 'FORMAT TIDAK VALID', 'Masukkan alamat email yang benar (contoh: nama@email.com).');
+                toast('Format email tidak valid.', 'warn');
+                emailInput.focus();
+                return;
+            }
+
+            checking = true;
+            ajaxDetected = null;
+            ajaxSource = null;
+            checkBtn.disabled = true;
+            checkBtn.textContent = '...';
+            setStatus('checking', 'MEMERIKSA…', 'Mengisi email ke form dan menunggu validasi server…');
+
+            try {
+                const emailEl = await waitForEmailInput();
+                emailEl.focus();
+                emailEl.value = email;
+                fireEvents(emailEl);
+                try { emailEl.blur(); } catch {}
+
+                const start = Date.now();
+                let result = null;
+
+                while (Date.now() - start < 8000) {
+                    await new Promise(r => setTimeout(r, 400));
+
+                    if (ajaxDetected === 'ok') {
+                        setStatus('ok', '✓ EMAIL BELUM DIGUNAKAN', 'Email tersedia dan bisa didaftarkan.');
+                        lastEmail = email;
+                        updateButtons();
+                        toast('Email tersedia (belum digunakan).', 'ok', 5000);
+                        return;
+                    }
+                    if (ajaxDetected === 'err') {
+                        setStatus('err', '✕ EMAIL SUDAH DIGUNAKAN', 'Email sudah dipakai orang lain. Gunakan email lain.');
+                        lastEmail = email;
+                        updateButtons();
+                        toast('Email sudah digunakan oleh orang lain.', 'err', 5000);
+                        return;
+                    }
+
+                    result = findVisualIndicator(emailEl);
+                    if (result) break;
+                }
+
+                if (result) {
+                    if (result.state === 'ok') {
+                        setStatus('ok', '✓ EMAIL BELUM DIGUNAKAN', result.message + '.');
+                        toast('Email tersedia.', 'ok', 5000);
+                    } else {
+                        setStatus('err', '✕ EMAIL SUDAH DIGUNAKAN', result.message + '.');
+                        toast('Email sudah digunakan.', 'err', 5000);
+                    }
+                    lastEmail = email;
+                    updateButtons();
+                } else {
+                    setStatus('warn', 'INDIKATOR TIDAK TERDETEKSI', 'Situs tidak menampilkan indikator otomatis. Coba klik di luar field email, atau periksa manual di form register.');
+                    toast('Indikator tidak terdeteksi. Periksa manual di form.', 'warn', 6000);
+                }
+            } catch (err) {
+                setStatus('warn', 'GAGAL MEMERIKSA', err.message || 'Terjadi kesalahan.');
+                toast(err.message || 'Gagal memeriksa email.', 'err', 5000);
+            } finally {
+                checking = false;
+                checkBtn.disabled = false;
+                checkBtn.textContent = 'Cek';
+            }
+        }
+
+        // Pemeriksaan pada bubble lokal Gopath juga dimulai otomatis setelah paste/ketik.
+        // Bubble utama LiveChat menggunakan bridge di atas.
+        let localEmailTimer = null;
+        emailInput.addEventListener('input', () => {
+            clearTimeout(localEmailTimer);
+            if (!emailInput.value.trim()) {
+                setStatus('info','BELUM DIPERIKSA','Tempel email; pemeriksaan berjalan otomatis.');
+                return;
+            }
+            if (/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailInput.value.trim())) {
+                localEmailTimer = setTimeout(() => { if (!checking) checkEmail(); }, 700);
+            }
+        });
+        checkBtn.addEventListener('click', checkEmail);
+
+        emailInput.addEventListener('keydown', e => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                checkEmail();
+            }
+        });
+
+        clearBtn.addEventListener('click', () => {
+            emailInput.value = '';
+            setStatus('info', 'BELUM DIPERIKSA', 'Masukkan email lalu klik Cek.');
+            lastEmail = '';
+            lastState = null;
+            ajaxDetected = null;
+            ajaxSource = null;
+            updateButtons();
+            emailInput.focus();
+        });
+
+        copyBtn.addEventListener('click', async () => {
+            if (!lastEmail) return;
+            try {
+                if (navigator.clipboard?.writeText) {
+                    await navigator.clipboard.writeText(lastEmail);
+                } else {
+                    throw new Error('Clipboard tidak tersedia');
+                }
+                toast('Email disalin ke clipboard.', 'ok');
+            } catch {
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = lastEmail;
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    ta.remove();
+                    toast('Email disalin.', 'ok');
+                } catch {
+                    toast('Gagal menyalin email.', 'warn');
+                }
+            }
+        });
+
+        fillBtn.addEventListener('click', async () => {
+            if (!lastEmail) return;
+            try {
+                const emailEl = await waitForEmailInput(3000);
+                emailEl.focus();
+                emailEl.value = lastEmail;
+                fireEvents(emailEl);
+                toast('Email diisi ke form register.', 'ok');
+            } catch (err) {
+                toast(err.message, 'warn');
+            }
+        });
+
+        minBtn.addEventListener('click', () => {
+            bubble.classList.toggle('minimized');
+        });
+
+        closeBtn.addEventListener('click', () => {
+            host.style.display = 'none';
+        });
+
+        let drag = null;
+        hdr.addEventListener('pointerdown', e => {
+            if (e.target.closest('button')) return;
+            const r = host.getBoundingClientRect();
+            drag = { x: e.clientX - r.left, y: e.clientY - r.top };
+            e.currentTarget.setPointerCapture(e.pointerId);
+        });
+        hdr.addEventListener('pointermove', e => {
+            if (!drag) return;
+            host.style.right = 'auto';
+            host.style.bottom = 'auto';
+            host.style.left = Math.max(8, Math.min(e.clientX - drag.x, innerWidth - host.offsetWidth - 8)) + 'px';
+            host.style.top = Math.max(8, Math.min(e.clientY - drag.y, innerHeight - host.offsetHeight - 8)) + 'px';
+        });
+        hdr.addEventListener('pointerup', () => { drag = null; });
+        hdr.addEventListener('pointercancel', () => { drag = null; });
+
+        setTimeout(() => { try { emailInput.focus(); } catch {} }, 600);
+        setTimeout(() => {
+            toast('Bubble siap. Masukkan email lalu klik Cek.', 'info', 4000);
+        }, 800);
+    }
+
+    /* =====================================================================
+       ██ GOPATH BRIDGE (UNTUK IFrame TERSEMBUNYI DI ADMITOTO)
+       ===================================================================== */
+    function installGopathBridge() {
+        // BRIDGE hanya aktif pada iframe tersembunyi dari LiveChat.
+        // window.name tetap ada meski Gopath redirect ke line38602.com.
+        if (window.top === window.self) return;
+        const ALLOWED_PARENT = 'https://my.livechatinc.com';
+        const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+        let currentToken = 0;
+        let lastRequest = '';
+
+        function send(type, args = {}) {
+            try { window.parent.postMessage({type, ...args}, ALLOWED_PARENT); } catch {}
+        }
+        function isVisible(el) {
+            if (!el || el.disabled || el.readOnly || el.type === 'hidden') return false;
+            const style = getComputedStyle(el);
+            return style.display !== 'none' && style.visibility !== 'hidden' && el.getClientRects().length > 0;
+        }
+        function findRegistrationEmail() {
+            const inputs = [...document.querySelectorAll('input[type="email"],input[name*="email" i],input[id*="email" i],input[placeholder*="email" i]')]
+                .filter(isVisible);
+            if (!inputs.length) return null;
+            const scored = inputs.map(input => {
+                let score = 0;
+                const form = input.closest('form');
+                const wrapper = input.closest('.form-group,.mb-3,.form-floating,.input-group,.form-item') || input.parentElement;
+                const attrs = [input.name,input.id,input.placeholder,input.getAttribute('autocomplete')].join(' ').toLowerCase();
+                if (/email/.test(attrs)) score += 3;
+                if (form) {
+                    const formMeta = ((form.id || '') + ' ' + (form.getAttribute('action') || '')).toLowerCase();
+                    if (/regist|daftar|signup|sign-up/.test(formMeta)) score += 10;
+                    if (form.querySelector('input[name*="referral" i],input[name*="rekening" i],input[name*="bank" i],select[name*="bank" i],input[name*="captcha" i]')) score += 8;
+                    if ([...form.querySelectorAll('input[type="password"]')].length >= 2) score += 7;
+                    if (/login|masuk|sign.?in/.test(formMeta)) score -= 15;
+                }
+                const label = [...(input.labels || [])].map(e=>e.textContent).join(' ');
+                if (/^\s*(email|e-mail)\s*\*?\s*$/i.test(label.trim())) score += 3;
+                if (/email/i.test(wrapper?.textContent || '')) score += 1;
+                const header = input.closest('header,nav,[role="navigation"]');
+                if (header) score -= 25;
+                return {input,score};
+            }).sort((a,b)=>b.score-a.score);
+            if (scored.length > 1 && scored[0].score === scored[1].score) return null;
+            return scored[0].input;
+        }
+        function setNativeValue(el, value) {
+            const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+            if (setter) setter.call(el,value);
+            else el.value = value;
+        }
+        function emitEvents(el) {
+            try { el.focus({preventScroll:true}); } catch {}
+            for (const type of ['input','keyup','change']) {
+                const event = type === 'keyup'
+                    ? new KeyboardEvent(type,{bubbles:true,key:'a'})
+                    : new Event(type,{bubbles:true});
+                el.dispatchEvent(event);
+            }
+            try { el.blur(); } catch {}
+        }
+        function statusFromNode(el) {
+            const text = String(el?.innerText || el?.textContent || '').trim().replace(/\s+/g,' ');
+            // Hindari kata seperti 'valid' / 'success' saja: itu bisa hanya validasi format email.
+            if (/(?:email|e-mail)[^.!\n]{0,70}(?:sudah|telah)[^.!\n]{0,35}(?:digunakan|dipakai|terdaftar)|(?:email|e-mail)[^.!\n]{0,60}(?:already|is already)[^.!\n]{0,35}(?:used|taken|registered|exists)|(?:email|e-mail)[^.!\n]{0,55}(?:tidak tersedia|not available|unavailable)|(?:already used|already registered)[^.!\n]{0,40}(?:email|e-mail)/i.test(text))
+                return {state:'err',message:'Status tidak tersedia terdeteksi pada area email.'};
+            if (/(?:email|e-mail)[^.!\n]{0,55}(?:belum digunakan|belum terdaftar|tersedia|available|not used|not registered|is free)|(?:tersedia|available)[^.!\n]{0,35}(?:email|e-mail)/i.test(text))
+                return {state:'ok',message:'Status tersedia terdeteksi pada area email.'};
+            return null;
+        }
+        function inspectEmailArea(el) {
+            // Scoped: jangan baca teks seluruh halaman, icon global, atau border hijau format.
+            const candidates = [];
+            const selectors = ['.form-group','.form-floating','.form-item','.input-group','.field','.mb-3','.mb-4','[class*="field"]','[class*="form-group"]'];
+            let cur=el.parentElement;
+            for (let i=0;cur && i<4 && cur!==document.body;i++,cur=cur.parentElement) {
+                if (cur.querySelectorAll('input').length > 2) break;
+                if (selectors.some(sel=>cur.matches?.(sel)) || i<=1) candidates.push(cur);
+            }
+            for (const node of candidates) {
+                const res = statusFromNode(node);
+                if (res) return res;
+            }
+            // Icon di area email bisa bermakna validasi format saja. Jangan menganggap
+            // sekadar centang hijau sebagai bukti server memastikan email unik.
+            return null;
+        }
+        async function waitForEmail(max=14000) {
+            const end=Date.now()+max;
+            while (Date.now() < end) {
+                const field=findRegistrationEmail();
+                if (field) return field;
+                await delay(350);
+            }
+            return null;
+        }
+        function isAllowedMessage(event) {
+            return event.source === window.parent && event.origin === ALLOWED_PARENT;
+        }
+        window.addEventListener('message', async event => {
+            if (!isAllowedMessage(event)) return;
+            const d=event.data;
+            if (!d || typeof d !== 'object') return;
+            if (d.type === 'gopath-bridge-ping-v113') {
+                send('gopath-bridge-ready-v113');
+                return;
+            }
+            if (d.type !== 'gopath-check-email-v113') return;
+            const email=String(d.email||'').trim().toLowerCase();
+            const requestId=String(d.requestId||'');
+            if (!requestId || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+                send('gopath-email-result-v113',{requestId,state:'unknown',message:'Format email tidak sesuai.'});
+                return;
+            }
+            if (lastRequest === requestId) return;
+            lastRequest=requestId;
+            const token=++currentToken;
+            const input=await waitForEmail(3500);
+            if (token!==currentToken) return;
+            if (!input) {
+                send('gopath-email-result-v113',{requestId,state:'unknown',message:'Input Email pada formulir pendaftaran tidak ditemukan.'});
+                return;
+            }
+            // Set kosong lebih dahulu untuk membersihkan indikator pemeriksaan sebelumnya.
+            setNativeValue(input,''); emitEvents(input);
+            await delay(80);
+            if (token!==currentToken) return;
+            setNativeValue(input,email);
+            emitEvents(input);
+            const end=Date.now()+9000;
+            while (Date.now()<end) {
+                if (token!==currentToken) return;
+                await delay(350);
+                const value=String(input.value||'').trim().toLowerCase();
+                if (value!==email) {
+                    send('gopath-email-result-v113',{requestId,state:'unknown',message:'Kolom Email berubah ketika diperiksa.'});
+                    return;
+                }
+                const result=inspectEmailArea(input);
+                if (result) {
+                    send('gopath-email-result-v113',{requestId,...result});
+                    return;
+                }
+            }
+            send('gopath-email-result-v113',{requestId,state:'unknown',message:'Tidak ditemukan keterangan tersedia/terdaftar yang spesifik untuk Email.'});
+        });
+        // Siapkan bridge tanpa membuka tab. Selalu beri sinyal siap setelah listener terpasang.
+        send('gopath-bridge-ready-v113');
+    }
+
+    /* =====================================================================
+       GOPATH EMAIL BACKGROUND WORKER v12 — NO IFRAME
+       - Proses nyata terjadi di tab register, bukan HTML hasil fetch.
+       - Hanya validasi satu email yang dipaste; tidak submit pendaftaran.
+       - Hasil hijau hanya jika ada bukti status ketersediaan dari server.
+       ===================================================================== */
+    function installGopathBackgroundWorker() {
+        if (window.top !== window.self || typeof GM_addValueChangeListener !== 'function') return;
+        if (window.__tmGopathWorkerV12) return;
+        window.__tmGopathWorkerV12 = true;
+
+        const REQ = 'tm_gopath_email_req_v12';
+        const RES = 'tm_gopath_email_res_v12';
+        const HB = 'tm_gopath_email_heartbeat_v12';
+        const workerId = Math.random().toString(36).slice(2);
+        const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+        let serial = 0;
+        let currentEmail = '';
+        let startAt = 0;
+        let networkResponses = [];
+
+        function heartbeat() {
+            try { GM_setValue(HB, {at:Date.now(), workerId, url:location.origin+location.pathname}); } catch {}
+        }
+        heartbeat();
+        setInterval(heartbeat, 1700);
+
+        function findRealEmail() {
+            const fields = [...document.querySelectorAll('input[type="email"], input[name*="email" i], input[id*="email" i],input[placeholder*="email" i]')]
+                .filter(el => !el.disabled && !el.readOnly && el.type !== 'hidden' && el.getClientRects().length);
+            const scored = fields.map(el => {
+                const f = el.form || el.closest('form');
+                const meta = [el.name, el.id, el.placeholder].join(' ').toLowerCase();
+                const fmeta = f ? [f.id,f.getAttribute('action')].join(' ').toLowerCase() : '';
+                let score = /email/.test(meta) ? 5 : 0;
+                if (f && /register|regist|daftar|signup|sign-up/.test(fmeta)) score += 10;
+                if (f && f.querySelectorAll('input[type="password"]').length >= 2) score += 8;
+                if (f && f.querySelector('select[name*="bank" i],input[name*="rekening" i],input[name*="referral" i]')) score += 8;
+                if (el.closest('header,nav,[role="navigation"]')) score -= 20;
+                if (/login|signin|sign-in|masuk/.test(fmeta)) score -= 20;
+                return {el,score};
+            }).sort((a,b)=>b.score-a.score);
+            if (!scored.length || (scored.length > 1 && scored[0].score === scored[1].score)) return null;
+            return scored[0].el;
+        }
+
+        function writeInput(el, value) {
+            const page = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+            const setter = Object.getOwnPropertyDescriptor(page.HTMLInputElement.prototype,'value')?.set;
+            if (setter) setter.call(el, value); else el.value = value;
+            try { el.focus({preventScroll:true}); } catch {}
+            try { el.dispatchEvent(new page.InputEvent('input',{bubbles:true,inputType:'insertText',data:value})); }
+            catch { el.dispatchEvent(new Event('input',{bubbles:true})); }
+            el.dispatchEvent(new page.Event('change',{bubbles:true}));
+            el.dispatchEvent(new page.KeyboardEvent('keyup',{bubbles:true,key:'Tab'}));
+            try { el.blur(); } catch {}
+        }
+
+        // Hindari respons login/password dan respons check lain; kenali hanya
+        // keterangan ketersediaan email yang muncul sesudah input diganti.
+        function classifyMessage(text) {
+            text = String(text || '').replace(/\s+/g,' ').slice(0,500);
+            if (/(?:email|e-mail)[^.!]{0,85}(?:sudah|telah)\s*(?:di)?(?:gunakan|pakai|daftar)|(?:email|e-mail)[^.!]{0,75}(?:already|taken|exists|used|registered|not available)|(?:email|e-mail)[^.!]{0,85}(?:tidak tersedia)|(?:sudah\s*terdaftar|already\s*(?:used|registered|taken))[^.!]{0,40}(?:email|e-mail)/i.test(text)) {
+                return {state:'err',message:'Situs menyatakan email sudah terdaftar.'};
+            }
+            if (/(?:email|e-mail)[^.!]{0,85}(?:belum\s*(?:di)?gunakan|belum\s*terdaftar|tersedia|available|not\s*(?:used|registered)|is\s*free)|(?:tersedia|available)[^.!]{0,35}(?:email|e-mail)/i.test(text)) {
+                return {state:'ok',message:'Situs menyatakan email tersedia.'};
+            }
+            return null;
+        }
+
+        function classifyNetwork(entry, email) {
+            // Harus ada kaitan dengan input email, bukan response umum dari halaman.
+            const context = (entry.url+' '+entry.request).toLowerCase();
+            const responseText = String(entry.response || '');
+            const emailRelated = /(?:email|e-mail|check.?mail|validate.?mail)/i.test(context);
+            const exactEmail = context.includes(email.toLowerCase());
+            if (!emailRelated && !exactEmail) return null;
+            // Hanya tanggapan request yang DIMULAI setelah email baru ditempel.
+            if ((entry.sentAt || entry.at) < startAt || entry.at > Date.now()) return null;
+            let decoded = context;
+            try { decoded = decodeURIComponent(context.replace(/\+/g,' ')); } catch {}
+            // Tolak respons untuk email berbeda/permintaan lama.
+            const mentionedEmails = decoded.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi) || [];
+            if (mentionedEmails.length && !mentionedEmails.includes(email.toLowerCase())) return null;
+            const explicit = classifyMessage(responseText);
+            if (explicit) return explicit;
+            if (!emailRelated || !/check|validat|exists|available|unique|used|taken|email/i.test(entry.url)) return null;
+            let obj;
+            try { obj = JSON.parse(responseText); } catch { return null; }
+            if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+            const known = obj.data && typeof obj.data === 'object' && !Array.isArray(obj.data) ? obj.data : obj;
+            if (known.email && String(known.email).toLowerCase() !== email) return null;
+            const pairs = [['available',true,'ok'],['available',false,'err'],
+                ['exists',true,'err'],['exists',false,'ok'],
+                ['taken',true,'err'],['taken',false,'ok'],
+                ['is_available',true,'ok'],['is_available',false,'err'],
+                ['is_unique',true,'ok'],['is_unique',false,'err'],
+                ['email_exists',true,'err'],['email_exists',false,'ok']];
+            for (const [key,val,state] of pairs) {
+                if (Object.prototype.hasOwnProperty.call(known,key) && known[key] === val) {
+                    return {state,message:'Respons validasi email diterima dari Gopath.'};
+                }
+            }
+            for (const key of ['message','error','email_error','email_message']) {
+                if (typeof known[key] === 'string') {
+                    const found = classifyMessage(known[key]);
+                    if (found) return found;
+                }
+            }
+            return null;
+        }
+
+        function inspectEmailArea(input) {
+            let node = input.parentElement;
+            for (let depth=0; node && node !== document.body && depth < 4; depth++, node=node.parentElement) {
+                if (node.querySelectorAll('input').length > 2) break;
+                const text = (node.innerText || node.textContent || '').slice(0,500);
+                const explicit = classifyMessage(text);
+                if (explicit) return explicit;
+            }
+            // Jika ada panggilan validasi email dari situs, indikator visual
+            // yang terkait hanya dengan kolom Email boleh digunakan. Tanpa
+            // panggilan itu, centang bisa sekadar menandakan format benar.
+            const hasEmailAjax = networkResponses.some(entry =>
+                (entry.sentAt || entry.at) >= startAt && /email|e-mail|check.?mail|validat/i.test(entry.url+' '+entry.request));
+            if (!hasEmailAjax) return null;
+            let area = input.parentElement;
+            for (let depth=0; area && area!==document.body && depth<3; ++depth,area=area.parentElement) {
+                if (area.querySelectorAll('input').length>1) break;
+                const icons = [...area.querySelectorAll('svg,i,[class*="icon"],[class*="feedback"],[class*="check"],[class*="cross"]')];
+                for (const ico of icons) {
+                    if (ico === input) continue;
+                    if (getComputedStyle(ico).display==='none' || getComputedStyle(ico).visibility==='hidden') continue;
+                    const attr = [ico.getAttribute('class'),ico.getAttribute('aria-label'),ico.getAttribute('title'),ico.getAttribute('data-icon')].join(' ').toLowerCase();
+                    const glyph=(ico.textContent||'').trim();
+                    if (/fa-times|fa-xmark|bi-x|circle-x|close-circle|icon-error|icon-invalid|text-danger|text-red|is-invalid|invalid-feedback/i.test(attr) || /^[✕×✖❌]$/.test(glyph))
+                        return {state:'err',message:'Indikator X pada kolom Email muncul setelah validasi situs.'};
+                    if (/fa-check|bi-check|check-circle|circle-check|icon-success|icon-valid|text-success|text-green|valid-feedback/i.test(attr) || /^[✓✔]$/.test(glyph))
+                        return {state:'ok',message:'Indikator centang Email muncul setelah validasi situs.'};
+                }
+            }
+            return null;
+        }
+
+        // Sniffer untuk respons AJAX yang dihasilkan oleh validator asli pada situs.
+        // Tidak membuat request registrasi atau menebak endpoint API.
+        function installNetworkObserver() {
+            try {
+                const page = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+                if (page.__tmEmailNetV12) return;
+                page.__tmEmailNetV12 = true;
+                const bodyText = body => {
+                    if (!body) return '';
+                    if (typeof body === 'string') return body;
+                    try { if (typeof body.entries === 'function') return [...body.entries()].map(([k,v])=>k+'='+v).join('&'); }
+                    catch {}
+                    return String(body);
+                };
+                if (typeof page.fetch === 'function') {
+                    const fetch0 = page.fetch;
+                    page.fetch = function(...args) {
+                        const requestUrl = String(typeof args[0] === 'string' ? args[0] : args[0]?.url || '');
+                        const requestBody = bodyText(args[1]?.body);
+                        const sentAt=Date.now();
+                        return fetch0.apply(this,args).then(res => {
+                            try {
+                                if (res.ok) res.clone().text().then(body => {
+                                    networkResponses.push({at:Date.now(),sentAt,url:requestUrl,request:requestBody,response:body.slice(0,10000)});
+                                    networkResponses=networkResponses.slice(-25);
+                                }).catch(()=>{});
+                            } catch {}
+                            return res;
+                        });
+                    };
+                }
+                const proto = page.XMLHttpRequest?.prototype;
+                if (proto && proto.open && proto.send) {
+                    const open0 = proto.open, send0 = proto.send;
+                    proto.open = function(method,url,...rest) {
+                        this.__tmCheckUrlV12 = String(url||'');
+                        return open0.call(this,method,url,...rest);
+                    };
+                    proto.send = function(body) {
+                        const requestBody = bodyText(body);
+                        const sentAt = Date.now();
+                        this.addEventListener('load', function() {
+                            try {
+                                if (this.status >= 200 && this.status < 300 && typeof this.responseText === 'string') {
+                                    networkResponses.push({at:Date.now(),sentAt,url:this.__tmCheckUrlV12||'',request:requestBody,response:this.responseText.slice(0,10000)});
+                                    networkResponses=networkResponses.slice(-25);
+                                }
+                            } catch {}
+                        });
+                        return send0.call(this,body);
+                    };
+                }
+            } catch {}
+        }
+        installNetworkObserver();
+
+        async function check(req) {
+            if (!req || typeof req !== 'object' || !req.id || !req.email) return;
+            if (!req.at || Date.now() - req.at > 60000) return;
+            const token = ++serial;
+            const email = String(req.email).trim().toLowerCase();
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return;
+            function send(state,message) {
+                if (serial !== token) return;
+                try { GM_setValue(RES,{id:req.id,email,state,message,at:Date.now()}); } catch {}
+            }
+            currentEmail = email;
+            const lookupUntil = Date.now() + 9000;
+            let input = findRealEmail();
+            while (!input && Date.now() < lookupUntil && serial===token) {
+                await delay(180);
+                input = findRealEmail();
+            }
+            if (serial!==token) return;
+            if (!input) { send('unknown','Kolom email pendaftaran tidak ditemukan di halaman Gopath.'); return; }
+            // Kosongkan sebelumnya untuk menghindari status tersisa dari email lama.
+            writeInput(input,'');
+            await delay(35);
+            if (serial!==token) return;
+            networkResponses=[];
+            startAt=Date.now();
+            writeInput(input,email);
+            const deadline = Date.now()+6500;
+            let candidate = null;
+            let candidateAt = 0;
+            while (Date.now()<deadline && serial===token) {
+                await delay(75);
+                if (input.value.trim().toLowerCase() !== email) {
+                    send('unknown','Kolom email berubah selama pengecekan.'); return;
+                }
+                let finding = null;
+                for (const net of networkResponses) {
+                    finding=classifyNetwork(net,email);
+                    if (finding) break;
+                }
+                if (!finding) finding=inspectEmailArea(input);
+                if (finding) {
+                    if (!candidate || candidate.state!==finding.state) {candidate=finding;candidateAt=Date.now();}
+                    // Beri jeda pendek untuk memastikan UI tidak sekadar transisi.
+                    if (Date.now()-candidateAt>=125) {send(candidate.state,candidate.message);return;}
+                }
+            }
+            if (serial===token) send('unknown','Validator situs tidak memberikan konfirmasi bahwa email tersedia/sudah dipakai. Centang format saja tidak dianggap cukup.');
+        }
+
+        GM_addValueChangeListener(REQ, (_name,_old,newValue) => check(newValue));
+        // Permintaan dapat dikirim sebelum tab selesai dimuat.
+        try { check(GM_getValue(REQ,null)); } catch {}
     }
 
 })();
