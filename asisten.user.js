@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LiveChat • Pengingat Member
 // @namespace    local.livechat.pengingat
-// @version      2.4.0
+// @version      2.7.0
 // @description  Pengingat lokal dari pesan member setelah Started - Today. Tidak mengirim chat atau mengubah akun.
 // @match        https://my.livechatinc.com/*
 // @run-at       document-idle
@@ -62,6 +62,60 @@
   const ADMIN_PATHS = ['/agentplayerlist.php','/agentplayerlist_old.php'];
   const resetIntent = /\b(?:lupa|reset|riset|ganti|ubah)\s+(?:pass?wo?rd|password|pasword|pasw[oa]rd|kata\s+sandi)\b/i;
   const accountLabel = /(?:nomor\s*rekening|no\.?\s*(?:rekening|rek)\b|norek\b|rekening\b|account\s*(?:number|no\.?))/i;
+
+  const usernameIntent=/\blupa\s+(?:username|user\s*name|user\s*id)\b/i;
+  // Inspect sent agent messages only; never retain the password value.
+  function sentCompletion(messages){
+    let request='',complete='';
+    for(const m of messages){
+      if(m.kind==='member'){
+        if(resetIntent.test(m.text)){request='password';complete='';}
+        else if(usernameIntent.test(m.text)){request='username';complete='';}
+        continue;
+      }
+      if(m.kind!=='agent'||!request)continue;
+      const t=m.text;
+      const uid=t.match(/\buser\s*id[^\S\r\n]*:[^\S\r\n]*([a-z0-9_.-]{3,40})\b/i);
+      if(!uid || /^(?:password|note|silahkan|silakan|userid|username)$/i.test(uid[1]))continue;
+      const note=/\bnote\s*:[\s\S]*saran\s+kami[\s\S]*di\s*simpan[\s\S]*memo\s+anda/i.test(t);
+      const password=/\bpass?word[^\S\r\n]*:[^\S\r\n]*[^\s:]+/i.test(t);
+      if(request==='password'&&password&&note)complete='password';
+      if(request==='username'&&!/\bpass?word[^\S\r\n]*:/i.test(t)&&note)complete='username';
+    }
+    return complete;
+  }
+  const conversationDonePrefix='lc-conversation-completed-v1:';
+  const conversationDoneMemory=new Map();
+  function conversationDone(chat=route){
+    if(conversationDoneMemory.has(chat))return conversationDoneMemory.get(chat);
+    try{
+      const saved=JSON.parse(localStorage.getItem(conversationDonePrefix+chat)||'null');
+      if(saved&&['password','username'].includes(saved.type)){conversationDoneMemory.set(chat,saved);return saved;}
+    }catch{}
+    return null;
+  }
+  function applyConversationDone(done){
+    cancelAccount();accountShowResult=false;
+    const saved=cachedAccount();
+    accountState={...(saved||accountState),active:true,phase:'done',completed:true,conversationCompleted:true,requestType:done.type,stored:done.stored!==false,savedAt:saved?.savedAt||done.time,options:[]};
+    if(!saved){
+      accountState.now='Pengecekan dihentikan';accountState.old='Percakapan selesai';
+      accountState.message='Balasan penyelesaian sudah terkirim.';
+    }
+    if(saved)saveAccountResult();
+    cards=cards.filter(c=>!['password','username'].includes(c.type));render();drawAccount();
+    if(!cards.length)$('bubble').classList.remove('unread');
+  }
+  function markConversationDone(type){
+    let done=conversationDone();
+    if(!done||done.type!==type){
+      done={type,time:Date.now(),stored:true};
+      try{localStorage.setItem(conversationDonePrefix+route,JSON.stringify(done));}catch{done.stored=false;}
+      conversationDoneMemory.set(route,done);
+    }
+    if(!accountState.conversationCompleted)applyConversationDone(done);
+  }
+
   function cleanAccount(value){
     return String(value||'').normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/[^0-9]/g,'');
   }
@@ -222,15 +276,20 @@
     }
     return {userid,referral,bank,holder,number};
   }
+  function exactAccountCell(value,number){
+    const raw=String(value||'').normalize('NFKC').trim();
+    return /^[0-9\s.,()/-]+$/.test(raw)&&cleanAccount(raw)===number;
+  }
   function resultAt(page,number){
     let verified=false;
     try{verified=cleanAccount(accountField(page.doc).value)===number;}catch{}
+    const emptyText=t=>/^(?:tidak ada data|data tidak ditemukan|data kosong|no data(?: available)?(?: in table)?|no records(?: found)?|no matching records found|0 records)[.!\s]*$/i.test(t);
     let emptyEvidence=false,tableSeen=false,rowsSeen=false;
     for(const table of page.doc.querySelectorAll('table')){
       const rows=[...table.rows].filter(r=>r.closest('table')===table);
       const header=rows.findIndex(r=>{
         const labels=[...r.cells].map(adminText);
-        return labels.some(t=>/^(?:user\s*id|userid|username|player)$/i.test(t))&&labels.some(t=>/^(?:nomor\s*rekening|no\.?\s*rek(?:ening)?|rekening|bank(?:\s*account)?|bank\s*\/\s*e-wallet)$/i.test(t));
+        return labels.some(t=>/^(?:user\s*id|userid|username|player)$/i.test(t))&&labels.some(t=>/^(?:nomor\s*rekening|no\.?\s*rek(?:ening)?|rekening|norek|bank(?:\s*account)?|bank\s*\/\s*e-wallet)$/i.test(t));
       });
       if(header<0)continue;tableSeen=true;
       const labels=[...rows[header].cells].map(adminText);
@@ -238,22 +297,25 @@
       const bank=labels.findIndex(t=>/^bank(?:\s*account|\s*\/\s*e-wallet)?$/i.test(t));
       for(const row of rows.slice(header+1)){
         const txt=adminText(row);
-        if(/^(?:tidak ada data|data tidak ditemukan|no data(?: available)?|no records(?: found)?|no matching records found|data kosong)[.!\s]*$/i.test(txt)){emptyEvidence=true;continue;}
-        if(!row.cells.length||[...row.cells].every(c=>c.tagName==='TH'))continue;
+        if(emptyText(txt)){emptyEvidence=true;continue;}
+        if(!txt||!row.cells.length||[...row.cells].every(c=>c.tagName==='TH'))continue;
         rowsSeen=true;
-        if(nr>=0 && row.cells[nr]?.colSpan===1 && cleanAccount(adminText(row.cells[nr]))===number)return {state:'found',record:recordFromRow(row,labels,number)};
-        if(bank>=0 && row.cells[bank]?.colSpan===1){
+        const record=recordFromRow(row,labels,number);
+        if(!/^[a-z0-9_.-]{3,40}$/i.test(record.userid)||/^(?:total|userid|username|no|data)$/i.test(record.userid))continue;
+        if(nr>=0&&row.cells[nr]?.colSpan===1&&exactAccountCell(adminText(row.cells[nr]),number))return {state:'found',record};
+        if(bank>=0&&row.cells[bank]?.colSpan===1){
           const cell=row.cells[bank].cloneNode(true);cell.querySelectorAll('br').forEach(e=>e.replaceWith('\n'));
-          const chunks=cell.textContent.split(/[\r\n,;]+/).map(t=>t.trim());
-          if(chunks.some(t=>/^[\d\s.\-()]+$/.test(t)&&cleanAccount(t)===number))return {state:'found',record:recordFromRow(row,labels,number)};
+          const chunks=cell.textContent.split(/[\r\n,;]+/).map(t=>t.trim()).filter(Boolean);
+          // Combined Bank column: bank, holder, account. Never match holder digits.
+          const last=chunks[chunks.length-1];
+          if(chunks.length>=2&&exactAccountCell(last,number))return {state:'found',record};
         }
       }
     }
-    // No matching row alone is NOT proof of absence (pagination / filters / JS).
-    const emptyNodes=[...page.doc.querySelectorAll('[role="status"],.dataTables_empty,td,p,div')].filter(e=>e.children.length===0);
-    const explicit=emptyNodes.some(e=>/^(?:tidak ada data|data tidak ditemukan|no data available in table|no matching records found|no records found|0 records|total\s*:?\s*0(?:\s*(?:data|records|pemain))?)[.!\s]*$/i.test(adminText(e)));
-    if(verified && (emptyEvidence||explicit) && (!rowsSeen||emptyEvidence))return {state:'absent'};
-    return {state:'unknown',message:tableSeen?'Nomor tidak cocok pada hasil yang terbaca, tetapi hasil kosong belum terkonfirmasi.':'Tabel hasil admin belum dikenali.'};
+    // An empty indicator must belong to a recognized player table, and the
+    // response must echo this exact account search. Unrelated "Total: 0" is ignored.
+    if(verified&&tableSeen&&emptyEvidence&&!rowsSeen)return {state:'absent'};
+    return {state:'unknown',message:tableSeen?'Tidak ada kecocokan persis yang terbaca; hasil kosong belum terkonfirmasi.':'Tabel hasil admin belum dikenali.'};
   }
   async function lookupAt(path,number){
     const page=await fetchAdmin(ADMIN_ORIGIN+path);
@@ -262,6 +324,8 @@
   }
 
 
+  let liveChatContext=null,selectionTimer=null,selectionDragging=false,selectionKeyboard=false;
+  const selectionPins=new Map();
   let accountShowResult=false;
   const accountCachePrefix='lc-account-results-v1:';
   const accountCacheMemory=new Map();
@@ -276,11 +340,17 @@
   function cachedAccount(number='',chat=route){
     const data=readAccountCache(chat),result=data.results[number||data.latest];
     if(!result||!/^\d{5,25}$/.test(result.number)||!['done','error'].includes(result.phase))return null;
+    // Older versions cached a stop at Now without ever searching Old.
+    // Retry those incomplete entries once under the corrected lookup flow.
+    if(!result.lookupRevision && result.now!=='TERDAFTAR' && /^(?:Belum dicek|Menunggu hasil Now)$/i.test(result.old||''))return null;
+    // Refresh old negative results once using stricter, table-scoped evidence.
+    if((result.lookupRevision||0)<2&&result.now==='DI PEMAIN NOW TIDAK ADA'&&result.old==='DI PEMAIN OLD TIDAK ADA'&&!result.completed)return null;
     return JSON.parse(JSON.stringify(result));
   }
   function saveAccountResult(){
     if(!accountState.number||!['done','error'].includes(accountState.phase))return;
     const data=readAccountCache();
+    accountState.lookupRevision=2;
     accountState.savedAt=accountState.savedAt||Date.now();
     accountState.stored=true;
     data.version=1;data.latest=accountState.number;
@@ -295,7 +365,7 @@
     const data=readAccountCache();if(data.latest!==result.number){data.latest=result.number;try{localStorage.setItem(accountCachePrefix+route,JSON.stringify(data));}catch{}}
     drawAccount();return true;
   }
-  function isAccountFinished(chat=route){return Boolean(cachedAccount('',chat)?.completed);}
+  function isAccountFinished(chat=route){return Boolean(conversationDone(chat)||cachedAccount('',chat)?.completed);}
   function finishAccount(){
     if(location.pathname!==route){scan();return;}
     if(!['done','error'].includes(accountState.phase))return;
@@ -312,7 +382,8 @@
   function resetAccount(){
     cancelAccount();accountFingerprint='';
     accountState={active:false,options:[],number:'',phase:'idle',now:'Belum dicek',old:'Menunggu hasil Now',message:''};
-    if(!restoreAccountResult())drawAccount();
+    const finished=conversationDone();
+    if(finished)applyConversationDone(finished);else if(!restoreAccountResult())drawAccount();
   }
   function drawAccount(){
     const el=$('account');if(!el)return;
@@ -322,18 +393,18 @@
     if(accountState.completed&&!accountShowResult){
       const icon=document.createElement('div');icon.className='finished-icon';icon.textContent='✓';
       const eyebrow=document.createElement('div');eyebrow.className='finished-eyebrow';eyebrow.textContent='CHAT SUDAH DITANGANI';
-      const title=document.createElement('strong');title.className='finished-title';title.textContent='Pencarian selesai';
-      const note=document.createElement('p');note.textContent='Hasil tetap tersimpan, bosku. Kembali ke chat ini tidak akan menjalankan pencarian ulang.';
+      const title=document.createElement('strong');title.className='finished-title';title.textContent=accountState.conversationCompleted?'Percakapan selesai':'Pencarian selesai';
+      const note=document.createElement('p');note.textContent=accountState.conversationCompleted?'Balasan penyelesaian sudah terkirim, bosku. Hasil tersimpan dan tidak dicari ulang.':'Hasil tetap tersimpan, bosku. Kembali ke chat ini tidak akan menjalankan pencarian ulang.';
       const actions=document.createElement('div');actions.className='finished-actions';
       const view=document.createElement('button');view.id='account-view';view.className='view-result';view.textContent='Lihat hasil';
       view.onclick=()=>{accountShowResult=true;drawAccount();};
       const retry=document.createElement('button');retry.id='account-retry';retry.textContent='Cek ulang';retry.onclick=()=>runAccount(accountState.number,true);
-      actions.append(view,retry);el.append(icon,eyebrow,title,note,actions);
+      if(accountState.number)actions.append(view,retry);el.append(icon,eyebrow,title,note,actions);
       const foot=document.createElement('small');foot.className='finished-foot';
       foot.textContent=accountState.stored?'✓ Tersimpan untuk chat ini':'Tersimpan selama halaman ini terbuka';
       el.append(foot);return;
     }
-    const heading=document.createElement('div');heading.className='category';heading.textContent='RESET PASSWORD • CEK REKENING';el.append(heading);
+    const heading=document.createElement('div');heading.className='category';heading.textContent=accountState.requestType==='username'?'LUPA USERNAME • CEK REKENING':'RESET PASSWORD • CEK REKENING';el.append(heading);
     if(accountState.savedAt){
       const saved=document.createElement('div');saved.className='saved-result';
       saved.textContent=(accountState.completed?'✓ Selesai · ':'✓ ')+(accountState.stored?'Hasil tersimpan':'Tersimpan selama halaman terbuka');
@@ -346,6 +417,12 @@
     for(const [name,value] of [['NOW',accountState.now],['OLD',accountState.old]]){
       const line=document.createElement('div'),label=document.createElement('b'),valueEl=document.createElement('span');line.dataset.state=/GAGAL|BELUM BISA/.test(value)?'error':/TIDAK ADA/.test(value)?'empty':/TERDAFTAR/.test(value)?'found':/Sedang/.test(value)?'loading':'idle';label.textContent=name;valueEl.textContent=value;line.append(label,valueEl);status.append(line);
     }el.append(status);
+    if(accountState.now==='DI PEMAIN NOW TIDAK ADA'&&accountState.old==='DI PEMAIN OLD TIDAK ADA'){
+      const absent=document.createElement('div');absent.className='not-registered';
+      const title=document.createElement('strong');title.textContent='TIDAK TERDAFTAR';
+      const note=document.createElement('span');note.textContent='Nomor rekening tidak ditemukan di admin Now maupun Old.';
+      absent.append(title,note);el.append(absent);
+    }
     if(accountState.record){
       const record=accountState.record;
       const card=document.createElement('section');card.className='player-result';
@@ -388,42 +465,65 @@
     if(paused){setStatus('Klik Lanjut sebelum mengecek rekening.');return;}
     cancelAccount();accountShowResult=false;const epoch=accountEpoch,chat=route;
     const current=()=>epoch===accountEpoch&&chat===route&&location.pathname===chat;
-    accountState={...accountState,number,record:null,source:'',savedAt:null,stored:false,completed:false,fromCache:false,phase:'loading',now:'Sedang mencari…',old:'Menunggu hasil Now',message:'Membersihkan filter dan mencari Nomor Rekening di Pemain Now.'};drawAccount();
+    accountState={...accountState,number,record:null,source:'',savedAt:null,stored:false,completed:false,conversationCompleted:false,completionRefresh:force&&Boolean(conversationDone()),fromCache:false,phase:'loading',now:'Sedang mencari…',old:'Menunggu hasil Now',message:'Membersihkan filter dan mencari Nomor Rekening di Pemain Now.'};drawAccount();
     try{
       const now=await lookupAt(ADMIN_PATHS[0],number);if(!current())return;
       if(now.state==='found'){
-        accountState.record=now.record;accountState.source='NOW';accountState.now='TERDAFTAR';accountState.old='Tidak perlu dicek';accountState.message='Rekening ditemukan di Pemain Now. Cocokkan identitas member sebelum reset password.';
-      }else if(now.state==='absent'){
-        accountState.now='DI PEMAIN NOW TIDAK ADA';accountState.old='Sedang mencari…';accountState.message='Lanjut mencari Nomor Rekening di Pemain Old.';drawAccount();
-        const old=await lookupAt(ADMIN_PATHS[1],number);if(!current())return;
-        accountState.record=old.state==='found'?old.record:null;accountState.source=old.state==='found'?'OLD':'';
-        accountState.old=old.state==='found'?'TERDAFTAR':old.state==='absent'?'DI PEMAIN OLD TIDAK ADA':'BELUM BISA DIPASTIKAN';
-        accountState.message=old.state==='found'?'Rekening hanya ditemukan di Pemain Old.':old.state==='absent'?'Rekening tidak ditemukan di Pemain Now maupun Pemain Old.':old.message;
+        accountState.record=now.record;accountState.source='NOW';accountState.now='TERDAFTAR';accountState.old='Tidak perlu dicek';accountState.message=accountState.requestType==='username'?'Rekening ditemukan di Pemain Now. Berikan User ID saja setelah cocok; jangan reset password.':'Rekening ditemukan di Pemain Now. Cocokkan identitas member sebelum reset password.';
       }else{
-        accountState.now='BELUM BISA DIPASTIKAN';accountState.old='Belum dicek';accountState.message=now.message;
+        // Both confirmed empty and unrecognized/no exact match continue to Old.
+        // Do not mislabel an unrecognized response as confirmed absence.
+        const nowAbsent=now.state==='absent';
+        accountState.now=nowAbsent?'DI PEMAIN NOW TIDAK ADA':'BELUM ADA KECOCOKAN TERBACA';
+        accountState.old='Sedang mencari…';
+        accountState.message='Lanjut mencari Nomor Rekening di Pemain Old.';drawAccount();
+        const old=await lookupAt(ADMIN_PATHS[1],number);if(!current())return;
+        accountState.record=old.state==='found'?old.record:null;
+        accountState.source=old.state==='found'?'OLD':'';
+        accountState.old=old.state==='found'?'TERDAFTAR':old.state==='absent'?'DI PEMAIN OLD TIDAK ADA':'BELUM BISA DIPASTIKAN';
+        if(old.state==='found'){
+          accountState.message=nowAbsent?'Rekening hanya ditemukan di Pemain Old.':'Rekening ditemukan di Pemain Old. Hasil Now belum dapat dipastikan.';
+        }else if(old.state==='absent'){
+          accountState.message=nowAbsent?'TIDAK TERDAFTAR — nomor rekening tidak ditemukan di admin Now maupun Old.':'Di Pemain Old tidak ada. Hasil Now belum dapat dipastikan.';
+        }else{
+          accountState.message='Pencarian Old sudah dijalankan, tetapi hasilnya belum bisa dipastikan. '+(old.message||'');
+        }
       }
+      if(accountState.requestType==='username'&&accountState.source==='OLD')accountState.message+=' Berikan User ID saja; jangan reset password.';
       accountState.phase='done';
     }catch(e){
       if(!current())return;
       if(accountState.old==='Sedang mencari…')accountState.old='GAGAL DICEK';else accountState.now='GAGAL DICEK';
       accountState.phase='error';accountState.message=e.message;
     }
-    if(current()){saveAccountResult();drawAccount();$('bubble').classList.add('unread');playNotice();}
+    if(current()){if(conversationDone()){accountState.conversationCompleted=true;accountState.completed=true;accountShowResult=false;}accountState.completionRefresh=false;saveAccountResult();drawAccount();$('bubble').classList.add('unread');playNotice();}
   }
   function syncAccount(messages){
-    const active=messages.some(m=>m.kind==='member'&&resetIntent.test(m.text));
+    if(accountState.phase==='loading'&&accountState.completionRefresh)return;
+    const pin=selectionPins.get(route);
+    const completion=sentCompletion(pin?[{kind:'member',text:pin.requestType==='username'?'lupa username':'reset password'},...messages.slice(pin.startIndex)]:messages);
+    if(completion){selectionPins.delete(route);markConversationDone(completion);return;}
+    if(pin){
+      if(accountState.number!==pin.number){accountState.active=true;runAccount(pin.number);}
+      return;
+    }
+    const finished=conversationDone();
+    if(finished){if(!accountState.conversationCompleted)applyConversationDone(finished);return;}
+    const intentMessage=[...messages].reverse().find(m=>m.kind==='member'&&(resetIntent.test(m.text)||usernameIntent.test(m.text)));
+    const requestType=intentMessage&&usernameIntent.test(intentMessage.text)?'username':'password';
+    const active=Boolean(intentMessage);
     if(!active){if(!accountState.savedAt && accountState.active)resetAccount();return;}
-    const found=extractAccounts(messages),fingerprint=JSON.stringify(found);
+    const found=extractAccounts(messages),fingerprint=JSON.stringify({requestType,...found});
     if(accountState.active && fingerprint===accountFingerprint)return;
     accountFingerprint=fingerprint;
     const options=[...new Set([...found.strong,...found.possible])];
     const prior=cachedAccount();
     const candidate=options.length===1?options[0]:prior&&(!options.length||options.includes(prior.number))?prior.number:'';
     if(candidate && restoreAccountResult(candidate)){
-      accountState.options=options;drawAccount();return;
+      accountState.options=options;accountState.requestType=requestType;drawAccount();return;
     }
     cancelAccount();
-    accountState={active:true,options,number:'',phase:'idle',now:'Belum dicek',old:'Menunggu hasil Now',message:options.length>1?'Ada beberapa nomor. Pilih rekening yang benar ya bosku.':!options.length?'Nomor rekening belum terbaca. Tunggu member mengirim rekening atau tempel di bawah.':'Nomor terdeteksi dari chat.'};
+    accountState={active:true,options,requestType,number:'',phase:'idle',now:'Belum dicek',old:'Menunggu hasil Now',message:options.length>1?'Ada beberapa nomor. Pilih rekening yang benar ya bosku.':!options.length?'Nomor rekening belum terbaca. Tunggu member mengirim rekening atau tempel di bawah.':'Nomor terdeteksi dari chat.'};
     drawAccount();
     if(options.length===1){
       const epoch=accountEpoch,number=options[0];
@@ -451,8 +551,9 @@
 .player-result{margin:12px 0;border:1px solid #76bcc4;border-radius:10px;overflow:hidden;background:#f1f8fa;color:#193747}.player-banner{padding:9px 10px;font-size:10px;font-weight:700;letter-spacing:.3px;background:#207f90;color:#fff}.player-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}.player-table th,.player-table td{padding:9px 8px;border-bottom:1px solid #d5e4e9;vertical-align:top;text-align:left;overflow-wrap:anywhere}.player-table th{width:38%;background:#e9f2f5;color:#526f7f;font-size:10px;font-weight:600}.player-table td{background:#fff;color:#173b50;font-weight:600;user-select:text}.player-table .userid-value{color:#12627a;font-weight:800;font-size:15px}.player-table .number-highlight{background:#fff2a6;color:#3e3a1b;font-size:13px;font-weight:800;letter-spacing:.2px}.player-result .copy-player{display:block;width:calc(100% - 16px);margin:8px;padding:7px;background:#e4f0f3;color:#235d70;border-color:#bbd7df;font-size:10px}.player-result .copy-player:hover{background:#d1e7ec}
 #account[data-phase="finished"]{padding:23px 16px 16px;text-align:center;background:radial-gradient(ellipse at 50% 0%,#2e6b5938,transparent 72%),#162d35;border:1px solid #3d6e62;border-radius:14px}.finished-icon{width:46px;height:46px;line-height:44px;margin:0 auto 13px;border:1px solid #6ebe9b;border-radius:50%;background:#3d8f662b;color:#a1ebc4;font-size:25px;box-shadow:0 0 0 6px #3d8f660c}.finished-eyebrow{color:#83b9a6;font-size:8px;letter-spacing:1.6px;font-weight:700;margin-bottom:6px}.finished-title{display:block;color:#e0f8ed;font-size:18px;font-weight:700;letter-spacing:-.3px}#account[data-phase="finished"] p{font-size:11px;line-height:1.7;color:#a3c0b9;margin:9px 0 17px}.finished-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.finished-actions button{margin:0!important;padding:8px!important;font-size:11px!important}.finished-actions .view-result{background:#286457;border-color:#4b917a;color:#e5fff2}.finished-actions #account-retry{background:transparent;border-color:#395e59;color:#a8cbc1}.finished-foot{display:block;border-top:1px solid #ffffff0b;margin-top:14px;padding-top:11px;font-size:9px;color:#76a795}
 #cards{max-height:205px;overflow:auto;scrollbar-width:thin}.card{padding:11px;margin:0 0 8px;border:1px solid #304b60;border-left:3px solid #58b7a8;border-radius:10px;background:#172c3d}.card b{font-size:12px;color:#a1e3d4}.card p{font-size:11px;color:#c2d4e0;line-height:1.65;margin:6px 0}.card[data-tone="waiting"]{border-left-color:#cdaa60}.card[data-tone="waiting"] b{color:#e7cf98}.card[data-tone="review"]{border-left-color:#72a6d2}.card[data-tone="review"] b{color:#b7d5ee}.quote{font-size:10px;color:#8da8bb;margin-top:9px;padding-top:8px;border-top:1px solid #ffffff0b;overflow-wrap:anywhere}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.actions button{font-size:10px;padding:6px 8px}.body>details{border-top:1px solid #ffffff0c;margin-top:13px;padding-top:11px;color:#93adbf;font-size:10px}summary{cursor:pointer}small{display:block;color:#718c9f;font-size:9px;line-height:1.5;margin-top:11px}
+  .not-registered{padding:14px 10px;margin:12px 0;border:1px solid #d7957d88;border-radius:10px;background:#70432d30;text-align:center}.not-registered strong{display:block;color:#ffd0b4;font-size:15px;letter-spacing:.5px}.not-registered span{display:block;color:#d6b9a9;font-size:10px;margin-top:5px;line-height:1.6}
   </style>
-  <section id="panel" hidden><header><strong>✦ Chat Assist <span style="font-size:10px;color:#6ce0c5">2.4</span></strong><button id="close" title="Kecilkan">−</button></header><div class="body"><p id="status">Menunggu chat…</p><div id="account" hidden></div><div id="cards"></div><div class="actions"><button id="scan">Baca ulang</button><button id="pause">Jeda</button><button id="clear">Bersihkan</button><button id="sound" aria-pressed="false">Suara: mati</button></div><details><summary>Pengaturan pembacaan</summary><p>Jika pesan member belum dikenali, isi selector CSS khusus baris pesan member. Selector harus membedakan member dari agen.</p><label>Selector pesan member<input id="member" placeholder="Otomatis berdasarkan penanda pengirim"></label><label>Selector pesan AI / agen (opsional)<input id="agent" placeholder="Penanda khusus pengirim AI / agen"></label><label>Selector area percakapan (opsional)<input id="scope" placeholder="Otomatis dari penanda Started - Today"></label><button id="save">Simpan pengaturan</button> <button id="restore">Tampilkan lagi pengingat selesai</button> <button id="position">Reset posisi bubble</button><small>Hanya membaca pesan yang dimuat di halaman. Jika penanda awal belum ditemukan, gulir chat ke Started - Today lalu klik Baca ulang.</small></details><small>Alt + Shift + B: buka/tutup bubble • pengingat lokal</small></div></section><button id="bubble">✦ Asisten <span id="count">0</span></button>`;
+  <section id="panel" hidden><header><strong>✦ Chat Assist <span style="font-size:10px;color:#6ce0c5">2.7</span></strong><button id="close" title="Kecilkan">−</button></header><div class="body"><p id="status">Menunggu chat…</p><div id="account" hidden></div><div id="cards"></div><div class="actions"><button id="scan">Baca ulang</button><button id="pause">Jeda</button><button id="clear">Bersihkan</button><button id="sound" aria-pressed="false">Suara: mati</button></div><details><summary>Pengaturan pembacaan</summary><p>Jika pesan member belum dikenali, isi selector CSS khusus baris pesan member. Selector harus membedakan member dari agen.</p><label>Selector pesan member<input id="member" placeholder="Otomatis berdasarkan penanda pengirim"></label><label>Selector pesan AI / agen (opsional)<input id="agent" placeholder="Penanda khusus pengirim AI / agen"></label><label>Selector area percakapan (opsional)<input id="scope" placeholder="Otomatis dari penanda Started - Today"></label><button id="save">Simpan pengaturan</button> <button id="restore">Tampilkan lagi pengingat selesai</button> <button id="position">Reset posisi bubble</button><small>Hanya membaca pesan yang dimuat di halaman. Jika penanda awal belum ditemukan, gulir chat ke Started - Today lalu klik Baca ulang.</small></details><small>Blok rekening di chat untuk cek • hasil tersimpan otomatis</small></div></section><button id="bubble">✦ Asisten <span id="count">0</span></button>`;
   const $ = id => ui.getElementById(id);
   $('member').value = cfg.member || ''; $('agent').value = cfg.agent || ''; $('scope').value = cfg.scope || '';
   const completedByChat = new Map(), sources = new Map();
@@ -559,9 +660,10 @@
   }
   function scan(){
     const next=location.pathname;
-    if(next!==route){route=next;baselineReady=false;reset();$('bubble').classList.remove('unread');}
+    if(next!==route){liveChatContext=null;clearTimeout(selectionTimer);route=next;baselineReady=false;reset();$('bubble').classList.remove('unread');}
     host.hidden=!/^\/chats(?:\/|$)/.test(next);
     if(host.hidden || paused) return;
+    liveChatContext=null;
     try{
       let scope=cfg.scope ? document.querySelector(cfg.scope) : null;
       if(cfg.scope && (!scope || !visible(scope))){reset();setStatus('Area percakapan belum ditemukan. Periksa pengaturan.');return;}
@@ -586,6 +688,7 @@
       const transcript = [...candidates.map(e=>({e,kind:'member'})),...agentRows.map(e=>({e,kind:'agent'}))]
         .sort((a,b)=>(a.e.compareDocumentPosition(b.e)&Node.DOCUMENT_POSITION_FOLLOWING)?-1:1)
         .map(m=>({kind:m.kind,text:m.e.innerText||''}));
+      liveChatContext={route,scope,candidates,messages:transcript};
       syncAccount(transcript);
       const context = idContext(transcript);
       const occurrences=new Map(); let added=false;
@@ -595,7 +698,7 @@
         const identity=e.getAttribute('data-message-id') || e.getAttribute('data-event-id') || message+'#'+n;
         for(const [type,re,title,body] of rules){
           if(!re.test(message))continue;
-          if(type==='password'&&isAccountFinished())continue;
+          if(['password','username'].includes(type)&&isAccountFinished())continue;
           const signature=identity+'|'+type;
           sources.set(signature,e);
           if(completed().has(signature))continue;
@@ -683,11 +786,66 @@
     handle.addEventListener('click',e=>{if(moved){e.stopImmediatePropagation();e.preventDefault();moved=false;}},true);
   }
   window.addEventListener('storage',e=>{
+    if(e.key===conversationDonePrefix+route){conversationDoneMemory.delete(route);const done=conversationDone();if(done)applyConversationDone(done);}
     if(e.key===accountCachePrefix+route){
       accountCacheMemory.delete(route);
       if(accountState.phase!=='loading')restoreAccountResult();
     }
   });
+
+  function selectedChatAccount(){
+    const context=liveChatContext,selection=window.getSelection();
+    if(!context||context.route!==route||location.pathname!==route||paused||!selection||selection.isCollapsed||selection.rangeCount!==1)return '';
+    const asElement=node=>node?.nodeType===1?node:node?.parentElement;
+    const anchor=asElement(selection.anchorNode),focus=asElement(selection.focusNode);
+    if(!anchor||!focus||excluded(anchor)||excluded(focus))return '';
+    const row=context.candidates.find(e=>e.isConnected&&e.contains(anchor)&&e.contains(focus));
+    if(!row)return '';
+    const raw=selection.toString().normalize('NFKC').trim();
+    // Selection must be one number, not names, passwords, or multiple messages.
+    if(!raw||raw.length>100||!/^[0-9\p{P}\p{S}\s\u200B-\u200D\uFEFF]+$/u.test(raw))return '';
+    const choices=numberRuns(raw);
+    return choices.length===1?choices[0]:'';
+  }
+  function checkSelectedAccount(){
+    const number=selectedChatAccount();if(!number)return;
+    const previous=selectionPins.get(route);
+    if(previous?.number===number&&accountState.number===number){
+      $('panel').hidden=false;accountShowResult=true;drawAccount();clampPosition();return;
+    }
+    const requestType=accountState.requestType||'password';
+    selectionPins.set(route,{number,requestType,startIndex:liveChatContext.messages.length});
+    // Selecting another number is an explicit new check within this chat.
+    conversationDoneMemory.delete(route);
+    try{localStorage.removeItem(conversationDonePrefix+route);}catch{}
+    accountState.active=true;accountState.requestType=requestType;
+    $('panel').hidden=false;
+    if(restoreAccountResult(number)){
+      accountShowResult=true;drawAccount();
+      setStatus('Nomor ini sudah pernah dicek. Menampilkan hasil tersimpan.');
+    }else{
+      runAccount(number);
+      setStatus('Nomor yang diblok dipilih untuk pencarian Now → Old.');
+    }
+    clampPosition();
+  }
+  function scheduleSelectedAccount(){
+    clearTimeout(selectionTimer);
+    if(selectionDragging||selectionKeyboard)return;
+    const chat=location.pathname;
+    selectionTimer=setTimeout(()=>{if(chat===location.pathname&&chat===route)checkSelectedAccount();},450);
+  }
+  document.addEventListener('selectionchange',scheduleSelectedAccount);
+  document.addEventListener('pointerdown',e=>{
+    if(e.composedPath().includes(host))return;
+    selectionDragging=true;clearTimeout(selectionTimer);
+  },true);
+  document.addEventListener('pointerup',e=>{selectionDragging=false;if(e.composedPath().includes(host))return;scheduleSelectedAccount();},true);
+  document.addEventListener('pointercancel',()=>{selectionDragging=false;clearTimeout(selectionTimer);},true);
+  document.addEventListener('keydown',e=>{if(e.key==='Shift'){selectionKeyboard=true;clearTimeout(selectionTimer);}},true);
+  document.addEventListener('keyup',e=>{if(e.key==='Shift')selectionKeyboard=false;if(e.key==='Shift'||e.key.startsWith('Arrow'))scheduleSelectedAccount();},true);
+  window.addEventListener('blur',()=>{selectionDragging=false;selectionKeyboard=false;clearTimeout(selectionTimer);});
+
   const schedule=()=>{clearTimeout(timer);timer=setTimeout(scan,250);};
   new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true,characterData:true});
   setInterval(scan,1800);window.addEventListener('popstate',schedule);scan();
