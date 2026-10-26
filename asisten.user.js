@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LiveChat • Pengingat Member
 // @namespace    local.livechat.pengingat
-// @version      2.7.0
+// @version      2.45.0
 // @description  Pengingat lokal dari pesan member setelah Started - Today. Tidak mengirim chat atau mengubah akun.
 // @match        https://my.livechatinc.com/*
 // @run-at       document-idle
@@ -12,75 +12,248 @@
 
 (() => {
   'use strict';
+  if(window.top!==window.self)return;
   if (document.getElementById('lc-pengingat-bosku')) return;
+  const isArchive=()=>/^\/archives?(?:\/|$)/.test(location.pathname);
+  const conversationRoute=()=>location.pathname+(isArchive()?location.search+location.hash:'');
+  let intentCorrections={};
+  try{const saved=JSON.parse(localStorage.getItem('lc-intent-corrections-v1')||'{}');if(saved&&typeof saved==='object'&&!Array.isArray(saved))intentCorrections=saved;}catch{}
+  function normalizeMemberLanguage(value){
+    return String(value||'').normalize('NFKC').toLowerCase().replace(/[\u200B-\u200D\uFEFF]/g,'')
+      .replace(/\b(?:lupaa+|lupah|lupaak)\b/g,'lupa')
+      .replace(/\b(?:pasword|paswrod|pasworrd|paswod|paswrd|passwordnya|passwordku|pwku|pwnya)\b/g,'password')
+      .replace(/\b(?:usernam|usernme|usernem|usernamenya|usernameku|useridnya|idnya)\b/g,'username')
+      .replace(/\b(?:diblok|keblok|ke blok|di blok|terblok)\b/g,'diblokir')
+      .replace(/\b(?:blom|blum|belom|belim|blm|blum)\b/g,'belum')
+      .replace(/\b(?:msk|masok)\b/g,'masuk')
+      .replace(/\b(?:ggnti|gganti|gnti|gnt|gntii|gantii|gantiin)\b/g,'ganti')
+      .replace(/\b(?:menggnti|menganti)\b/g,'mengganti')
+      .replace(/\b(?:nmr|nomer)\b/g,'nomor')
+      .replace(/\b(?:no\.?\s*rek|no\.?\s*rekening|norek|no rekning)\b/g,'nomor rekening')
+      .replace(/\b(?:rekning|rekenig|rekeningnya|reknya)\b/g,'rekening')
+      .replace(/\b(?:yg)\b/g,'yang').replace(/\b(?:udh|udah|sdh)\b/g,'sudah');
+  }
+  function wantsAccountChange(value){
+    const t=normalizeMemberLanguage(value);
+    if(/\b(?:batal|jangan|tidak jadi|gak jadi|ga jadi|nggak jadi|tidak mau)\b/.test(t))return false;
+    return /\b(?:ganti|mengganti|ubah|mengubah|tukar|pindah|pindahkan|perbarui|update)\b/.test(t)&&/\b(?:rek(?:ening)?|norek|akun(?: yang)? terdaftar|akun|bank|e[- ]?wallet|nomor dana|nomor ovo|no\.? dana)\b/.test(t)&&! /\b(?:password|kata sandi)\b/.test(t);
+  }
+  function changeAdvice(messages){
+    const start=messages.findIndex(m=>m.kind==='member'&&wantsAccountChange(m.text));
+    const category='GANTI REKENING / AKUN';
+    let requested=false,reason='',candidate='',cancelled=false;
+    if(start<0)return {category,title:'PERIKSA PERMINTAAN MEMBER',body:'Permintaan perubahan belum terbaca.',tone:'review'};
+    const target=/\b(?:rek(?:ening)?|norek|akun|bank|e[- ]?wallet|dana|ovo)\b/i;
+    const asksReason=t=>/\b(?:kenapa|mengapa|knp|alasan(?:nya)?|sebab(?:nya)?|kendala(?:nya)?)\b/i.test(t)&&(/\?|\b(?:apa|boleh|bisa|mohon|tolong|sebut|beritahu|jelas|info|kenapa|mengapa|knp)\b/i.test(t))&&!/\b(?:sudah (?:tanya|ditanya|dijelaskan)|alasan (?:sudah|telah))\b/i.test(t);
+    for(let i=Math.max(0,start-3);i<messages.length;i++){
+      const m=messages[i],t=normalizeMemberLanguage(m.text).trim();
+      if(m.kind==='agent'){
+        if(asksReason(t)&&(!/\b(?:deposit|withdraw|password|scatter)\b/i.test(t)||/ganti|ubah|pindah/i.test(t))&&(i>=start||target.test(t)&&/ganti|ubah|pindah/i.test(t)))requested=true;
+        continue;
+      }
+      if(m.kind!=='member'||i<start)continue;
+      if(/\b(?:batal|tidak jadi|gak jadi|ga jadi|nggak jadi)\b/i.test(t)&&/ganti|ubah|pindah/i.test(t)){cancelled=true;continue;}
+      if(wantsAccountChange(t))cancelled=false;
+      const explicit=/\b(?:karena|karna|soalnya|sebab|alasannya|alasan saya)\b/i.test(t);
+      const problem=/\b(?:terblokir|diblokir|keblokir|hilang|rusak|hangus|nonaktif|tidak aktif|gak aktif|ga aktif|ditutup|salah input|salah (?:nomor|rekening)|bukan (?:punya|milik) saya)\b/i.test(t);
+      if((explicit&&(target.test(t)||wantsAccountChange(t)||requested&&!/\b(?:deposit|withdraw|password|scatter)\b/i.test(t)))||problem&&target.test(t)){reason=m.text.trim().slice(0,220);candidate='';}
+      else if(requested&&!reason&&!wantsAccountChange(t)&&/[a-z]{3}/i.test(t)&&! /^(?:iya|ya|oke|ok|siap|bos|bosku|makasih|terima kasih)[.!\s]*$/i.test(t)&&!/^\s*(?:user\s*id|username|norek|no\.?\s*rek(?:ening)?|rekening)\s*[:=]/i.test(t)&&!/^\s*[\d\s.,-]+\s*$/.test(t))candidate=m.text.trim().slice(0,220);
+    }
+    if(cancelled)return {category,title:'PERMINTAAN GANTI DIBATALKAN',body:'Member menyatakan batal mengganti. Periksa pesan terakhir sebelum melanjutkan.',tone:'waiting'};
+    if(reason)return {category,title:'ALASAN SUDAH DISAMPAIKAN',body:'Jangan tanya alasan lagi ya bosku. Keterangan member: “'+reason+'”. Cocokkan dengan permintaan perubahan sebelum melanjutkan.',tone:'ready'};
+    if(candidate)return {category,title:'ADA JAWABAN — PERIKSA ALASANNYA',body:'AI / agen sudah menanyakan alasan. Cek jawaban member: “'+candidate+'”. Jika belum menjawab alasan perubahan, klarifikasi bagian yang belum jelas saja.',tone:'review'};
+    if(requested)return {category,title:'ALASAN SUDAH DITANYAKAN',body:'AI / agen sudah menanyakan alasan. Jangan tanya ulang; tunggu atau cek jawaban member di atas ya bosku.',tone:'waiting'};
+    return {category,title:'TANYAKAN ALASAN PERUBAHAN',body:'Pertanyaan alasan belum terdeteksi pada chat yang terbaca. Tanyakan: “Boleh diinformasikan alasan ingin mengganti rekening atau akun yang terdaftar, bosku?”',tone:'review'};
+  }
+  // Local language rules: inferred intent is an operator hint, not an AI verdict.
+  function detectIntent(value) {
+    const correction=intentCorrections[normalizeMemberLanguage(value).trim()];
+    if(Array.isArray(correction)&&correction.length&&correction.every(t=>['blocked','change','password','username','deposit','withdraw','scatter'].includes(t)))return [...correction];
+    const t=normalizeMemberLanguage(value)
+      .replace(/\b(?:lp|lpa|lup)\b(?=[^.!?\n]{0,50}\b(?:id|akun|user(?:name)?|pw|pass?word|pasword|sandi)\b)/g,'lupa')
+      .replace(/\b(?:sm|sma)\b/g,'sama')
+      .replace(/\b(?:gak|ga|nggak|ngga|enggak|gk|tdk|tak)\b/g,'tidak')
+      .replace(/\b(?:blm|blum|belom|belim|blom)\b/g,'belum').replace(/\b(?:msk|masukkk|masok)\b/g,'masuk').replace(/\budah\b/g,'sudah')
+      .replace(/\blupa\s*(?:pass?word|pasword|pw)\b/g,'lupa password').replace(/\b(?:pw|pass|pasword|paswod|paswrd|pasworrd|pasw[oa]rd)\b/g,'password')
+      .replace(/\b(?:uname|userid|user\s+name)\b/g,'username').replace(/\b(?:depo|dp)\b/g,'deposit')
+      .replace(/\b(?:wd|wede|withd(?:r)?aw|withdrawal)\b/g,'withdraw').replace(/\b(?:topup|top-up)\b/g,'top up');
+    const types=new Set();
+    if(wantsAccountChange(value))types.add('change');
+    // Negated topics and resolved reports must not become a fresh recovery request.
+    const parts=t.split(/[,.!?;\n]+|\btapi\b|\btetapi\b|\bmelainkan\b|\bdan\s+(?=(?:proses|deposit|withdraw|lupa)\b)|\bterus\b/);
+    for(let part of parts){
+      part=part.trim();
+      if(!part || /\b(?:bukan|tidak perlu|tidak lupa|tidak salah|jangan)\b/.test(part))continue;
+      if(/\b(?:scatter|scater|skater|skatter)\b/.test(part))types.add('scatter');
+      if(/\b(?:akun|account|user\s*id|username|id)\b/.test(part)&&/\b(?:di\s*blok(?:ir)?|terblokir|keblokir|ke\s*blok|blocked|banned|suspend(?:ed)?|terkunci|di\s*lock|locked)\b/.test(part)&&! /\b(?:akun\s+(?:bank|dana|ovo)|rekening|norek|tidak\s+(?:di\s*blok(?:ir)?|terblokir|terkunci|banned|blocked)|sudah\s+(?:dibuka|normal))\b/.test(part))types.add('blocked');
+      const unresolved=/\b(?:belum|tidak|lupa|salah|gagal|pending|tertunda|nyangkut|hilang|reset|ganti|ubah|cek|tolong|bantu)\b/.test(part);
+      if(!unresolved && /\b(?:sudah|berhasil|selesai|sukses)\b/.test(part))continue;
+      const recovery=/\b(?:lupa|tidak ingat|tidak inget|tidak hafal|tidak tahu|tidak tau|hilang|reset|riset|ganti|ubah|salah|invalid)\b/;
+      if(/\b(?:password|kata sandi|sandi)\b/.test(part)&&recovery.test(part))types.add('password');
+      if((/\b(?:username|user name|user\s*id|nama (?:akun|pengguna)|id akun)\b/.test(part)&&recovery.test(part))||/\blupa\s+(?:akun|id)\b/.test(part))types.add('username');
+      if(/\b(?:deposit|top up|isi saldo|setor(?:an)?)\b/.test(part))types.add('deposit');
+      else if(/\b(?:saldo|transfer|tf)\b/.test(part)&&/\b(?:belum masuk|tidak masuk|belum bertambah|tidak bertambah|nyangkut)\b/.test(part)&&! /\b(?:withdraw|penarikan|tarik)\b/.test(part))types.add('deposit');
+      if(/\b(?:withdraw|penarikan|tarik (?:dana|saldo|uang))\b/.test(part))types.add('withdraw');
+    }
+    return [...types];
+  }
+
+  // Interpret adjacent short member fragments together, without borrowing
+  // an agent's words or combining identity/payment data into a request.
+  function contextualMessages(messages){
+    let fragments=[];
+    return messages.map(m=>{
+      const raw=String(m.text||''),t=normalizeMemberLanguage(raw).trim();
+      const barrier=m.kind!=='member'||!t||t.length>180||/\d|[:=]/.test(t)||
+        /\b(?:nama rekening|nomor rekening|nama bank|user id)\s*[:=]/.test(t)||
+        /\b(?:batal|jangan|tidak jadi|gak jadi|ga jadi|bukan|selesai|berhasil|makasih|terima kasih)\b/.test(t);
+      if(barrier){fragments=[];return {...m};}
+      const direct=detectIntent(raw);
+      const combined=[...fragments,raw].join(' ').replace(/\s*[.!?]+\s*/g,' ');
+      // A known request ends the fragment window so a different topic is not
+      // pulled into it later. Negations and resolved statements also end it.
+      const inferred=fragments.length?detectIntent(combined):[];
+      const use=inferred.length&&direct.length===0;
+      if(direct.length||use||/\b(?:sudah|tidak|gak|ga|gk|nggak)\b/.test(t))fragments=[];
+      else fragments=[...fragments,raw].slice(-3);
+      return use?{...m,text:combined,originalText:raw,contextual:true}:{...m};
+    });
+  }
+
+  const intentMatcher=type=>({test:value=>detectIntent(value).includes(type)});
   const rules = [
-    ['deposit', /\bcek\s+deposit\b/i, 'MINTA BUKTI', 'Minta bukti deposit kepada member ya bosku.'],
-    ['password', /\b(?:lupa|reset|riset|ganti|ubah)\s+(?:password|pasword|pasw[oa]rd|kata\s+sandi)\b/i, 'CEK DATA SEBELUM RESET', 'Periksa hasil pencarian rekening di panel Now / Old, lalu cocokkan identitas member ya bosku.'],
-    ['username', /\blupa\s+(?:username|user\s*id|user\s*name)\b/i, 'KASIH USER ID SAJA', 'Kasih User ID saja ya bosku. JANGAN reset password-nya.'],
-    ['withdraw', /\bcek\s+(?:withdraw|withdrawal|wd)\b/i, 'CEK USER ID DI ATAS', 'Cek User ID pada chat di atas. Jika tidak ada, minta User ID kepada member ya bosku.']
+    ['blocked',intentMatcher('blocked'),'MINTA USER ID','Periksa User ID yang sudah diberikan member sebelum meminta ulang.'],
+    ['change',intentMatcher('change'),'TANYAKAN ALASAN PERUBAHAN','Periksa apakah AI / agen sudah menanyakan alasan perubahan.'],
+    ['scatter', intentMatcher('scatter'), 'PL SCATTER — PERIKSA BUKTI', 'Periksa gambar detail putaran dan riwayat permainan. Cocokkan nomor transaksi / kode tiket, waktu, nominal taruhan, dan jumlah scatter. Jika bukti belum lengkap, minta bagian yang kurang saja ya bosku.'],
+    ['deposit', intentMatcher('deposit'), 'MINTA BUKTI', 'Minta bukti deposit kepada member ya bosku.'],
+    ['password', intentMatcher('password'), 'CEK DATA SEBELUM RESET', 'Periksa hasil pencarian rekening di panel Now / Old, lalu cocokkan identitas member ya bosku.'],
+    ['username', intentMatcher('username'), 'KASIH USER ID SAJA', 'Kasih User ID saja ya bosku. JANGAN reset password-nya.'],
+    ['withdraw', intentMatcher('withdraw'), 'CEK USER ID DI ATAS', 'Cek User ID pada chat di atas. Jika belum ada, minta User ID ya bosku.']
   ];
+  function clarification(messages){
+    const members=messages.filter(m=>m.kind==='member'&&m.text.trim());
+    const known=members.flatMap(m=>detectIntent(m.text));
+    const recovery=members.map(m=>detectIntent(m.text).filter(t=>t==='password'||t==='username')).filter(a=>a.length).at(-1)||[];
+    if(new Set(recovery).size>1&&/\b(?:atau|or)\b/i.test([...members].reverse().find(m=>detectIntent(m.text).some(t=>t==='password'||t==='username'))?.text||''))return {title:'PASTIKAN KEBUTUHAN AKUN',body:'Member menyebut username dan password. Tanyakan apakah perlu User ID saja atau juga reset password. Pencarian otomatis menunggu maksud yang jelas.',message:members.at(-1)?.text||''};
+    if(known.length)return null;
+    const latest=[...members].reverse().find(m=>/[a-z]/i.test(m.text)&&!/^\s*(?:no(?:mor)?\.?\s*(?:rek(?:ening)?)|norek|rekening|user\s*id|username)\s*[:=]/i.test(m.text))?.text||members.at(-1)?.text||'';
+    if(!latest)return null;
+    const login=/\b(?:login|log in|masuk akun|buka akun|akses akun|akun.*(?:blokir|terkunci))\b/i.test(latest);
+    return {title:login?'KENDALA LOGIN • PERLU DIPASTIKAN':'MAKSUD MEMBER BELUM JELAS',body:login?'Tanyakan pesan error yang muncul dan apakah yang lupa User ID atau password. Gagal login saja belum cukup untuk menyarankan reset.':'Tanyakan: “Ada yang bisa dibantu bosku? Kendalanya deposit, withdraw, lupa password, lupa User ID, atau hal lain?”',message:latest};
+  }
+  // Text-only signals. Image pixels cannot be classified by these local rules.
+  function conductNotice(value){
+    const original=String(value||'');
+    const t=original.normalize('NFKC').toLowerCase()
+      .replace(/[“"][^”"]*[”"]/g,' ')
+      .replace(/\b(?:gak|ga|nggak|ngga|gk|gkk|tdk|enggak|gag)\b/g,'tidak')
+      .replace(/\b(?:gamenya|game nya|permainannya|permainan nya)\b/g,'game')
+      .replace(/([a-z])\1{2,}/g,'$1$1');
+    const parts=t.split(/[.!?;\n]+/).filter(x=>! /\b(?:jangan (?:bilang|ngomong|menghina|maki)|dibilang|dikatai|kata kasar|contoh makian)\b/.test(x));
+    const dirty=/\b(?:anj(?:ing|eng|ir|rit)|anjg|bangsat|bajingan|bgst|kontol|k[o0]nt[o0]l|kntl|memek|m[e3]m[e3]k|mmk|ngentot|ngentod|ngewe|puki|pukimak|pepek|jancuk|jancok|cok|fuck|shit|tai|taik|tolol|goblok|goblog|bego|bodoh)\b/;
+    // Evaluate each clause, so negated praise does not suppress a later complaint.
+    const gameParts=t.split(/[.!?;\n]+|\btapi\b|\btetapi\b/);
+    const badGame=gameParts.some(x=>{
+      if(/\b(?:bukan|jangan bilang|tidak pernah bilang)\b/.test(x))return false;
+      const gameNamed=/\b(?:game|permainan|slot)\b/.test(x);
+      const negative=/\b(?:jelek|buruk|ampas|sampah|busuk|tidak bagus|tidak enak|tidak seru|tidak adil|curang|rigged)\b/.test(x);
+      const losing=/\b(?:susah menang|sulit menang|kalah (?:terus|mulu|melulu)|rungkad(?: terus| mulu)?|tidak (?:pernah |bisa |ada )?(?:menang|gacor|kemenangan)|belum (?:pernah )?menang)\b/.test(x);
+      const stop=/\b(?:(?:tidak|ogah|malas|males|kapok)\s+(?:mau\s+)?main(?:\s+lagi)?|(?:berhenti|pensiun|stop)\s+(?:main|bermain))\b/.test(x);
+      return (gameNamed&&negative)||losing||stop;
+    });
+    const curse=parts.some(x=>{
+      if(/\b(?:tidak|bukan)\s+(?:bodoh|goblok|tolol|bego)\b/.test(x))x=x.replace(/\b(?:tidak|bukan)\s+(?:bodoh|goblok|tolol|bego)\b/g,'');
+      x=x.replace(/\b(?:anjing|tai)\s+(?:saya|peliharaan|tetangga)\b/g,'');
+      return dirty.test(x);
+    });
+    if(!curse&&!badGame)return null;
+    return {title:'Kasih PK doa aja',category:curse?'MEMBER CAKAP TIDAK BAIK':'KELUHAN TENTANG GAME',tone:'conduct',
+      body:curse&&badGame?'Terdeteksi makian / ucapan kotor dan keluhan tentang game.':curse?'Terdeteksi makian / ucapan kotor dalam pesan member.':'Member mengeluhkan kualitas atau hasil permainan.',
+      message:original.slice(0,240)};
+  }
+  function memberHasImage(e){
+    // Ignore avatars, icons and tiny inline emoji; never infer explicit content.
+    return [...e.querySelectorAll('img')].some(img=>{
+      const label=[img.alt,img.className,img.getAttribute('data-testid')].join(' ');
+      if(/avatar|emoji|emoticon|icon|profile/i.test(label))return false;
+      return Math.max(img.naturalWidth||0,img.width||0)>=100 && Math.max(img.naturalHeight||0,img.height||0)>=70;
+    });
+  }
   // Context is evaluated again on every scan, so a later AI request or
   // member reply updates the existing Deposit / Withdraw card immediately.
   function idContext(messages) {
-    let requested = false, id = '', candidate = '';
+    let requested = false, id = '', candidate = '', numericReply=false;
     const label = /\b(?:user\s*id|username|user\s*name|id\s*(?:akun|anda|kamu|bosku)|id)\b/i;
     const request = /\b(?:minta|meminta|boleh|tolong|mohon|sebutkan|berikan|kirim|kirimkan|infokan|informasikan|isi|masukkan|cantumkan|berapa)\b/i;
-    const invalid = /^(?:saya|aku|anda|kamu|nya|bos|bosku|ya|iya|oke|ok|adalah|ini|itu|lupa|belum|tidak|ada|mana|berapa|tolong|cek|deposit|withdraw|username|userid)$/i;
+    const invalid = /^(?:saya|aku|anda|kamu|nya|bos|bosku|ya|iya|oke|ok|adalah|ini|itu|lupa|belum|tidak|ada|mana|berapa|tolong|cek|deposit|withdraw|username|userid|terblokir|diblokir|keblokir|blocked|banned|suspend|terkunci|locked|bosku|kak|min|admin|kenapa|mengapa|karena|tolong|proses|masih|sudah|bang|yang|kena|bank|dana|ovo|terdaftar|nomor|user|makasih|terimakasih|halo|hello|siap|sebentar|tunggu|bentar|terima)$/i;
     for (const m of messages) {
       const t = m.text.trim();
       if (m.kind === 'agent' && label.test(t) && (request.test(t) || /user\s*id.*\?/i.test(t))) requested = true;
+      if(m.kind==='agent')numericReply=label.test(t)&&request.test(t)&&!/rekening|norek|nomor hp|telepon/i.test(t);
       if (m.kind !== 'member') continue;
       // Explicit values only. Do not treat an AI request as proof an ID exists.
-      const match = t.match(/\b(?:user\s*id|username|user\s*name|id(?:\s+akun)?)(?:\s+(?:saya|aku|nya))?(?:\s*[:=]\s*|\s+adalah\s+|\s+)([a-z0-9_.-]{3,32})(?![a-z0-9_.-])/i);
-      if (match && !invalid.test(match[1]) && /[a-z]/i.test(match[1])) { id=match[1]; candidate=''; }
-      else if (requested && !id && /^[a-z0-9_.-]{3,32}$/i.test(t) && /[a-z]/i.test(t) && !invalid.test(t)) candidate=t;
+      const match = t.match(/\b(?:user\s*id|username|user\s*name|id(?:\s+akun)?|akun)(?:\s+(?:saya|aku|nya))?(?:\s*[:=]\s*|\s+adalah\s+|\s+)([a-z0-9_.-]{3,32})(?![a-z0-9_.-])/i);
+      if (match && !invalid.test(match[1])) { id=match[1]; candidate=''; }
+      else if(numericReply&&!id&&/^\d{3,40}$/.test(t))candidate=t;
+      else if (!id && /^[a-z0-9_.-]{3,32}$/i.test(t) && /[a-z]/i.test(t) && (requested||/\d/.test(t)) && !invalid.test(t)) candidate=t;
+      numericReply=false;
     }
     return {requested,id,candidate};
   }
   function contextualAdvice(type, context) {
-    const category = type === 'deposit' ? 'CEK DEPOSIT' : 'CEK WITHDRAW';
+    const category = type==='blocked'?'AKUN DIBLOKIR • CEK USER ID':type === 'deposit' ? 'CEK DEPOSIT' : 'CEK WITHDRAW';
     let title, body, tone;
     if (context.id) {
       title='USER ID SUDAH ADA DI ATAS'; tone='ready';
       body='Jangan minta User ID lagi ya bosku. Gunakan User ID: '+context.id+'.';
     } else if (context.candidate) {
-      title='ADA JAWABAN SETELAH PERMINTAAN ID'; tone='review';
+      title=context.requested?'ADA JAWABAN SETELAH PERMINTAAN ID':'ADA CALON USER ID DI ATAS'; tone='review';
       body='Jangan minta ulang dulu ya bosku. Cek jawaban member di atas: '+context.candidate+'. Pastikan itu User ID-nya.';
     } else if (context.requested) {
       title='USER ID SUDAH DIMINTA'; tone='waiting';
       body='AI / agen sudah meminta User ID. Jangan minta lagi ya bosku; cek atau tunggu jawaban member di atas.';
     } else {
-      title='CEK USER ID TERLEBIH DAHULU'; tone='review';
+      title=type==='blocked'?'MINTA USER ID MEMBER':'CEK USER ID TERLEBIH DAHULU'; tone='review';
       body='User ID belum terdeteksi pada chat yang terbaca. Cek chat di atas terlebih dahulu; jika memang belum ada dan belum diminta, baru minta User ID ya bosku.';
     }
     if (type==='deposit') body+=' Untuk deposit, cek bukti di atas; jika belum dikirim, minta bukti deposit ya bosku.';
+    else if(type==='blocked')body+=' Periksa status akun memakai User ID tersebut. Akun diblokir bukan otomatis lupa password; jangan arahkan reset tanpa permintaan yang jelas.';
     else body+=' Lanjutkan pengecekan withdraw setelah User ID dipastikan.';
     return {category,title,body,tone};
   }
   // v2: read-only account lookup. No password change or registration requests.
   const ADMIN_ORIGIN = 'https://agwl2.admitoto.com';
   const ADMIN_PATHS = ['/agentplayerlist.php','/agentplayerlist_old.php'];
-  const resetIntent = /\b(?:lupa|reset|riset|ganti|ubah)\s+(?:pass?wo?rd|password|pasword|pasw[oa]rd|kata\s+sandi)\b/i;
+  const resetIntent = intentMatcher('password');
   const accountLabel = /(?:nomor\s*rekening|no\.?\s*(?:rekening|rek)\b|norek\b|rekening\b|account\s*(?:number|no\.?))/i;
 
-  const usernameIntent=/\blupa\s+(?:username|user\s*name|user\s*id)\b/i;
+  const usernameIntent=intentMatcher('username');
   // Inspect sent agent messages only; never retain the password value.
-  function sentCompletion(messages){
-    let request='',complete='';
+  function sentCompletion(messages,fallbackRequest=''){
+    let request=['password','username'].includes(fallbackRequest)?fallbackRequest:'',complete='',agentParts=[];
     for(const m of messages){
       if(m.kind==='member'){
+        agentParts=[];
         if(resetIntent.test(m.text)){request='password';complete='';}
         else if(usernameIntent.test(m.text)){request='username';complete='';}
         continue;
       }
-      if(m.kind!=='agent'||!request)continue;
-      const t=m.text;
-      const uid=t.match(/\buser\s*id[^\S\r\n]*:[^\S\r\n]*([a-z0-9_.-]{3,40})\b/i);
-      if(!uid || /^(?:password|note|silahkan|silakan|userid|username)$/i.test(uid[1]))continue;
+      if(m.kind!=='agent'||!request){agentParts=[];continue;}
+      const part=String(m.text||'').normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/\u00a0/g,' ').replace(/[*_`]/g,'');
+      if(/\b(?:contoh\s+(?:format|pesan|template)|jangan\s+(?:kirim|dikirim))\b/i.test(part)){agentParts=[];continue;}
+      // Support a sent template split into several consecutive agent bubbles.
+      // A newly started User ID block supersedes any earlier incomplete one.
+      if(/\buser\s*id\s*:/i.test(part))agentParts=[];
+      agentParts.push(part);if(agentParts.length>6)agentParts.shift();
+      const t=agentParts.join('\n');
+      const uid=t.match(/\buser\s*id\s*:\s*([a-z0-9.-]{1,40})(?![a-z0-9.-])/i);
+      if(!uid||/^(?:password|pasword|note|silahkan|silakan|userid|username)$/i.test(uid[1]))continue;
       const note=/\bnote\s*:[\s\S]*saran\s+kami[\s\S]*di\s*simpan[\s\S]*memo\s+anda/i.test(t);
-      const password=/\bpass?word[^\S\r\n]*:[^\S\r\n]*[^\s:]+/i.test(t);
-      if(request==='password'&&password&&note)complete='password';
-      if(request==='username'&&!/\bpass?word[^\S\r\n]*:/i.test(t)&&note)complete='username';
+      const password=t.match(/\bpass?word\s*:\s*([^\s:]+)/i);
+      const hasPassword=Boolean(password&&!/^(?:note|silahkan|silakan)$/i.test(password[1]));
+      const login=/silah?kan|silahkan/i.test(t)&&/coba\s+login/i.test(t);
+      if(request==='password'&&hasPassword&&(note||login))complete='password';
+      if(request==='username'&&!/\bpass?word\s*:/i.test(t)&&note)complete='username';
     }
     return complete;
   }
@@ -116,6 +289,133 @@
     if(!accountState.conversationCompleted)applyConversationDone(done);
   }
 
+  const changeMonitorMemory=new Map();
+  const CHANGE_INTERVAL=60*1000;
+  function changeMonitor(chat=route){
+    if(changeMonitorMemory.has(chat))return changeMonitorMemory.get(chat);
+    let state;try{state=JSON.parse(localStorage.getItem('lc-change-monitor-v1:'+chat)||'null');}catch{}
+    if(!state||typeof state!=='object')state={active:false,oldNumber:'',newNumber:'',nextAt:0};
+    if(state.savedPair&&!state.done&&state.nextAt>Date.now()+CHANGE_INTERVAL)state.nextAt=Date.now()+CHANGE_INTERVAL;
+    state.busy=false;changeMonitorMemory.set(chat,state);return state;
+  }
+  function saveChange(state,chat=route){
+    try{localStorage.setItem('lc-change-monitor-v1:'+chat,JSON.stringify({...state,busy:false}));}catch{state.storageError=true;}
+  }
+  function changeSentComplete(messages){
+    let active=false,done=false;
+    for(const m of messages){
+      if(m.kind==='member'&&wantsAccountChange(m.text)){active=true;done=false;}
+      if(!active||m.kind!=='agent')continue;
+      const t=m.text.toLowerCase();
+      if(/\?|\b(?:belum|akan|nanti|jika|apabila|kalau)\b|\b(?:sudah|telah)\s+(?:bisa|dapat)\b/.test(t))continue;
+      if(/\b(?:rek(?:ening)?|norek)\b/.test(t)&&/\b(?:sudah|telah|udah)\b/.test(t)&&/\b(?:diganti(?:kan)?|di\s+ganti(?:kan)?|kami\s+(?:bantu\s+)?ganti(?:kan)?|berhasil\s+(?:kami\s+)?(?:ganti|ubah)|diperbarui|diubah)\b/.test(t))done=true;
+    }return done;
+  }
+  function changeNumbers(messages){
+    const data={oldNumber:'',newNumber:'',oldHolder:'',newHolder:'',oldBank:'',newBank:''};
+    // Section context belongs to member messages only. Empty agent templates
+    // must never supply numbers or select the member's current section.
+    let section='';
+    for(const m of messages){
+      if(m.kind!=='member')continue;
+      const lines=String(m.text).split(/\n|(?=\b(?:Nama\s+Rekening|Nomor\s+Rekening|Bank)\s*:)/i);
+      for(let i=0;i<lines.length;i++){
+        const line=lines[i].trim();
+        const old=/\b(?:rekening|rek|norek)\b[^\d\n]{0,85}\b(?:saat ini(?: terdaftar)?|lama|yang terdaftar|sekarang)\b/i.exec(line);
+        const newer=/\b(?:rekening|rek|norek)\b[^\d\n]{0,85}\b(?:baru|pengganti|yang (?:ingin|mau|akan) (?:di\s*)?ganti(?:kan)?)\b/i.exec(line);
+        const label=newer||old;
+        if(label){
+          section=newer?'new':'old';
+          const tail=line.slice(label.index+label[0].length);
+          const values=numberRuns(tail);
+          if(values.length===1)data[section+'Number']=values[0];
+          else if(/^[\s:=\-]*$/.test(tail)&&/^[\d\s.,()\-]+$/.test(lines[i+1]||'')){
+            const next=numberRuns(lines[i+1]);if(next.length===1)data[section+'Number']=next[0];
+          }
+          continue;
+        }
+        if(!section)continue;
+        const field=/^(nama\s+rek(?:ening)?|a\s*\/\s*n|nomor\s+rek(?:ening)?|no\.?\s*rek(?:ening)?|norek|bank)\s*[:=]\s*(.*)$/i.exec(line);
+        if(!field)continue;
+        let value=field[2].trim();
+        if(!value&&lines[i+1]&&!/[:=]|\b(?:rekening|bank)\b/i.test(lines[i+1]))value=lines[++i].trim();
+        if(!value)continue;
+        if(/^(?:nomor|no\.?\s|norek)/i.test(field[1])){
+          const values=numberRuns(value);if(values.length===1)data[section+'Number']=values[0];
+        }else data[section+(/^bank$/i.test(field[1])?'Bank':'Holder')]=value;
+      }
+    }return data;
+  }
+  function finishChange(reason){
+    const state=changeMonitor();state.active=true;state.done=true;state.busy=false;state.token=(state.token||0)+1;state.nextAt=0;state.reason=reason;state.finishedAt=Date.now();saveChange(state);
+    cards=cards.filter(c=>c.type!=='change');render();
+    $('bubble').classList.add('unread');if(reason==='verified')playNotice();
+  }
+  async function resolveChangeAccount(number){
+    const now=await lookupAt(ADMIN_PATHS[0],number,'change');
+    if(now.state==='found')return {...now,source:'NOW'};
+    const old=await lookupAt(ADMIN_PATHS[1],number,'change');
+    if(old.state==='found')return {...old,source:'OLD'};
+    return {state:now.state==='absent'&&old.state==='absent'?'absent':'unknown'};
+  }
+  async function checkChange(){
+    const state=changeMonitor();if(!state.savedPair||state.busy||state.done||paused||!state.oldNumber||!state.newNumber)return;
+    if(state.oldNumber===state.newNumber){state.message='Rekening lama dan baru sama. Periksa kedua nomor.';saveChange(state);render();return;}
+    const chat=route,token=(state.token||0)+1;state.token=token;state.busy=true;state.nextAt=Date.now()+CHANGE_INTERVAL;state.message='Memeriksa rekening lama dan baru di admin…';saveChange(state);render();
+    const valid=()=>conversationRoute()===chat&&route===chat&&state.token===token&&!state.done;
+    try{
+      const old=await resolveChangeAccount(state.oldNumber);if(!valid())return;
+      if(!state.baseline&&old.state==='found')state.baseline=old.record;
+      if(!state.baseline){const previous=cachedAccount(state.oldNumber,chat);if(previous?.record)state.baseline=previous.record;}
+      const newer=await resolveChangeAccount(state.newNumber);if(!valid())return;
+      state.checkedAt=Date.now();state.oldStatus=old.state;state.newStatus=newer.state;
+      if(old.state==='absent'&&newer.state==='found'){
+        state.latest=newer.record;state.source=newer.source;finishChange('verified');return;
+      }
+      state.message=old.state==='unknown'||newer.state==='unknown'?'Hasil admin belum pasti. Pemeriksaan akan diulang; belum selesai.':old.state==='found'?'Rekening terdaftar masih ditemukan. Menunggu pergantian.':'Rekening pengganti belum terdaftar. Menunggu pergantian.';
+    }catch(e){if(valid())state.message='Pengecekan gagal: '+e.message;}
+    finally{
+      if(state.token===token){state.busy=false;saveChange(state,chat);if(route===chat)render();}
+    }
+  }
+  function syncChange(messages){
+    const state=changeMonitor();
+    if(!state.active&&!messages.some(m=>m.kind==='member'&&wantsAccountChange(m.text)))return;
+    state.active=true;
+    // Only an explicitly saved pair is monitored; messages cannot replace it.
+    if(state.done||!state.savedPair)return;
+    if(!state.busy&&Date.now()>=(state.nextAt||0))checkChange();
+  }
+  function drawChangeMonitor(container){
+    const state=changeMonitor();if(!state.active)return;
+    const box=document.createElement('div');box.className='card change-monitor';box.dataset.tone=state.done?'ready':'review';
+    const heading=document.createElement('b');heading.textContent=state.done?(state.reason==='verified'?'Percakapan selesai — Rekening sudah berhasil diganti':state.reason==='cancelled'?'Permintaan ganti dibatalkan':state.reason==='manual'?'Pergantian ditandai selesai':'Percakapan selesai • rekening sudah diganti'):'PANTAU PERGANTIAN REKENING';box.append(heading);
+    const detail=document.createElement('p');detail.textContent=state.done?(state.reason==='verified'?'Rekening terdaftar sudah tidak ditemukan di Admin Now maupun Old. Rekening pengganti sudah terdaftar. Pemantauan selesai dan hasil tersimpan.':state.reason==='agent'?'Balasan penyelesaian sudah dikirim AI / agen. Pemeriksaan berkala dihentikan.':state.reason==='manual'?'Ditandai selesai oleh operator. Pemeriksaan berkala dihentikan.':'Pemeriksaan berkala dihentikan.'):(state.message||'Isi dua nomor di bawah, lalu tekan Simpan rek. Nomor akan diperiksa sekarang dan setiap 1 menit selama chat ini aktif.');box.append(detail);
+    if(state.done&&state.reason==='verified'){const identity=document.createElement('p');identity.textContent='User ID: '+state.latest.userid+'\nRekening baru: '+state.newNumber;box.append(identity);}
+    if(state.done){
+      if(state.reason==='verified'){
+        const copy=document.createElement('button');copy.textContent='Salin PK selesai';copy.onclick=async()=>{try{await navigator.clipboard.writeText('Untuk pergantian rekening Anda sudah kami bantu gantikan ya bosku. Silakan diperiksa kembali. Terima kasih.');copy.textContent='✓ Tersalin';}catch{setStatus('Clipboard belum diizinkan.');}};box.append(copy);
+      }
+    }else{
+      const fields=[];
+      for(const [label,key] of [['Rekening terdaftar','oldNumber'],['Rekening yang diganti','newNumber']]){
+        const wrapper=document.createElement('label');wrapper.textContent=label;const input=document.createElement('input');input.value=state.draft?.[key]??state[key]??'';input.placeholder=key==='oldNumber'?'Nomor rekening lama':'Nomor rekening baru / pengganti';input.oninput=()=>{state.draft={...(state.draft||{}),[key]:input.value};};input.inputMode='numeric';input.setAttribute('aria-label',label);input.disabled=state.busy;wrapper.append(input);box.append(wrapper);fields.push(input);
+      }
+      const go=document.createElement('button');go.textContent=state.busy?'Memeriksa…':'Simpan rek';go.disabled=state.busy;go.onclick=()=>{
+        const [oldNumber,newNumber]=fields.map(f=>cleanAccount(f.value));if(!/^\d{5,25}$/.test(oldNumber)||!/^\d{5,25}$/.test(newNumber)||oldNumber===newNumber){setStatus('Isi dua nomor rekening berbeda, masing-masing 5–25 digit.');return;}
+        if(state.oldNumber!==oldNumber||state.newNumber!==newNumber){state.baseline=null;state.token=(state.token||0)+1;}
+        Object.assign(state,{oldNumber,newNumber,manual:true,savedPair:true,draft:null,done:false,reason:null,nextAt:0,oldStatus:null,newStatus:null});saveChange(state);checkChange();
+      };box.append(go);
+      const status=document.createElement('small');status.textContent=state.nextAt?'Pemeriksaan berikutnya: '+new Date(state.nextAt).toLocaleTimeString('id-ID')+' • saat chat ini aktif':'Belum disimpan — isi kedua nomor, lalu tekan Simpan rek.';box.append(status);
+      if(state.checkedAt){
+        const result=document.createElement('p');const label=v=>v==='found'?'Terdaftar':v==='absent'?'Tidak terdaftar':'Belum pasti';
+        result.textContent='Rekening terdaftar: '+label(state.oldStatus)+' · '+state.oldNumber+'\nRekening pengganti: '+label(state.newStatus)+' · '+state.newNumber;
+        result.style.whiteSpace='pre-line';box.append(result);
+      }
+      if(state.savedPair){const stop=document.createElement('button');stop.textContent='Hentikan pemantauan';stop.onclick=()=>finishChange('cancelled');box.append(stop);}
+    }
+    container.append(box);
+  }
   function cleanAccount(value){
     return String(value||'').normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/[^0-9]/g,'');
   }
@@ -128,10 +428,12 @@
     return [...new Set(runs.map(cleanAccount).filter(n=>/^\d{5,25}$/.test(n)))];
   }
   function extractAccounts(messages){
-    const strong=new Set(),possible=new Set();let requested=false;
+    const strong=new Set(),possible=new Set();let requested=false,userIdReply=false;
     for(const m of messages){
+      if(m.kind==='agent')userIdReply=/user\s*id|username/i.test(m.text)&&/minta|mohon|tolong|kirim|sebut|berikan|info|berapa/i.test(m.text)&&!accountLabel.test(m.text);
       if(m.kind==='agent' && accountLabel.test(m.text) && /minta|mohon|tolong|kirim|sebut|berikan|info|berapa/i.test(m.text)){requested=true;continue;}
       if(m.kind!=='member')continue;
+      const isUserId=userIdReply&&/^\s*\d{3,40}\s*$/.test(m.text);userIdReply=false;if(isUserId)continue;
       const lines=m.text.split(/\r?\n/);
       for(let i=0;i<lines.length;i++){
         const line=lines[i],label=line.match(accountLabel);
@@ -150,6 +452,65 @@
     }
     return {strong:[...strong],possible:[...possible].filter(n=>!strong.has(n))};
   }
+  function recoveryData(messages){
+    const names=new Set(),banks=new Set(),requested=new Set();let pending=[];
+    const bankRE=/\b(?:bca|bri|bni|bsi|cimb(?: niaga)?|mandiri|danamon|maybank|(?:bank )?jago|seabank|sea bank|dana|ovo|gopay|go pay|link\s*aja)\b/ig;
+    const holderRE=/\b(?:nama\s*(?:pemilik\s*)?rek(?:ening)?|atas\s+nama|a\/?n)\b\s*(?:saya|nya)?\s*[:=\-]?\s*(.*)/i;
+    const validName=t=>/^[\p{L}][\p{L} .'-]{1,79}$/u.test(t)&&!/(?:lupa|belum|tidak|gak|saya|aku|tolong|minta|terblokir|hilang|kenapa|saldo|masuk|iya|oke|bosku|password|rekening|username)/i.test(t);
+    const fields=t=>{
+      const result=[];
+      if(/\b(?:nomor\s*rek(?:ening)?|no\.?\s*rek(?:ening)?|norek)\b/i.test(t))result.push('number');
+      if(/nama\s*(?:pemilik\s*)?rek(?:ening)?|atas nama|\ba\/?n\b/i.test(t))result.push('holder');
+      if(/\b(?:bank|e[- ]?wallet)\b/i.test(t))result.push('bank');return result;
+    };
+    for(const m of messages){
+      const t=m.text.trim();
+      if(m.kind==='agent'){
+        if(/\b(?:minta|mohon|tolong|kirim|kirimkan|berikan|sebutkan|infokan|informasikan|berapa|apa|boleh)\b/i.test(t)){
+          const f=fields(t);if(f.length){f.forEach(x=>requested.add(x));pending=f;}
+        }continue;
+      }
+      if(m.kind!=='member')continue;
+      const lines=t.split(/[\n;]+/);
+      for(let i=0;i<lines.length;i++){
+        const line=lines[i],match=line.match(holderRE);
+        if(match){const value=(match[1].trim()||lines[i+1]||'').split(/\b(?:nomor rekening|no\.?\s*rek(?:ening)?|norek|jenis bank|bank|user\s*id|username)\b|[,;]/i)[0].trim();if(validName(value))names.add(value);}
+        // Bank names only from a stated field, a standalone bank, or structured data.
+        if(/^\s*(?:jenis\s+)?bank\b|e[- ]?wallet\s*[:=]/i.test(line)||/^[a-z ]{2,20}$/i.test(line.trim())||/\d{5}|[,;]/.test(line)){
+          for(const b of line.matchAll(bankRE)){
+            if(/\b(?:mau|ganti|pindah|bukan|jangan)\b/i.test(line))continue;
+            if(b[0].toLowerCase()==='dana'&&!/^\s*(?:(?:jenis\s+)?bank\s*[:=]?\s*)?dana\s*(?:$|[,;:\d])/i.test(line))continue;
+            banks.add(b[0].toUpperCase().replace(/^BANK /,'').replace('SEA BANK','SEABANK').replace('GO PAY','GOPAY'));
+          }
+        }
+        const combined=line.split(',').map(x=>x.trim());
+        if(combined.length===3&&bankRE.test(combined[0])&&/^\d{5,25}$/.test(cleanAccount(combined[2]))&&validName(combined[1]))names.add(combined[1]);
+        bankRE.lastIndex=0;
+      }
+      if(pending.length===1&&pending[0]==='holder'&&validName(t))names.add(t);
+      pending=[];
+    }
+    const accounts=extractAccounts(messages);
+    return {number:[...new Set([...accounts.strong,...accounts.possible])],holder:[...names],bank:[...banks],requested};
+  }
+  function recoveryAdvice(type,messages){
+    const latest=[...messages].reverse().find(m=>m.kind==='member'&&detectIntent(m.text).some(t=>t==='password'||t==='username'));
+    const both=latest&&['password','username'].every(t=>detectIntent(latest.text).includes(t));
+    const locked=accountState.active&&accountState.record?.lock?accountState.record:null;
+    if(locked)return {category:'PEMULIHAN AKUN • GEMBOK TERDETEKSI',title:'PERIKSA STATUS AKUN TERKUNCI',body:'User ID: '+locked.userid+'\nStatus terbaca: '+(locked.profile?.status||'Belum berhasil dibaca')+'\nInformation: '+(locked.profile?.information||locked.profileError||'Lihat panel hasil rekening.')+'\nPeriksa keterangan admin sebelum melanjutkan. '+(type==='username'?'Permintaan hanya User ID; jangan reset password.':'Jangan menganggap reset password akan membuka kunci akun.'),tone:'review'};
+    const data=recoveryData(messages),labels={number:'Nomor rekening',holder:'Nama rekening',bank:'Jenis bank / e-wallet'};
+    const present=Object.keys(labels).filter(k=>data[k].length),missing=Object.keys(labels).filter(k=>!data[k].length);
+    const ambiguous=present.some(k=>data[k].length>1);
+    const lines=present.map(k=>labels[k]+': '+data[k].join(' / '));
+    const waiting=missing.filter(k=>data.requested.has(k)),ask=missing.filter(k=>!data.requested.has(k));
+    let title=ambiguous?'ADA BEBERAPA DATA — COCOKKAN DULU':!missing.length?'DATA MEMBER SUDAH ADA':ask.length?'MINTA BAGIAN YANG MASIH KURANG':'DATA SUDAH DIMINTA — TUNGGU JAWABAN';
+    if(lines.length)lines.push('Jangan minta ulang data yang sudah tercantum. Cocokkan dengan hasil admin.');
+    if(ambiguous)lines.push('Ada beberapa nilai di percakapan. Pastikan data mana yang digunakan; jangan menganggap semuanya satu rekening.');
+    if(waiting.length)lines.push('Sudah diminta AI / agen: '+waiting.map(k=>labels[k]).join(', ')+'. Cek atau tunggu jawabannya; jangan minta ulang.');
+    if(ask.length)lines.push('Belum terdeteksi: '+ask.map(k=>labels[k]).join(', ')+'. Periksa chat di atas, lalu minta hanya bagian yang belum diberikan.');
+    lines.push(both?'Member lupa User ID dan password. Cocokkan identitas, lalu bantu reset password dan berikan User ID.':type==='username'?'Berikan User ID setelah identitas cocok; jangan reset password.':'Cocokkan identitas sebelum melanjutkan reset password.');
+    return {category:both?'LUPA USER ID + PASSWORD • DATA MEMBER':type==='username'?'LUPA AKUN / USER ID • DATA MEMBER':'LUPA PASSWORD • DATA MEMBER',title,body:lines.join('\n'),tone:missing.length||ambiguous?'review':'ready'};
+  }
   function adminText(el){return String(el?.textContent||'').replace(/\s+/g,' ').trim();}
   function inputCaption(el){
     return [el.name,el.id,el.placeholder,el.getAttribute('aria-label'),...[...(el.labels||[])].map(l=>l.textContent),el.closest('td')?.previousElementSibling?.textContent].join(' ');
@@ -162,8 +523,44 @@
     if(labels.length===1)return labels[0];
     throw new Error('Kolom Nomor Rekening belum dikenali. Perlu menyesuaikan formulir admin.');
   }
-  function searchRequest(page,number){
-    const input=accountField(page.doc),form=input.form;
+  function userIdField(doc){
+    const fields=[...doc.querySelectorAll('input[name]')].filter(e=>['text','search'].includes(e.type)&&e.form);
+    const exact=fields.filter(e=>/^(?:userid|username|searchuserid)$/i.test(e.name.replace(/[^a-z0-9]/gi,'')));
+    if(exact.length===1)return exact[0];
+    const labelled=fields.filter(e=>/user\s*id|username/i.test(inputCaption(e)));
+    if(labelled.length===1)return labelled[0];
+    throw new Error('Kolom UserId belum dikenali pada admin.');
+  }
+  function nearbyFilterCaption(check){
+    const parts=[];
+    for(const direction of ['previousSibling','nextSibling']){
+      let n=check[direction];
+      for(let i=0;n&&i<3;i++,n=n[direction]){
+        if(n.nodeType===1&&(n.matches('input,select,textarea,button,table,tr')||n.querySelector('input,select,textarea')))break;
+        const value=String(n.textContent||'').trim();if(value)parts.push(value);
+      }
+    }
+    const cell=check.closest('td,th,label');
+    if(cell&&cell.querySelectorAll('input[type="checkbox"]').length===1&&adminText(cell).length<100)parts.push(adminText(cell));
+    return parts.join(' ');
+  }
+  function associatedFilterChecks(checks,input,kind){
+    const matches=t=>kind==='userid'?/\buser[\s_-]*(?:id|name)\b/i.test(t):accountLabel.test(t)&&!/nama\s*rek/i.test(t);
+    const adjacent=checks.filter(e=>matches(nearbyFilterCaption(e)));
+    if(adjacent.length)return adjacent;
+    // Checkbox and caption may occupy the cell immediately before the input.
+    const cell=input.closest('td,th'),previous=cell?.previousElementSibling;
+    if(previous&&matches(adminText(previous))){
+      const local=checks.filter(e=>previous.contains(e));if(local.length)return local;
+      const before=previous.previousElementSibling;
+      if(before&&adminText(before).trim()===''){
+        const only=checks.filter(e=>before.contains(e));if(only.length===1)return only;
+      }
+    }
+    return [];
+  }
+  function searchRequest(page,number,kind='account'){
+    const input=kind==='userid'?userIdField(page.doc):accountField(page.doc),form=input.form;
     if(form.querySelector('input[type="password"]'))throw new Error('Sesi admin belum login.');
     const buttons=[...form.querySelectorAll('button,input[type="submit"]')].filter(e=>!e.disabled);
     const submit=buttons.find(e=>/^(?:cari|search|submit|filter|tampilkan)$/i.test(adminText(e)||e.value));
@@ -172,18 +569,20 @@
     if(url.origin!==ADMIN_ORIGIN || url.pathname!==new URL(page.url).pathname)throw new Error('Tujuan formulir pencarian berbeda; pencarian dihentikan.');
     const method=(submit.getAttribute('formmethod')||form.getAttribute('method')||'GET').toUpperCase();
     if(!['GET','POST'].includes(method))throw new Error('Metode pencarian belum didukung.');
-    const checks=[...form.querySelectorAll('input[type="checkbox"][name]')];
-    let targetCheck=checks.filter(e=>accountLabel.test(inputCaption(e)));
+    const checks=[...form.querySelectorAll('input[type="checkbox"]')];
+    let targetCheck=checks.filter(e=>kind==='userid'?/user[_\s-]*(?:id|name)/i.test(inputCaption(e)):accountLabel.test(inputCaption(e)));
+    if(!targetCheck.length)targetCheck=associatedFilterChecks(checks,input,kind);
     if(!targetCheck.length){
       const cell=input.closest('td')||input.closest('label')||input.parentElement;
       const textFields=cell?[...cell.querySelectorAll('input')].filter(e=>['text','search','tel','number','email'].includes(e.type)):[];
       // A form-wide checkbox may belong to User ID; never enable it for rekening.
       if(cell && cell!==form && textFields.length===1 && textFields[0]===input){
-        targetCheck=checks.filter(e=>cell.contains(e)&&!/user[_\s-]*(?:id|name)|username|userid/i.test(inputCaption(e)));
+        targetCheck=checks.filter(e=>cell.contains(e)&&(kind==='userid'||!/user[_\s-]*(?:id|name)|username|userid/i.test(inputCaption(e))));
       }
     }
-    if(targetCheck.length>1)throw new Error('Pilihan filter rekening ambigu.');
+    if(targetCheck.length>1)throw new Error('Lebih dari satu centang cocok dengan filter '+(kind==='userid'?'UserId':'Nomor Rekening')+'.');
     const checkbox=targetCheck[0];
+    if(kind==='userid'&&!checkbox)throw new Error('Centang filter UserId belum dikenali; pencarian dihentikan agar tidak memakai filter yang salah.');
     if(input.disabled&&!checkbox)throw new Error('Filter Nomor Rekening belum aktif.');
     const params=new URLSearchParams();
     for(const e of form.elements){
@@ -213,22 +612,24 @@
         else params.append(e.name,e.value); // retain server tokens
       }else params.append(e.name,'');
     }
-    if(checkbox&&!params.has(checkbox.name))params.append(checkbox.name,checkbox.value||'on');
+    if(checkbox?.name&&!params.has(checkbox.name))params.append(checkbox.name,checkbox.value||'on');
     if(submit.name)params.set(submit.name,submit.value||'');
     url.search='';url.hash='';
     if(method==='GET')url.search=params.toString();
     return {url:url.href,method,body:method==='POST'?params.toString():null};
   }
-  const pendingAdmin=new Set();
-  function fetchAdmin(url,method='GET',body=null){
+  const profileReadUrls=new Set();
+  const pendingAdmin=new Map();
+  function cancelAdminGroup(group){for(const [handle,kind] of pendingAdmin){if(group&&kind!==group)continue;try{handle.abort();}catch{}pendingAdmin.delete(handle);}}
+  function fetchAdmin(url,method='GET',body=null,group='account'){
     return new Promise((resolve,reject)=>{
       const dest=new URL(url);
-      if(dest.origin!==ADMIN_ORIGIN||!ADMIN_PATHS.includes(dest.pathname)){reject(new Error('Alamat admin tidak diizinkan.'));return;}
+      if(dest.origin!==ADMIN_ORIGIN||(!ADMIN_PATHS.includes(dest.pathname)&&dest.pathname!=='/referrallist.php'&&!(method==='GET'&&profileReadUrls.has(dest.href)))){reject(new Error('Alamat admin tidak diizinkan.'));return;}
       if(typeof GM_xmlhttpRequest!=='function'){reject(new Error('Perbarui izin skrip di Tampermonkey untuk mengakses admin.'));return;}
       let handle;
       const finish=()=>pendingAdmin.delete(handle);
       handle=GM_xmlhttpRequest({method,url:dest.href,data:body,anonymous:false,timeout:20000,
-        headers:method==='POST'?{'Content-Type':'application/x-www-form-urlencoded'}:{},
+        headers:{'Cache-Control':'no-cache','Pragma':'no-cache',...(method==='POST'?{'Content-Type':'application/x-www-form-urlencoded'}:{})},
         onload(response){
           finish();
           try{
@@ -243,10 +644,209 @@
         },onerror(){finish();reject(new Error('Koneksi admin gagal. Periksa sesi login dan izin Tampermonkey.'));},
         ontimeout(){finish();reject(new Error('Admin tidak merespons dalam 20 detik.'));},
         onabort(){finish();reject(new Error('Pencarian dibatalkan.'));}
-      });pendingAdmin.add(handle);
+      });pendingAdmin.set(handle,group);
     });
   }
 
+  const blockedMemory=new Map();
+  function blockedState(chat=route){
+    if(blockedMemory.has(chat))return blockedMemory.get(chat);
+    let state;try{state=JSON.parse(localStorage.getItem('lc-blocked-result-v1:'+chat)||'null');}catch{}
+    if(!state||typeof state!=='object')state={active:false,userid:'',phase:'idle'};
+    if(state.phase==='loading')state.phase='idle';blockedMemory.set(chat,state);return state;
+  }
+  function saveBlocked(state,chat=route){try{localStorage.setItem('lc-blocked-result-v1:'+chat,JSON.stringify(state));}catch{state.storageError=true;}}
+  function profileLink(row,pageUrl){
+    const urls=[];
+    for(const el of row.querySelectorAll('a,button,option')){
+      const label=[adminText(el),el.title,el.getAttribute('aria-label')].join(' ');
+      if(!/\bprofil(?:e)?\b/i.test(label))continue;
+      const raw=el.getAttribute('href')||el.getAttribute('data-url')||(el.tagName==='OPTION'?el.value:'');
+      const values=[raw,...[...(el.getAttribute('onclick')||'').matchAll(/['"]([^'"]+\.php(?:\?[^'"]*)?)['"]/g)].map(m=>m[1])];
+      for(const value of values){
+        if(!value||/^(?:javascript:|#)/i.test(value))continue;
+        const u=new URL(value,pageUrl);
+        if(u.origin!==ADMIN_ORIGIN||!u.pathname.endsWith('.php')||/delete|remove|logout|reset|update|save|submit|changepass|unlock|lockuser/i.test(u.pathname))continue;
+        if([...u.searchParams].some(([k])=>/delete|remove|reset|update|save|password|unlock|lockuser/i.test(k)))continue;
+        if([...u.searchParams].some(([k,v])=>/^(?:action|act|do|mode|cmd|submit|status|locked|lock)$/i.test(k)&&! /^(?:view|profile|profil|show|detail|read)$/i.test(v)))continue;
+        u.hash='';urls.push(u.href);
+      }
+    }
+    const unique=[...new Set(urls)];if(unique.length!==1)throw new Error('Tautan Profil pada baris User ID belum dikenali dengan pasti. Buka Tools → Profil di admin.');
+    profileReadUrls.add(unique[0]);return unique[0];
+  }
+  function rowLock(cell){
+    if(!cell)return null;
+    const icons=[...cell.querySelectorAll('img,svg,i,span')].map(e=>[e.getAttribute('src'),e.getAttribute('alt'),e.getAttribute('title'),e.getAttribute('aria-label'),e.getAttribute('class')].join(' '));
+    return icons.some(t=>/lock|gembok|🔒/i.test(t)&&!/unlock|unlocked|🔓/i.test(t))||/🔒/.test(adminText(cell));
+  }
+  function accountLockRecord(record,row,labels,pageUrl){
+    const idx=labels.findIndex(l=>/^(?:userid|user\s*id|username|player)$/i.test(l));
+    record.lock=rowLock(row.cells[idx]);record.lockCheckVersion=2;
+    if(record.lock){
+      try{record.profileUrl=profileLink(row,pageUrl);}catch(e){record.profileError=e.message;}
+    }
+    return {state:'found',record};
+  }
+  function troubleDetails(page,userid){
+    const copy=page.doc.body.cloneNode(true);copy.querySelectorAll('script,style').forEach(e=>e.remove());
+    copy.querySelectorAll('br').forEach(e=>e.replaceWith(' '));
+    const parts=copy.textContent.split(/\bUser\s*:/i).slice(1),entries=[];
+    for(const part of parts){
+      const m=part.trim().match(/^([\w.-]+)\s*,?\s*(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})\s*alasan\s*:\s*([\s\S]*)$/i);
+      if(!m||m[1].toLowerCase()!==userid.toLowerCase())continue;
+      const reason=m[8].replace(/\s+/g,' ').trim();if(!reason)continue;
+      const [day,month,year,hour,minute,second]=m.slice(2,8).map(Number);
+      const stamp=Date.UTC(year,month-1,day,hour,minute,second),date=new Date(stamp);
+      if(date.getUTCFullYear()!==year||date.getUTCMonth()!==month-1||date.getUTCDate()!==day||hour>23||minute>59||second>59)continue;
+      entries.push({stamp,reason,dateText:m.slice(2,5).join('-')+' '+m.slice(5,8).join(':')});
+    }
+    entries.sort((a,b)=>b.stamp-a.stamp);
+    if(!entries.length)throw Error('Keterangan gembok kosong atau User ID / format belum cocok.');
+    if(entries[1]?.stamp===entries[0].stamp&&entries[1].reason!==entries[0].reason)throw Error('Keterangan terbaru gembok berbeda pada waktu yang sama.');
+    const item=entries[0],status=/^unlocked\b/i.test(item.reason)?'Unlocked':/^locked\b/i.test(item.reason)?'Locked':/^lupa\s+password\b/i.test(item.reason)?'Lupa password':'Status belum terbaca';
+    return {status,information:item.reason,source:'Gembok · alasan terbaru',reasonDate:item.dateText};
+  }
+  async function readLockReason(userid,profileUrl,profileError,group='account',locked=true){
+    let troubleError='';
+    if(locked){
+      // Same read-only page opened by the lock icon in the supplied screenshot.
+      const url=new URL('/trouble.php',ADMIN_ORIGIN);url.searchParams.set('user',userid);profileReadUrls.add(url.href);
+      try{return troubleDetails(await fetchAdmin(url.href,'GET',null,group),userid);}
+      catch(e){troubleError=e.message;}
+    }
+    if(!profileUrl)throw Error((troubleError?troubleError+' ':'')+(profileError||'Tautan Profil belum ditemukan.'));
+    try{
+      const result=profileDetails(await fetchAdmin(profileUrl,'GET',null,group),userid);
+      return {...result,source:'Profil · Information',fallbackNote:troubleError};
+    }catch(e){throw Error((troubleError?troubleError+' ':'')+'Profil: '+e.message);}
+  }
+  async function readRecoveryProfile(record){
+    if(!record.lock)return;
+    try{
+      record.profile=await readLockReason(record.userid,record.profileUrl,record.profileError);
+      record.profileCheckedAt=Date.now();record.profileError='';
+    }catch(e){record.profileError=e.message;}
+  }
+  function playerById(page,userid){
+    const rowsFound=[];let empty=false,recognized=false,rowsSeen=false;
+    for(const table of page.doc.querySelectorAll('table')){
+      const rows=[...table.rows].filter(r=>r.closest('table')===table);
+      const hi=rows.findIndex(r=>[...r.cells].some(c=>/^(?:userid|user\s*id|username)$/i.test(adminText(c))));if(hi<0)continue;
+      const labels=[...rows[hi].cells].map(adminText),idx=labels.findIndex(l=>/^(?:userid|user\s*id|username)$/i.test(l));recognized=true;
+      for(const row of rows.slice(hi+1)){
+        if(/^(?:tidak ada data|data tidak ditemukan|no data(?: available(?: in table)?)?|no records found)[.!\s]*$/i.test(adminText(row))){empty=true;continue;}
+        if(!adminText(row)||[...row.cells].every(c=>c.tagName==='TH'))continue;rowsSeen=true;
+        if(!row.cells[idx]||row.cells[idx].colSpan!==1)continue;
+        const record=recordFromRow(row,labels,'');
+        if(record.userid.toLowerCase()!==userid.toLowerCase())continue;
+        const icons=[...row.cells[idx].querySelectorAll('img,svg,i,span')].map(e=>[e.getAttribute('src'),e.getAttribute('alt'),e.getAttribute('title'),e.getAttribute('aria-label'),e.getAttribute('class')].join(' '));
+        const lock=icons.some(t=>/lock|gembok|🔒/i.test(t)&&! /unlock|unlocked|🔓/i.test(t))||/🔒/.test(adminText(row.cells[idx]));
+        rowsFound.push({row,userid:record.userid,lock});
+      }
+    }
+    if(rowsFound.length>1)throw new Error('Lebih dari satu baris cocok dengan User ID. Periksa admin.');
+    if(rowsFound.length===1)return rowsFound[0];
+    let echoed=false;try{echoed=userIdField(page.doc).value.toLowerCase()===userid.toLowerCase();}catch{}
+    if(recognized&&empty&&echoed&&!rowsSeen)return null;
+    throw new Error('User ID persis belum ditemukan; hasil kosong belum terkonfirmasi.');
+  }
+  function profileDetails(page,userid){
+    const heading=[...page.doc.querySelectorAll('th,td,caption,h1,h2,h3,legend,b,strong')].some(e=>adminText(e).toLowerCase()==='status '+userid.toLowerCase());
+    const identity=[...page.doc.querySelectorAll('input[name]')].some(e=>/^(?:userid|user_id|username)$/i.test(e.name)&&e.value.toLowerCase()===userid.toLowerCase());
+    if(!heading&&!identity)throw new Error('Identitas User ID pada halaman Profil belum cocok. Status tidak digunakan.');
+    const controlFor=(label,selector)=>{
+      for(const tr of page.doc.querySelectorAll('tr')){const cells=[...tr.cells];if(cells.length>=2&&label.test(adminText(cells[0])))return cells.slice(1).map(c=>c.querySelector(selector)).find(Boolean);}
+      return [...page.doc.querySelectorAll(selector)].find(e=>label.test((e.labels?.[0]?.textContent||e.name||e.id||'').trim()));
+    };
+    const select=controlFor(/^status\s*:?$/i,'select');
+    const raw=select?[...select.selectedOptions].map(o=>adminText(o)).join(' '):'';
+    const key=raw.toLowerCase().replace(/[^a-z]/g,'');
+    const status=/^unlo?cked$|^unloked$/.test(key)?'Unlocked':/^locked$|^loked$/.test(key)?'Locked':/^lupapass?word$|^lupapassword$/.test(key)?'Lupa password':'';
+    if(!status)throw new Error('Status Profil belum terbaca sebagai Unlocked, Locked, atau Lupa password.');
+    const info=controlFor(/^(?:information|informasi)\s*:?$/i,'textarea,input');
+    if(!info)throw new Error('Kolom Information belum dikenali pada Profil.');
+    return {status,information:String(info.value||'').trim()};
+  }
+  async function runBlocked(userid,force=false){
+    if(paused||!/^\w[\w.-]{2,39}$/.test(userid))return;
+    const state=blockedState(),chat=route;
+    if(!force&&state.userid===userid&&['loading','done','error'].includes(state.phase)&&!(state.phase==='error'&&/Centang filter UserId/.test(state.error||'')&&state.filterRevision!==245))return;
+    const token=(state.token||0)+1;Object.assign(state,{active:true,userid,filterRevision:245,phase:'loading',token,status:'',information:'',source:'',reasonDate:'',fallbackNote:'',error:'',lock:null,profileUrl:'',checkedAt:0});saveBlocked(state);render();
+    const valid=()=>route===chat&&conversationRoute()===chat&&state.token===token;
+    try{
+      const page=await fetchAdmin(ADMIN_ORIGIN+ADMIN_PATHS[0],'GET',null,'blocked');if(!valid())return;
+      const req=searchRequest(page,userid,'userid');
+      const result=await fetchAdmin(req.url,req.method,req.body,'blocked');if(!valid())return;
+      const player=playerById(result,userid);
+      if(!player){state.status='Tidak ditemukan';state.phase='done';}
+      else{
+        state.lock=player.lock;let profileError='';
+        try{state.profileUrl=profileLink(player.row,result.url);}catch(e){profileError=e.message;}
+        const details=await readLockReason(userid,state.profileUrl,profileError,'blocked',player.lock);if(!valid())return;
+        Object.assign(state,details);state.phase='done';
+      }
+      state.checkedAt=Date.now();
+    }catch(e){if(valid()){state.phase='error';state.error=e.message;}}
+    finally{if(valid()){saveBlocked(state);render();}else if(state.token===token){state.phase='idle';saveBlocked(state,chat);}}
+  }
+  function syncBlocked(messages){
+    if(!messages.some(m=>m.kind==='member'&&detectIntent(m.text).includes('blocked')))return;
+    const context=idContext(messages),state=blockedState();state.active=true;
+    const userid=context.id||(context.requested?context.candidate:'');
+    if(userid)runBlocked(userid);
+  }
+  function drawBlocked(container){
+    const state=blockedState();if(!state.active)return;
+    const box=document.createElement('section');box.className='blocked-panel';box.dataset.status=state.status||state.phase;
+    const eyebrow=document.createElement('div');eyebrow.className='category';eyebrow.textContent='PEMERIKSAAN AKUN • ADMIN NOW';
+    const heading=document.createElement('strong');heading.textContent=state.userid||'Menunggu User ID member';
+    const badge=document.createElement('div');badge.className='blocked-badge';badge.textContent=state.phase==='loading'?'Membaca gembok → Profil bila perlu…':state.status||'Status belum terbaca';
+    box.append(eyebrow,heading,badge);
+    if(state.status&&state.status!=='Tidak ditemukan'){
+      const label=document.createElement('b');label.textContent=(state.source||'Information dari admin')+(state.reasonDate?' · '+state.reasonDate:'');const info=document.createElement('p');info.className='blocked-information';info.textContent=state.information||'(Information kosong)';box.append(label,info);
+    }
+    const note=document.createElement('p');note.textContent=state.error||(state.lock===true?'Indikator gembok ditemukan di sebelah User ID.':state.lock===false?'Indikator gembok belum terdeteksi. Acuan status: kolom Status pada Profil.':'User ID akan dicari setelah diberikan member.');box.append(note);
+    if(state.lock===true&&state.status==='Unlocked'){const warn=document.createElement('p');warn.textContent='Indikator gembok dan Status Profil berbeda. Periksa langsung sebelum menyimpulkan.';box.append(warn);}
+    if(state.checkedAt){const time=document.createElement('small');time.textContent='Hasil saat pengecekan: '+new Date(state.checkedAt).toLocaleString('id-ID');box.append(time);}
+    const field=document.createElement('input');field.placeholder='User ID yang ingin diperiksa';field.value=state.userid||'';field.setAttribute('aria-label','User ID pemeriksaan blokir');
+    const check=document.createElement('button');check.textContent='Periksa / perbarui profil';check.disabled=state.phase==='loading';check.onclick=()=>{const uid=field.value.trim();if(!/^\w[\w.-]{2,39}$/.test(uid)){setStatus('Periksa User ID: 3–40 karakter huruf, angka, titik, garis bawah atau tanda hubung.');return;}runBlocked(uid,true);};box.append(field,check);container.append(box);
+  }
+  function parseBalance(value){
+    const raw=String(value??'').normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/−/g,'-').trim().replace(/^(?:rp\.?|idr)\s*/i,'').replace(/\s/g,'');
+    if(!raw)return null;
+    let numeric;
+    // Admin format: 3,055.50; also accept explicit Indonesian 3.055,50.
+    if(/^-?\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?$/.test(raw))numeric=raw.replace(/,/g,'');
+    else if(/^-?\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?$/.test(raw))numeric=raw.replace(/\./g,'').replace(',','.');
+    else if(/^-?\d+(?:[.,]\d{1,2})?$/.test(raw))numeric=raw.replace(',','.');
+    else return null;
+    const amount=Number(numeric);
+    return Number.isFinite(amount)&&Math.abs(amount)<=Number.MAX_SAFE_INTEGER/100?amount:null;
+  }
+  function balanceDisplay(record){
+    const value=record.balance;
+    if(typeof value!=='number'||!Number.isFinite(value))return {text:'Belum terbaca',tone:'unknown',note:record.balanceError||'Balance belum diambil dari admin.'};
+    return {text:value.toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2}),tone:value>10000?'high':'low',note:value>10000?'DI ATAS 10.000':value===10000?'TEPAT 10.000':'DI BAWAH 10.000'};
+  }
+  function balanceFromRow(row,labels){
+    const label=s=>String(s||'').normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/[↕↑↓▲▼:]/g,'').replace(/\s+/g,' ').trim();
+    const matches=s=>/^(?:(?:current|available)\s+)?(?:balance|saldo)(?:\s*(?:\((?:rp|idr)\)|rp|idr|tersedia|saat ini))?$/i.test(label(s));
+    let index=labels.findIndex(matches);
+    const cell=index>=0?row.cells[index]:[...row.cells].find(c=>matches(c.getAttribute('data-label')||c.getAttribute('data-title')||''));
+    if(!cell)return {balance:null,balanceRaw:'',balanceError:'Kolom Balance tidak ditemukan pada hasil admin.'};
+    const copy=cell.cloneNode(true);copy.querySelectorAll('script,style,button,img,svg').forEach(n=>n.remove());
+    const values=[copy.textContent,...[...cell.querySelectorAll('input:not([type="hidden"]),output')].map(n=>n.value||n.textContent),cell.getAttribute('data-balance')].filter(v=>v!=null&&String(v).trim());
+    const parsed=values.map(v=>({raw:String(v).trim(),value:parseBalance(String(v).replace(/^\s*(?:balance|saldo)\s*:?\s*/i,''))})).filter(v=>v.value!==null);
+    if(new Set(parsed.map(v=>v.value)).size===1)return {balance:parsed[0].value,balanceRaw:parsed[0].raw,balanceError:''};
+    return {balance:null,balanceRaw:String(values[0]||'').slice(0,100),balanceError:parsed.length?'Ada beberapa nilai balance yang berbeda.':'Kolom Balance ditemukan, tetapi nilainya kosong atau formatnya belum dikenali.'};
+  }
+  async function refreshBalance(){
+    if(accountState.phase==='loading'||!accountState.number||paused)return;
+    // The account number may have been reassigned. Re-resolve from Now to Old,
+    // replace the entire record, and bypass the cached owner and balance.
+    await runAccount(accountState.number,true);
+  }
   function recordFromRow(row,labels,number){
     const find=re=>labels.findIndex(t=>re.test(t));
     const value=index=>index>=0?adminText(row.cells[index]):'';
@@ -274,7 +874,7 @@
         if(!holder)holder=parts.slice(1,accountIndex).join(', ');
       }
     }
-    return {userid,referral,bank,holder,number};
+    return {userid,referral,bank,holder,number,...balanceFromRow(row,labels)};
   }
   function exactAccountCell(value,number){
     const raw=String(value||'').normalize('NFKC').trim();
@@ -302,13 +902,13 @@
         rowsSeen=true;
         const record=recordFromRow(row,labels,number);
         if(!/^[a-z0-9_.-]{3,40}$/i.test(record.userid)||/^(?:total|userid|username|no|data)$/i.test(record.userid))continue;
-        if(nr>=0&&row.cells[nr]?.colSpan===1&&exactAccountCell(adminText(row.cells[nr]),number))return {state:'found',record};
+        if(nr>=0&&row.cells[nr]?.colSpan===1&&exactAccountCell(adminText(row.cells[nr]),number))return accountLockRecord(record,row,labels,page.url);
         if(bank>=0&&row.cells[bank]?.colSpan===1){
           const cell=row.cells[bank].cloneNode(true);cell.querySelectorAll('br').forEach(e=>e.replaceWith('\n'));
           const chunks=cell.textContent.split(/[\r\n,;]+/).map(t=>t.trim()).filter(Boolean);
           // Combined Bank column: bank, holder, account. Never match holder digits.
           const last=chunks[chunks.length-1];
-          if(chunks.length>=2&&exactAccountCell(last,number))return {state:'found',record};
+          if(chunks.length>=2&&exactAccountCell(last,number))return accountLockRecord(record,row,labels,page.url);
         }
       }
     }
@@ -317,10 +917,10 @@
     if(verified&&tableSeen&&emptyEvidence&&!rowsSeen)return {state:'absent'};
     return {state:'unknown',message:tableSeen?'Tidak ada kecocokan persis yang terbaca; hasil kosong belum terkonfirmasi.':'Tabel hasil admin belum dikenali.'};
   }
-  async function lookupAt(path,number){
-    const page=await fetchAdmin(ADMIN_ORIGIN+path);
+  async function lookupAt(path,number,group='account'){
+    const page=await fetchAdmin(ADMIN_ORIGIN+path,'GET',null,group);
     const req=searchRequest(page,number);
-    return resultAt(await fetchAdmin(req.url,req.method,req.body),number);
+    return resultAt(await fetchAdmin(req.url,req.method,req.body,group),number);
   }
 
 
@@ -345,7 +945,8 @@
     if(!result.lookupRevision && result.now!=='TERDAFTAR' && /^(?:Belum dicek|Menunggu hasil Now)$/i.test(result.old||''))return null;
     // Refresh old negative results once using stricter, table-scoped evidence.
     if((result.lookupRevision||0)<2&&result.now==='DI PEMAIN NOW TIDAK ADA'&&result.old==='DI PEMAIN OLD TIDAK ADA'&&!result.completed)return null;
-    return JSON.parse(JSON.stringify(result));
+    if(result.record&&(result.record.lockCheckVersion||0)<2&&!result.completed&&!result.conversationCompleted)return null;
+    const restored=JSON.parse(JSON.stringify(result));restored.balanceLoading=false;if(restored.record)delete restored.record.referralPending;return restored;
   }
   function saveAccountResult(){
     if(!accountState.number||!['done','error'].includes(accountState.phase))return;
@@ -367,7 +968,7 @@
   }
   function isAccountFinished(chat=route){return Boolean(conversationDone(chat)||cachedAccount('',chat)?.completed);}
   function finishAccount(){
-    if(location.pathname!==route){scan();return;}
+    if(conversationRoute()!==route){scan();return;}
     if(!['done','error'].includes(accountState.phase))return;
     accountShowResult=false;accountState.completed=true;saveAccountResult();
     cards=cards.filter(c=>c.type!=='password');render();drawAccount();
@@ -377,7 +978,7 @@
   let accountEpoch=0,accountTimer=null,accountFingerprint='',accountLastRender='';
   function cancelAccount(){
     accountEpoch++;clearTimeout(accountTimer);accountTimer=null;
-    for(const r of pendingAdmin)try{r.abort();}catch{}pendingAdmin.clear();
+    cancelAdminGroup('account');
   }
   function resetAccount(){
     cancelAccount();accountFingerprint='';
@@ -399,6 +1000,7 @@
       const view=document.createElement('button');view.id='account-view';view.className='view-result';view.textContent='Lihat hasil';
       view.onclick=()=>{accountShowResult=true;drawAccount();};
       const retry=document.createElement('button');retry.id='account-retry';retry.textContent='Cek ulang';retry.onclick=()=>runAccount(accountState.number,true);
+      const reopen=document.createElement('button');reopen.id='account-reopen';reopen.className='view-result';reopen.textContent='Buka kembali';reopen.onclick=manuallyReopen;actions.append(reopen);
       if(accountState.number)actions.append(view,retry);el.append(icon,eyebrow,title,note,actions);
       const foot=document.createElement('small');foot.className='finished-foot';
       foot.textContent=accountState.stored?'✓ Tersimpan untuk chat ini':'Tersimpan selama halaman ini terbuka';
@@ -429,16 +1031,47 @@
       const banner=document.createElement('div');banner.className='player-banner';
       banner.textContent='✓ TERDAFTAR DI PEMAIN '+accountState.source;card.append(banner);
       const table=document.createElement('table');table.className='player-table';
-      for(const [label,value] of [['User ID',record.userid],['Referral',record.referral],['Bank / E-wallet',record.bank],['Nama Rekening',record.holder],['Nomor Rekening',record.number]]){
+      for(const [label,value] of [['User ID',record.userid],['Referral (Downline Aktif)',referralText(record)],['Kode referral pemain',record.referral],['Bank / E-wallet',record.bank],['Nama Rekening',record.holder],['Nomor Rekening',record.number]]){
         const tr=document.createElement('tr'),th=document.createElement('th'),td=document.createElement('td');
         th.scope='row';th.textContent=label;td.textContent=value||'Belum terbaca';
         if(label==='Nomor Rekening')td.className='number-highlight';
         if(label==='User ID')td.className='userid-value';
         tr.append(th,td);table.append(tr);
       }card.append(table);
+      if(record.lock){
+        const warning=document.createElement('div');warning.className='recovery-lock';
+        const title=document.createElement('strong');title.textContent='🔒 USER ID TERKUNCI · '+record.userid;
+        const status=document.createElement('p');status.textContent='Status terbaca: '+(record.profile?.status||'Belum berhasil dibaca');
+        const info=document.createElement('p');info.textContent=record.profile?(record.profile.source||'Information')+(record.profile.reasonDate?' · '+record.profile.reasonDate:'')+'\nKeterangan: '+(record.profile.information||'(kosong)'):record.profileError||'Sedang membaca keterangan gembok…';
+        const advice=document.createElement('p');advice.textContent=record.profile?.status==='Unlocked'?'Gembok dan Status Profil berbeda. Periksa langsung di admin.':'Periksa keterangan admin sebelum melanjutkan. Lupa User ID tetap tidak memerlukan reset password.';
+        warning.append(title,status,info,advice);card.append(warning);
+      }
+      const refnote=document.createElement('small');refnote.textContent=record.referralStats?'Upline '+record.userid+' · '+record.referralStats.from+' sampai '+record.referralStats.to:record.referralError||'Referral diperiksa setelah rekening ditemukan.';card.append(refnote);
+      if(accountState.phase==='done'&&!record.referralStats&&!record.referralError&&!record.referralPending){
+        record.referralPending=true;const chat=route,number=accountState.number,epoch=accountEpoch;
+        Promise.resolve().then(async()=>{
+          try{const result=await lookupReferral(record.userid);if(route===chat&&accountEpoch===epoch&&accountState.number===number&&accountState.record===record)record.referralStats=result;}
+          catch(e){if(route===chat&&accountEpoch===epoch&&accountState.record===record)record.referralError=e.message;}
+          finally{delete record.referralPending;if(route===chat&&accountEpoch===epoch&&accountState.record===record){saveAccountResult();drawAccount();}}
+        });
+      }
+      const balance=balanceDisplay(record);
+      const balanceBox=document.createElement('div');balanceBox.className='balance-box';balanceBox.dataset.tone=balance.tone;
+      const balanceLabel=document.createElement('span');balanceLabel.textContent='BALANCE';
+      const balanceValue=document.createElement('strong');balanceValue.textContent=accountState.balanceLoading?'Membaca…':balance.text;
+      const balanceNote=document.createElement('span');balanceNote.textContent=balance.note;
+      const balanceTime=document.createElement('small');balanceTime.textContent='Saat pengecekan • '+new Date(accountState.balanceCheckedAt||accountState.savedAt||Date.now()).toLocaleString('id-ID');
+      balanceBox.append(balanceLabel,balanceValue,balanceNote,balanceTime);
+      const refresh=document.createElement('button');refresh.textContent=accountState.balanceLoading?'Mengambil balance…':'↻ Ambil balance terbaru';refresh.disabled=Boolean(accountState.balanceLoading);refresh.title='Cari ulang rekening dari Now ke Old dan perbarui User ID beserta balance, termasuk setelah rekening dipindahkan.';refresh.onclick=refreshBalance;balanceBox.append(refresh);card.append(balanceBox);
+      // Migrate a cached result lacking a balance only once; never poll indefinitely.
+      if(balance.tone==='unknown'&&!accountState.balanceReadRevision&&!accountState.balanceLoading&&!paused){
+        accountState.balanceReadRevision=1;saveAccountResult();
+        const chat=route,number=accountState.number;
+        Promise.resolve().then(()=>{if(route===chat&&accountState.number===number)refreshBalance();});
+      }
       const copy=document.createElement('button');copy.className='copy-player';copy.textContent='Salin data pemain';
       copy.onclick=async()=>{
-        const content=['Pemain '+accountState.source,'User ID: '+(record.userid||'Belum terbaca'),'Referral: '+(record.referral||'Belum terbaca'),'Bank / E-wallet: '+(record.bank||'Belum terbaca'),'Nama Rekening: '+(record.holder||'Belum terbaca'),'Nomor Rekening: '+record.number].join('\n');
+        const content=['Pemain '+accountState.source,'User ID: '+(record.userid||'Belum terbaca'),'Referral (Downline Aktif): '+referralText(record),'Bank / E-wallet: '+(record.bank||'Belum terbaca'),'Nama Rekening: '+(record.holder||'Belum terbaca'),'Nomor Rekening: '+record.number,'Balance (saat pengecekan): '+balanceDisplay(record).text].join('\n');
         try{await navigator.clipboard.writeText(content);copy.textContent='✓ Data tersalin';}catch{setStatus('Clipboard belum diizinkan browser.');}
       };card.append(copy);el.append(card);
     }
@@ -458,14 +1091,66 @@
     const finish=document.createElement('button');finish.id='account-finish';finish.className='account-finish';finish.textContent=accountState.completed?'Kembali ke pencarian selesai':'✓ Selesai';finish.disabled=!['done','error'].includes(accountState.phase);finish.title='Tampilkan ringkasan selesai; hasil tetap tersimpan';finish.onclick=finishAccount;el.append(finish);
     const link=document.createElement('a');link.href=ADMIN_ORIGIN+ADMIN_PATHS[0];link.target='_blank';link.rel='noopener noreferrer';link.textContent='Buka admin / login';link.className='admin-link';el.append(link);
   }
+  function referralDates(){
+    const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+    const get=k=>+parts.find(p=>p.type===k).value,y=get('year'),m=get('month'),d=get('day'),prev=Math.min(d,new Date(Date.UTC(y-1,m,0)).getUTCDate());
+    const fmt=(yr,day)=>String(day).padStart(2,'0')+'-'+String(m).padStart(2,'0')+'-'+yr;
+    return {from:fmt(y-1,prev),to:fmt(y,d)};
+  }
+  function referralFields(doc){
+    const fields=[...doc.querySelectorAll('input[name]')].filter(e=>e.form&&!['hidden','submit','checkbox','radio','button','password'].includes(e.type));
+    const pick=re=>{const matches=fields.filter(e=>re.test(inputCaption(e)));if(matches.length!==1)throw Error('Kolom Upline / tanggal referral belum dikenali dengan pasti.');return matches[0];};
+    const up=pick(/\bupline\b/i),from=pick(/tanggal\s*awal|date\s*from|start\s*date|\bvaldatef\b/i),to=pick(/tanggal\s*akhir|date\s*to|end\s*date|\bvaldatet\b/i);
+    if(up.form!==from.form||up.form!==to.form)throw Error('Kolom referral berada di formulir berbeda.');return {up,from,to};
+  }
+  function referralRequest(page,userid,dates){
+    const {up,from,to}=referralFields(page.doc),form=up.form;
+    const submit=[...form.querySelectorAll('button,input[type="submit"]')].find(e=>/^(cari|search|submit)$/i.test(adminText(e)||e.value));if(!submit)throw Error('Tombol Cari referral belum dikenali.');
+    const url=new URL(submit.getAttribute('formaction')||form.getAttribute('action')||page.url,page.url),method=(form.method||'GET').toUpperCase();
+    if(url.origin!==ADMIN_ORIGIN||url.pathname!=='/referrallist.php'||!['GET','POST'].includes(method))throw Error('Tujuan pencarian referral tidak sesuai.');
+    const params=new URLSearchParams();const dateValue=(e,v)=>e.type==='date'?v.split('-').reverse().join('-'):v;
+    for(const e of form.elements){
+      if(!e.name||e.disabled||['submit','button','reset','file'].includes(e.type))continue;
+      if(e===up){params.set(e.name,userid);continue;}if(e===from||e===to){params.set(e.name,dateValue(e,e===from?dates.from:dates.to));continue;}
+      if(e.type==='hidden'){params.set(e.name,/^page$/i.test(e.name)?'1':e.value);continue;}
+      if(['checkbox','radio'].includes(e.type))continue;
+      if(e.tagName==='SELECT'){
+        if(/^(bts|limit|show|rows|pagesize)$/i.test(e.name)){params.set(e.name,e.value);continue;}
+        const all=[...e.options].find(o=>o.value===''||/^(semua|all)$/i.test(o.textContent.trim()));if(!all)throw Error('Filter referral '+e.name+' belum memiliki pilihan Semua / kosong.');params.set(e.name,all.value);continue;
+      }params.set(e.name,'');
+    }
+    if(submit.name)params.set(submit.name,submit.value||'Cari');
+    url.search='';if(method==='GET')url.search=params.toString();return {url:url.href,method,body:method==='POST'?params.toString():null};
+  }
+  function referralResult(page,userid,dates){
+    const f=referralFields(page.doc),dateNorm=v=>/^\d{4}-\d{2}-\d{2}$/.test(v)?v.split('-').reverse().join('-'):v;
+    if(f.up.value.trim().toLowerCase()!==userid.toLowerCase()||dateNorm(f.from.value)!==dates.from||dateNorm(f.to.value)!==dates.to)throw Error('Hasil referral tidak mengonfirmasi Upline dan rentang tanggal yang diminta.');
+    for(const table of page.doc.querySelectorAll('table')){
+      const rows=[...table.rows],header=rows.find(r=>{const text=[...r.cells].map(adminText).join(' ');return /\bupline\b/i.test(text)&&/downline\s*total/i.test(text)&&/downline\s*aktif/i.test(text);});if(!header)continue;
+      const names=[...header.cells].map(adminText),ui=names.findIndex(t=>/^upline$/i.test(t)),ti=names.findIndex(t=>/^downline\s*total$/i.test(t)),ai=names.findIndex(t=>/^downline\s*aktif$/i.test(t));if([ui,ti,ai].some(i=>i<0))continue;
+      const body=rows.slice(rows.indexOf(header)+1).filter(r=>r.cells.length>=names.length&&!/^total\s*:/i.test(adminText(r)));
+      const exact=body.filter(r=>adminText(r.cells[ui]).toLowerCase()===userid.toLowerCase());
+      const count=t=>/^\d+(?:[.,]\d{3})*$/.test(t)?Number(t.replace(/[.,]/g,'')):null;
+      if(exact.length===1){const total=count(adminText(exact[0].cells[ti])),active=count(adminText(exact[0].cells[ai]));if(total===null||active===null)throw Error('Jumlah downline belum terbaca.');return {total,active,...dates,userid,checkedAt:Date.now()};}
+      if(!body.length&&/(?:^|\D)0\s+of\s+0(?:\D|$)|tidak ada data|no (?:data|records)/i.test(adminText(page.doc.body)))return {total:0,active:0,...dates,userid,checkedAt:Date.now()};
+      throw Error('Baris Upline tidak cocok atau hasil belum pasti.');
+    }throw Error('Tabel referral belum dikenali.');
+  }
+  async function lookupReferral(userid){
+    if(!userid||!String(userid).trim())throw Error('User ID hasil rekening belum terbaca.');
+    const dates=referralDates(),page=await fetchAdmin(ADMIN_ORIGIN+'/referrallist.php');
+    const req=referralRequest(page,userid,dates);return referralResult(await fetchAdmin(req.url,req.method,req.body),userid,dates);
+  }
+  function referralText(record){return record.referralStats?String(record.referralStats.active):record.referralError?'Belum berhasil dicek':'Belum dicek';}
+
   async function runAccount(number,force=false){
-    if(location.pathname!==route){scan();return;}
+    if(conversationRoute()!==route){scan();return;}
     if(!force && accountState.phase==='loading'&&accountState.number===number)return;
     if(!force && restoreAccountResult(number))return;
     if(paused){setStatus('Klik Lanjut sebelum mengecek rekening.');return;}
     cancelAccount();accountShowResult=false;const epoch=accountEpoch,chat=route;
-    const current=()=>epoch===accountEpoch&&chat===route&&location.pathname===chat;
-    accountState={...accountState,number,record:null,source:'',savedAt:null,stored:false,completed:false,conversationCompleted:false,completionRefresh:force&&Boolean(conversationDone()),fromCache:false,phase:'loading',now:'Sedang mencari…',old:'Menunggu hasil Now',message:'Membersihkan filter dan mencari Nomor Rekening di Pemain Now.'};drawAccount();
+    const current=()=>epoch===accountEpoch&&chat===route&&conversationRoute()===chat;
+    accountState={...accountState,number,record:null,source:'',balanceReadRevision:1,balanceLoading:false,balanceCheckedAt:null,savedAt:null,stored:false,completed:false,conversationCompleted:false,completionRefresh:force&&Boolean(conversationDone()),fromCache:false,phase:'loading',now:'Sedang mencari…',old:'Menunggu hasil Now',message:'Membersihkan filter dan mencari Nomor Rekening di Pemain Now.'};drawAccount();
     try{
       const now=await lookupAt(ADMIN_PATHS[0],number);if(!current())return;
       if(now.state==='found'){
@@ -490,6 +1175,15 @@
         }
       }
       if(accountState.requestType==='username'&&accountState.source==='OLD')accountState.message+=' Berikan User ID saja; jangan reset password.';
+      if(accountState.record?.userid){
+        const record=accountState.record;drawAccount();
+        await readRecoveryProfile(record);if(!current())return;
+        if(record.lock)accountState.message='Gembok terdeteksi pada User ID '+record.userid+'. Periksa keterangan gembok / Information sebelum melanjutkan pemulihan akun.';
+        drawAccount();
+        try{record.referralStats=await lookupReferral(record.userid);record.referralError='';}
+        catch(e){record.referralError=e.message;}
+        if(!current())return;
+      }
       accountState.phase='done';
     }catch(e){
       if(!current())return;
@@ -498,19 +1192,78 @@
     }
     if(current()){if(conversationDone()){accountState.conversationCompleted=true;accountState.completed=true;accountShowResult=false;}accountState.completionRefresh=false;saveAccountResult();drawAccount();$('bubble').classList.add('unread');playNotice();}
   }
+  function hasNewRecoveryAfterCompletion(messages){
+    const lastRequest=messages.map((m,i)=>({m,i})).filter(({m})=>m.kind==='member'&&(resetIntent.test(m.text)||usernameIntent.test(m.text))).at(-1);
+    if(!lastRequest)return false;
+    // Only reopen automatically with a visible earlier SENT completion. This
+    // avoids treating a partial, virtualized transcript as a brand new request.
+    for(let i=lastRequest.i-1;i>=0;i--){
+      const m=messages[i];
+      if(m.kind==='agent'&&/user\s*id\s*:/i.test(m.text)&&/note\s*:/i.test(m.text)&&sentCompletion(messages.slice(0,i+1)))return true;
+    }
+    return false;
+  }
+  const reopenedMemory=new Map();
+  function reopenMessageKey(m){
+    const id=m.e?.getAttribute('data-message-id')||m.e?.getAttribute('data-event-id');
+    if(id)return 'id:'+id;
+    // No password or message body is persisted in the reopen checkpoint.
+    const text=String(m.text||'').replace(/password\s*:[\s\S]*?(?=silahkan|silakan|note\s*:|$)/gi,'password: [removed]');
+    let hash=2166136261;for(let i=0;i<text.length;i++){hash^=text.charCodeAt(i);hash=Math.imul(hash,16777619);}
+    return 'text:'+text.length+':'+(hash>>>0);
+  }
+  function reopenedCheckpoint(){
+    if(reopenedMemory.has(route))return reopenedMemory.get(route);
+    let value=null;try{value=JSON.parse(localStorage.getItem('lc-reopened-v1:'+route)||'null');}catch{}
+    reopenedMemory.set(route,value);return value;
+  }
+  function freshCompletionMessages(messages){
+    const checkpoint=reopenedCheckpoint();if(!checkpoint)return messages;
+    const counts={};return messages.filter(m=>{
+      if(m.kind!=='agent')return true;
+      const key=reopenMessageKey(m);counts[key]=(counts[key]||0)+1;
+      return counts[key]>(checkpoint[key]||0);
+    });
+  }
+  function manuallyReopen(){
+    const context=liveChatContext;
+    if(!context||context.route!==route){setStatus('Muat Started - Today lalu Baca ulang sebelum membuka kembali.');return;}
+    const checkpoint={};for(const m of context.messages)if(m.kind==='agent'){const key=reopenMessageKey(m);checkpoint[key]=(checkpoint[key]||0)+1;}
+    reopenedMemory.set(route,checkpoint);try{localStorage.setItem('lc-reopened-v1:'+route,JSON.stringify(checkpoint));}catch{}
+    reopenRecovery();accountState.active=true;
+    accountState.message='Percakapan dibuka kembali di Asisten. Hasil pencarian tetap tersimpan; gunakan Cek ulang bila perlu memperbarui.';
+    saveAccountResult();drawAccount();scan();$('panel').hidden=false;
+  }
+  function reopenRecovery(){
+    conversationDoneMemory.delete(route);try{localStorage.removeItem(conversationDonePrefix+route);}catch{}
+    const cache=readAccountCache();
+    for(const result of Object.values(cache.results)){result.completed=false;result.conversationCompleted=false;}
+    try{localStorage.setItem(accountCachePrefix+route,JSON.stringify(cache));}catch{}
+    for(const signature of [...completed()])if(/\|(?:password|username)$/.test(signature))completed().delete(signature);
+    for(const signature of [...seen])if(/\|(?:password|username)$/.test(signature))seen.delete(signature);
+    selectionPins.delete(route);accountState.completed=false;accountState.conversationCompleted=false;accountFingerprint='';accountShowResult=true;
+  }
   function syncAccount(messages){
     if(accountState.phase==='loading'&&accountState.completionRefresh)return;
+    if(conversationDone()&&hasNewRecoveryAfterCompletion(messages))reopenRecovery();
     const pin=selectionPins.get(route);
-    const completion=sentCompletion(pin?[{kind:'member',text:pin.requestType==='username'?'lupa username':'reset password'},...messages.slice(pin.startIndex)]:messages);
+    const latestRecovery=[...messages].reverse().find(m=>m.kind==='member'&&(resetIntent.test(m.text)||usernameIntent.test(m.text)));
+    if(pin&&latestRecovery){pin.requestType=resetIntent.test(latestRecovery.text)?'password':'username';}
+    const recoveryHint=pin?.requestType||(accountState.active?accountState.requestType:'');
+    const completion=sentCompletion(freshCompletionMessages(messages),recoveryHint);
     if(completion){selectionPins.delete(route);markConversationDone(completion);return;}
     if(pin){
       if(accountState.number!==pin.number){accountState.active=true;runAccount(pin.number);}
+      if(accountState.requestType!==pin.requestType){accountState.requestType=pin.requestType;drawAccount();}
       return;
     }
     const finished=conversationDone();
     if(finished){if(!accountState.conversationCompleted)applyConversationDone(finished);return;}
+    if(clarification(messages)?.title==='PASTIKAN KEBUTUHAN AKUN'){
+      if(accountState.phase==='loading'||!accountState.savedAt)resetAccount();return;
+    }
     const intentMessage=[...messages].reverse().find(m=>m.kind==='member'&&(resetIntent.test(m.text)||usernameIntent.test(m.text)));
-    const requestType=intentMessage&&usernameIntent.test(intentMessage.text)?'username':'password';
+    const requestType=intentMessage&&resetIntent.test(intentMessage.text)?'password':'username';
     const active=Boolean(intentMessage);
     if(!active){if(!accountState.savedAt && accountState.active)resetAccount();return;}
     const found=extractAccounts(messages),fingerprint=JSON.stringify({requestType,...found});
@@ -552,8 +1305,15 @@
 #account[data-phase="finished"]{padding:23px 16px 16px;text-align:center;background:radial-gradient(ellipse at 50% 0%,#2e6b5938,transparent 72%),#162d35;border:1px solid #3d6e62;border-radius:14px}.finished-icon{width:46px;height:46px;line-height:44px;margin:0 auto 13px;border:1px solid #6ebe9b;border-radius:50%;background:#3d8f662b;color:#a1ebc4;font-size:25px;box-shadow:0 0 0 6px #3d8f660c}.finished-eyebrow{color:#83b9a6;font-size:8px;letter-spacing:1.6px;font-weight:700;margin-bottom:6px}.finished-title{display:block;color:#e0f8ed;font-size:18px;font-weight:700;letter-spacing:-.3px}#account[data-phase="finished"] p{font-size:11px;line-height:1.7;color:#a3c0b9;margin:9px 0 17px}.finished-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.finished-actions button{margin:0!important;padding:8px!important;font-size:11px!important}.finished-actions .view-result{background:#286457;border-color:#4b917a;color:#e5fff2}.finished-actions #account-retry{background:transparent;border-color:#395e59;color:#a8cbc1}.finished-foot{display:block;border-top:1px solid #ffffff0b;margin-top:14px;padding-top:11px;font-size:9px;color:#76a795}
 #cards{max-height:205px;overflow:auto;scrollbar-width:thin}.card{padding:11px;margin:0 0 8px;border:1px solid #304b60;border-left:3px solid #58b7a8;border-radius:10px;background:#172c3d}.card b{font-size:12px;color:#a1e3d4}.card p{font-size:11px;color:#c2d4e0;line-height:1.65;margin:6px 0}.card[data-tone="waiting"]{border-left-color:#cdaa60}.card[data-tone="waiting"] b{color:#e7cf98}.card[data-tone="review"]{border-left-color:#72a6d2}.card[data-tone="review"] b{color:#b7d5ee}.quote{font-size:10px;color:#8da8bb;margin-top:9px;padding-top:8px;border-top:1px solid #ffffff0b;overflow-wrap:anywhere}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.actions button{font-size:10px;padding:6px 8px}.body>details{border-top:1px solid #ffffff0c;margin-top:13px;padding-top:11px;color:#93adbf;font-size:10px}summary{cursor:pointer}small{display:block;color:#718c9f;font-size:9px;line-height:1.5;margin-top:11px}
   .not-registered{padding:14px 10px;margin:12px 0;border:1px solid #d7957d88;border-radius:10px;background:#70432d30;text-align:center}.not-registered strong{display:block;color:#ffd0b4;font-size:15px;letter-spacing:.5px}.not-registered span{display:block;color:#d6b9a9;font-size:10px;margin-top:5px;line-height:1.6}
+  .card[data-tone="conduct"]{border-color:#87565c;border-left-color:#f29d9b;background:linear-gradient(120deg,#392932,#202c3c)}.card[data-tone="conduct"] b{color:#ffd4ba;font-size:15px}.card[data-tone="conduct"] .category{color:#edaaa9}
+  .balance-box{margin:10px;padding:14px;border:2px solid #94a3b8;border-radius:10px;background:#edf2f7;color:#334155;text-align:center}.balance-box>span{display:block;font-size:10px;font-weight:800;letter-spacing:.5px}.balance-box strong{display:block;font-size:27px;font-weight:800;line-height:1.4;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.balance-box[data-tone="high"]{background:#ffe7e7;border-color:#dc2626;color:#a20f21}.balance-box[data-tone="low"]{background:#e0f7e9;border-color:#16804a;color:#086338}.balance-box small{color:inherit;opacity:.8;font-size:9px;margin-top:8px}
+  .topic-summary{padding:10px;margin-bottom:9px;border:1px solid #608e9f;border-radius:9px;background:#233f50;color:#d5f2f5;font-size:11px;line-height:1.6}
+  .card p{white-space:pre-line}
+  .blocked-panel{padding:14px;margin-bottom:12px;border:1px solid #557c91;border-radius:13px;background:linear-gradient(135deg,#183c4b,#1c2c43)}.blocked-panel>strong{display:block;font-size:19px;color:#e9f9ff;overflow-wrap:anywhere}.blocked-badge{padding:8px 10px;margin:10px 0;border-radius:8px;background:#3a4b60;font-weight:800;font-size:14px}.blocked-panel[data-status="Locked"] .blocked-badge{background:#6a2938;color:#ffd1d8}.blocked-panel[data-status="Unlocked"] .blocked-badge{background:#1e5b48;color:#c4f8df}.blocked-panel[data-status="Lupa password"] .blocked-badge{background:#695128;color:#ffe7b2}.blocked-panel p{font-size:11px;color:#c2d8e4;white-space:pre-wrap;overflow-wrap:anywhere}.blocked-panel .blocked-information{background:#0e2030;padding:10px;border-radius:8px;border:1px solid #456074;color:#f2f8fd;font-size:12px}.blocked-panel>b{font-size:10px;color:#a2c4d7}
+  .intent-correction{display:grid;gap:7px;margin-top:8px}.intent-correction select{width:100%;background:#102b3d;color:#e9f9ff;padding:8px;border:1px solid #608c9f;border-radius:8px}
+  .recovery-lock{margin:10px;padding:12px;border:2px solid #c34860;border-radius:9px;background:#fff0f2;color:#7d1830}.recovery-lock strong{font-size:15px}.recovery-lock p{color:#7d1830!important;white-space:pre-wrap;overflow-wrap:anywhere}
   </style>
-  <section id="panel" hidden><header><strong>✦ Chat Assist <span style="font-size:10px;color:#6ce0c5">2.7</span></strong><button id="close" title="Kecilkan">−</button></header><div class="body"><p id="status">Menunggu chat…</p><div id="account" hidden></div><div id="cards"></div><div class="actions"><button id="scan">Baca ulang</button><button id="pause">Jeda</button><button id="clear">Bersihkan</button><button id="sound" aria-pressed="false">Suara: mati</button></div><details><summary>Pengaturan pembacaan</summary><p>Jika pesan member belum dikenali, isi selector CSS khusus baris pesan member. Selector harus membedakan member dari agen.</p><label>Selector pesan member<input id="member" placeholder="Otomatis berdasarkan penanda pengirim"></label><label>Selector pesan AI / agen (opsional)<input id="agent" placeholder="Penanda khusus pengirim AI / agen"></label><label>Selector area percakapan (opsional)<input id="scope" placeholder="Otomatis dari penanda Started - Today"></label><button id="save">Simpan pengaturan</button> <button id="restore">Tampilkan lagi pengingat selesai</button> <button id="position">Reset posisi bubble</button><small>Hanya membaca pesan yang dimuat di halaman. Jika penanda awal belum ditemukan, gulir chat ke Started - Today lalu klik Baca ulang.</small></details><small>Blok rekening di chat untuk cek • hasil tersimpan otomatis</small></div></section><button id="bubble">✦ Asisten <span id="count">0</span></button>`;
+  <section id="panel" hidden><header><strong>✦ Chat Assist <span style="font-size:10px;color:#6ce0c5">2.45</span></strong><button id="close" title="Kecilkan">−</button></header><div class="body"><p id="status">Menunggu chat…</p><div id="account" hidden></div><div id="cards"></div><div class="actions"><button id="scan">Baca ulang</button><button id="pause">Jeda</button><button id="clear">Bersihkan</button><button id="sound" aria-pressed="false">Suara: mati</button></div><details><summary>Pengaturan pembacaan</summary><p>Jika pesan member belum dikenali, isi selector CSS khusus baris pesan member. Selector harus membedakan member dari agen.</p><label>Selector pesan member<input id="member" placeholder="Otomatis berdasarkan penanda pengirim"></label><label>Selector pesan AI / agen (opsional)<input id="agent" placeholder="Penanda khusus pengirim AI / agen"></label><label>Selector area percakapan (opsional)<input id="scope" placeholder="Otomatis dari penanda Started - Today"></label><button id="save">Simpan pengaturan</button> <button id="restore">Tampilkan lagi pengingat selesai</button> <button id="position">Reset posisi bubble</button><small>Chats dan Archives: hanya membaca pesan setelah Started - Today terakhir. Gulir sampai penanda tersebut dimuat, lalu klik Baca ulang.</small></details><small>Blok rekening di chat untuk cek • hasil tersimpan otomatis</small></div></section><button id="bubble">✦ Asisten <span id="count">0</span></button>`;
   const $ = id => ui.getElementById(id);
   $('member').value = cfg.member || ''; $('agent').value = cfg.agent || ''; $('scope').value = cfg.scope || '';
   const completedByChat = new Map(), sources = new Map();
@@ -578,11 +1338,26 @@
   const excluded = e => host.contains(e) || e.closest('input,textarea,[contenteditable="true"],nav,aside,script,style');
   const text = e => normalize(e.innerText || '');
   function setStatus(s) { if ($('status').textContent !== s) $('status').textContent = s; }
+  function presentationCards(items){
+    const taskNames={blocked:'akun diblokir',change:'ganti rekening / akun',deposit:'deposit',withdraw:'withdraw',password:'pemulihan password',username:'lupa User ID',scatter:'PL scatter',clarify:'pemulihan akun — pastikan kebutuhan'};
+    const pending=items.filter(c=>taskNames[c.type]&&(c.type!=='clarify'||c.title==='PASTIKAN KEBUTUHAN AKUN')&&c.title!=='PERMINTAAN GANTI DIBATALKAN');
+    const primary=pending[0];
+    const secondary=items.filter(c=>!pending.includes(c)).slice().reverse().map(c=>{
+      if(!primary||c.type!=='conduct')return c;
+      return {...c,category:'CATATAN UCAPAN MEMBER',title:'Tetap tangani permintaan awal',tone:'waiting',body:'Prioritas: '+taskNames[primary.type]+'. Ikuti pengingat utama di atas dan tetap respons kebutuhan member. Ada makian / keluhan tambahan; permintaan awal belum ditandai selesai.'};
+    });
+    return [...pending,...secondary];
+  }
   function render() {
-    const value = JSON.stringify(cards);
+    const value = JSON.stringify({cards,change:{...changeMonitor(),draft:undefined},blocked:blockedState()});
     if (value === lastRender) return;
     lastRender = value; $('cards').replaceChildren(); $('count').textContent = cards.length; $('bubble').setAttribute('aria-label','Pengingat: '+cards.length+' aktif. Alt Shift B untuk buka atau tutup.');
-    for (const c of cards.slice().reverse()) {
+    drawBlocked($('cards'));
+    drawChangeMonitor($('cards'));
+    const topicLabels={blocked:'Akun diblokir',change:'Ganti rekening',deposit:'Deposit',withdraw:'Withdraw',password:'Password',username:'User ID',scatter:'PL scatter'};
+    const topics=[...new Set(cards.filter(c=>c.title!=='PERMINTAAN GANTI DIBATALKAN').map(c=>topicLabels[c.type]).filter(Boolean))];
+    if(topics.length>1){const summary=document.createElement('div');summary.className='topic-summary';summary.textContent='PERMINTAAN AKTIF: '+topics.join(' • ')+'. Tangani masing-masing; tandai Selesai setelah ditangani.';$('cards').append(summary);}
+    for (const c of presentationCards(cards)) {
       const box=document.createElement('div'); box.className='card'; box.dataset.tone=c.tone || 'ready';
       const category=document.createElement('div');category.className='category';category.textContent=c.category || 'PENGINGAT MEMBER';box.append(category);
       const title=document.createElement('b'); title.textContent=c.title;
@@ -612,10 +1387,32 @@
           setTimeout(()=>{if(copy.isConnected)copy.textContent='Salin';},1500);
         }catch{setStatus('Tidak bisa menyalin. Izinkan clipboard pada browser atau salin teks pengingat secara manual.');}
       };
-      actions.append(jump,copy,done);box.append(actions);$('cards').append(box);
+      if(c.type==='image-review'){
+        const scatter=document.createElement('button');scatter.textContent='Bukti scatter / PL';
+        scatter.onclick=()=>{Object.assign(c,{type:'image-scatter',category:'BUKTI SCATTER • DITANDAI OPERATOR',title:'PL SCATTER — PERIKSA BUKTI',tone:'review',body:'Cocokkan detail putaran dan riwayat permainan: nomor transaksi / kode tiket, waktu, nominal taruhan, serta jumlah scatter. Tanda ini belum berarti bukti disetujui.'});render();};
+        actions.append(scatter);
+        const flag=document.createElement('button');flag.textContent='Gambar tidak pantas';
+        flag.onclick=()=>{Object.assign(c,{type:'image-flagged',category:'GAMBAR DITANDAI OPERATOR',title:'Kasih PK doa aja',tone:'conduct',body:'Gambar ditandai tidak pantas setelah diperiksa operator.'});render();};
+        actions.append(flag);
+      }
+      const correct=document.createElement('button');correct.textContent='Koreksi maksud';correct.onclick=()=>{
+        if(box.querySelector('.intent-correction'))return;
+        const panel=document.createElement('div');panel.className='intent-correction';
+        const select=document.createElement('select');select.setAttribute('aria-label','Pilih maksud member');
+        for(const [value,label] of [['','Pilih maksud member…'],['blocked','Akun diblokir'],['change','Ganti rekening / akun'],['password','Lupa password'],['username','Lupa User ID'],['password,username','Lupa ID dan password'],['deposit','Deposit'],['withdraw','Withdraw'],['scatter','PL scatter']]){const option=document.createElement('option');option.value=value;option.textContent=label;select.append(option);}
+        const save=document.createElement('button');save.textContent='Simpan koreksi';save.onclick=()=>{
+          if(!select.value)return;
+          const source=sources.get(c.signature),phrase=normalizeMemberLanguage(source?text(source):c.message).trim();if(!phrase)return;
+          intentCorrections[phrase]=select.value.split(',');
+          const entries=Object.entries(intentCorrections).slice(-100);intentCorrections=Object.fromEntries(entries);
+          try{localStorage.setItem('lc-intent-corrections-v1',JSON.stringify(intentCorrections));}catch{setStatus('Koreksi hanya tersimpan sementara; penyimpanan browser penuh.');}
+          cards=[];seen.clear();scan();
+        };panel.append(select,save);box.append(panel);
+      };
+      actions.append(jump,copy,correct,done);box.append(actions);$('cards').append(box);
     }
   }
-  function reset() { seen.clear(); sources.clear(); cards=[]; render();resetAccount(); }
+  function reset() { cancelAdminGroup();seen.clear(); sources.clear(); cards=[]; render();resetAccount(); }
   function completed() {
     if(!completedByChat.has(route)){
       if(completedByChat.size>=40)completedByChat.delete(completedByChat.keys().next().value);
@@ -659,19 +1456,25 @@
     return 'unknown';
   }
   function scan(){
-    const next=location.pathname;
+    const next=conversationRoute();
     if(next!==route){liveChatContext=null;clearTimeout(selectionTimer);route=next;baselineReady=false;reset();$('bubble').classList.remove('unread');}
-    host.hidden=!/^\/chats(?:\/|$)/.test(next);
+    host.hidden=!/^\/chats(?:\/|$)/.test(location.pathname)&&!isArchive();
     if(host.hidden || paused) return;
     liveChatContext=null;
     try{
       let scope=cfg.scope ? document.querySelector(cfg.scope) : null;
       if(cfg.scope && (!scope || !visible(scope))){reset();setStatus('Area percakapan belum ditemukan. Periksa pengaturan.');return;}
+      if(isArchive()&&!scope){
+        // Read only a single identified transcript, never the Archives list.
+        const logs=[...document.querySelectorAll('[role="log"]')].filter(e=>visible(e)&&!excluded(e));
+        if(logs.length===1)scope=logs[0];
+      }
       const marker=findStart(scope || document.body);
       if(!marker){cards=[];seen.clear();render();setStatus('Belum menemukan Started - Today. Gulir ke awal chat hari ini, lalu Baca ulang.');return;}
-      scope=scope || inferScope(marker);
-      if(!scope){reset();setStatus('Area chat belum dikenali. Isi selector area percakapan pada pengaturan.');return;}
-      const after=e=>!e.contains(marker) && !!(marker.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING);
+      scope=scope || (marker?inferScope(marker):null);
+      if(!scope){reset();setStatus(isArchive()?'Archives aktif. Buka satu percakapan; jika belum terbaca, isi selector area percakapan pada pengaturan.':'Area chat belum dikenali. Isi selector area percakapan pada pengaturan.');return;}
+      if(!scope.contains(marker)){cards=[];seen.clear();render();setStatus('Started - Today belum ditemukan di percakapan yang dipilih.');return;}
+      const after=e=>!e.contains(marker)&&!!(marker.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING);
       let candidates;
       if(cfg.member){
         candidates=[...scope.querySelectorAll(cfg.member)].filter(e=>visible(e)&&!excluded(e)&&after(e));
@@ -681,44 +1484,103 @@
         // Outermost member wrapper is one message; do not count nested text twice.
         candidates=candidates.filter(e=>!candidates.some(p=>p!==e&&p.contains(e)));
       }
-      if(!candidates.length){reset();setStatus('Started - Today ditemukan; pesan member belum dikenali. Cek pengaturan jika chat sudah berisi pesan.');return;}
+      if(!candidates.length){reset();setStatus('Area percakapan ditemukan; pesan member belum dikenali. Periksa selector pesan jika chat sudah berisi pesan.');return;}
       const agents = [...scope.querySelectorAll(cfg.agent || 'div,p,li,span')]
         .filter(e=>visible(e)&&!excluded(e)&&after(e)&&!candidates.some(m=>m===e||m.contains(e)||e.contains(m))&&(cfg.agent||senderKind(e,scope)==='agent'));
       const agentRows = agents.filter(e=>!agents.some(p=>p!==e&&p.contains(e)));
-      const transcript = [...candidates.map(e=>({e,kind:'member'})),...agentRows.map(e=>({e,kind:'agent'}))]
+      let transcript = [...candidates.map(e=>({e,kind:'member'})),...agentRows.map(e=>({e,kind:'agent'}))]
         .sort((a,b)=>(a.e.compareDocumentPosition(b.e)&Node.DOCUMENT_POSITION_FOLLOWING)?-1:1)
-        .map(m=>({kind:m.kind,text:m.e.innerText||''}));
+        .map(m=>({e:m.e,kind:m.kind,text:m.e.innerText||''}));
+      transcript=contextualMessages(transcript);
+      const contextualText=new Map(transcript.map(m=>[m.e,m.text]));
       liveChatContext={route,scope,candidates,messages:transcript};
-      syncAccount(transcript);
+      const earlierChange=cards.find(c=>c.type==='change'&&c.title!=='PERMINTAAN GANTI DIBATALKAN');
+      if(earlierChange&&!transcript.some(m=>m.kind==='member'&&wantsAccountChange(m.text))){
+        transcript=[{kind:'member',text:'mau ganti rekening'},...transcript];
+      }
+      syncChange(transcript);
+      syncAccount(liveChatContext.messages);
+      syncBlocked(transcript);
       const context = idContext(transcript);
+      let uncertainty=clarification(transcript);
+      // A brief follow-up or a virtualized earlier message must not erase an
+      // already recognized, still-active service request.
+      if(uncertainty&&uncertainty.title!=='PASTIKAN KEBUTUHAN AKUN'&&cards.some(c=>['blocked','change','deposit','withdraw','password','username','scatter'].includes(c.type)&&c.title!=='PERMINTAAN GANTI DIBATALKAN'))uncertainty=null;
+      const lastRecovery=[...transcript].reverse().find(m=>m.kind==='member'&&detectIntent(m.text).some(t=>t==='password'||t==='username'));
+      const combinedRecovery=!uncertainty&&lastRecovery&&['password','username'].every(t=>detectIntent(lastRecovery.text).includes(t));
+      if(combinedRecovery)cards=cards.filter(c=>c.type!=='username');
+      cards=cards.filter(c=>c.type!=='clarify'&&!(uncertainty&&['password','username'].includes(c.type)));
+      if(uncertainty&&!conversationDone()){
+        const signature='clarify|'+uncertainty.title;
+        sources.set(signature,candidates.at(-1));
+        if(!completed().has(signature))cards.push({signature,type:'clarify',category:'BANTU PAHAMI MEMBER',tone:'review',...uncertainty,message:uncertainty.message.slice(0,240)});
+      }
       const occurrences=new Map(); let added=false;
+      let latestConduct=null;
       for(const e of candidates){
-        const message=text(e); if(!message || message.length>10000)continue;
+        const advice=conductNotice(text(e));
+        if(advice)latestConduct={e,advice};
+      }
+      if(latestConduct){
+        const {e,advice}=latestConduct;
+        const signature='conduct|'+(e.getAttribute('data-message-id')||e.getAttribute('data-event-id')||text(e));
+        sources.set(signature,e);
+        cards=cards.filter(c=>c.type!=='conduct'&&c.type!=='clarify');
+        if(!completed().has(signature)){
+          cards.push({signature,type:'conduct',...advice});
+          if(!seen.has(signature)){seen.add(signature);added=true;}
+        }
+      }
+      for(const e of candidates.filter(memberHasImage)){
+        const src=[...e.querySelectorAll('img')].map(i=>i.getAttribute('src')||'').join('|');
+        const signature='image-review|'+(e.getAttribute('data-message-id')||e.getAttribute('data-event-id')||src);
+        sources.set(signature,e);
+        if(completed().has(signature))continue;
+        // Only associate nearby member messages; a different explicit topic ends association.
+        const index=candidates.indexOf(e);
+        const nearby=candidates.slice(Math.max(0,index-3),Math.min(candidates.length,index+3));
+        const topics=nearby.map(n=>detectIntent(text(n))).filter(a=>a.length);
+        const scatter=topics.length&&topics.at(-1).includes('scatter');
+        const existing=cards.find(c=>c.signature===signature);
+        const imageAdvice=scatter?{category:'LAMPIRAN • KONTEKS PL SCATTER',title:'PL SCATTER — PERIKSA GAMBAR',body:'Pesan di sekitar gambar menyebut scatter. Periksa apakah lampiran berupa detail putaran atau riwayat permainan; cocokkan transaksi, waktu, taruhan, dan jumlah scatter. Isi gambar belum dibaca otomatis.'}:{category:'GAMBAR DARI MEMBER',title:'Periksa isi gambar',body:'Jika ini bukti putaran / riwayat scatter, pilih Bukti scatter / PL. Jika tidak pantas, pilih Gambar tidak pantas. Isi gambar belum dinilai otomatis.'};
+        if(existing){if(existing.type==='image-review')Object.assign(existing,imageAdvice);continue;}
+        if(seen.has(signature))continue;
+        seen.add(signature);added=true;
+        cards.push({signature,type:'image-review',tone:'review',...imageAdvice,message:'Gambar member • klik Lihat pesan untuk memeriksa.'});
+      }
+      for(const e of candidates){
+        const message=contextualText.get(e)||text(e); if(!message)continue;
         const n=(occurrences.get(message)||0)+1;occurrences.set(message,n);
         const identity=e.getAttribute('data-message-id') || e.getAttribute('data-event-id') || message+'#'+n;
         for(const [type,re,title,body] of rules){
           if(!re.test(message))continue;
+          if(combinedRecovery&&type==='username')continue;
+          if(type==='change'&&changeMonitor().done)continue;
+          if(uncertainty&&['password','username'].includes(type))continue;
           if(['password','username'].includes(type)&&isAccountFinished())continue;
           const signature=identity+'|'+type;
           sources.set(signature,e);
           if(completed().has(signature))continue;
-          const advice = (type==='deposit'||type==='withdraw') ? contextualAdvice(type,context) : {title,body};
+          const advice = ['password','username'].includes(type)?recoveryAdvice(type,transcript):type==='change'?changeAdvice(transcript):(['deposit','withdraw','blocked'].includes(type)) ? contextualAdvice(type,context) : {title,body,category:'MAKSUD TERDETEKSI • '+(type==='scatter'?'PL SCATTER':type==='username'?'LUPA USER ID':'PASSWORD')};
           const existing=cards.find(c=>c.signature===signature);
           if(existing){ Object.assign(existing,advice); continue; }
           if(seen.has(signature))continue;
           // One current card per transaction topic; update it as conversation progresses.
-          if(type==='deposit'||type==='withdraw') cards=cards.filter(c=>c.type!==type);
+          if(['deposit','withdraw','blocked','scatter','change'].includes(type)) cards=cards.filter(c=>c.type!==type);
           seen.add(signature);cards.push({signature,type,...advice,message:message.slice(0,240)});added=true;
         }
       }
-      for(const card of cards) if(card.type==='deposit'||card.type==='withdraw') Object.assign(card,contextualAdvice(card.type,context));
+      if(changeMonitor().done)cards=cards.filter(c=>c.type!=='change');
+      for(const card of cards) if(['deposit','withdraw','blocked'].includes(card.type)) Object.assign(card,contextualAdvice(card.type,context));
+      for(const card of cards)if(['password','username'].includes(card.type))Object.assign(card,recoveryAdvice(card.type,transcript));
+      for(const card of cards)if(card.type==='change')Object.assign(card,changeAdvice(transcript));
       cards=cards.slice(-30);render();
       if(added){
         $('bubble').classList.add('unread');
         if(baselineReady)playNotice();
       }
       baselineReady=true;
-      setStatus(`Aktif • ${candidates.length} pesan member • ${agentRows.length} pesan AI/agen • mulai Started - Today`);
+      setStatus(`${isArchive()?'Archives':'Aktif'} • ${candidates.length} pesan member • ${agentRows.length} pesan AI/agen • mulai Started - Today • hanya chat yang sudah dimuat`);
     }catch(err){reset();setStatus('Pembacaan belum cocok: '+err.message.slice(0,140));}
   }
   $('bubble').onclick=()=>{
@@ -751,7 +1613,7 @@
     }
   });
   $('close').onclick=()=>{$('panel').hidden=true;};
-  $('pause').onclick=()=>{paused=!paused;$('pause').textContent=paused?'Lanjut':'Jeda';if(paused){cancelAccount();accountFingerprint='';if(accountState.phase==='loading'){accountState.phase='paused';accountState.message='Pencarian dijeda. Klik Lanjut untuk membaca kembali.';drawAccount();}setStatus('Pembacaan dijeda.');}else scan();};
+  $('pause').onclick=()=>{paused=!paused;$('pause').textContent=paused?'Lanjut':'Jeda';if(paused){cancelAdminGroup();cancelAccount();accountFingerprint='';if(accountState.phase==='loading'){accountState.phase='paused';accountState.message='Pencarian dijeda. Klik Lanjut untuk membaca kembali.';drawAccount();}setStatus('Pembacaan dijeda.');}else scan();};
   $('scan').onclick=()=>{baselineReady=false;reset();scan();};
   $('clear').onclick=()=>{cards.forEach(c=>completed().add(c.signature));cards=[];render();$('bubble').classList.remove('unread');};
   $('save').onclick=()=>{
@@ -795,7 +1657,7 @@
 
   function selectedChatAccount(){
     const context=liveChatContext,selection=window.getSelection();
-    if(!context||context.route!==route||location.pathname!==route||paused||!selection||selection.isCollapsed||selection.rangeCount!==1)return '';
+    if(!context||context.route!==route||conversationRoute()!==route||paused||!selection||selection.isCollapsed||selection.rangeCount!==1)return '';
     const asElement=node=>node?.nodeType===1?node:node?.parentElement;
     const anchor=asElement(selection.anchorNode),focus=asElement(selection.focusNode);
     if(!anchor||!focus||excluded(anchor)||excluded(focus))return '';
@@ -832,7 +1694,7 @@
   function scheduleSelectedAccount(){
     clearTimeout(selectionTimer);
     if(selectionDragging||selectionKeyboard)return;
-    const chat=location.pathname;
+    const chat=conversationRoute();
     selectionTimer=setTimeout(()=>{if(chat===location.pathname&&chat===route)checkSelectedAccount();},450);
   }
   document.addEventListener('selectionchange',scheduleSelectedAccount);
@@ -848,5 +1710,5 @@
 
   const schedule=()=>{clearTimeout(timer);timer=setTimeout(scan,250);};
   new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true,characterData:true});
-  setInterval(scan,1800);window.addEventListener('popstate',schedule);scan();
+  setInterval(scan,1800);window.addEventListener('popstate',schedule);window.addEventListener('hashchange',schedule);scan();
 })();
