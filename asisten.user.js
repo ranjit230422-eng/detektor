@@ -1,9 +1,16 @@
 // ==UserScript==
 // @name         LiveChat • Pengingat Member
 // @namespace    local.livechat.pengingat
-// @version      2.45.0
+// @version      2.68.0
 // @description  Pengingat lokal dari pesan member setelah Started - Today. Tidak mengirim chat atau mengubah akun.
 // @match        https://my.livechatinc.com/*
+// @match        https://agwl2.admitoto.com/agentplayerlist.php*
+// @match        https://agwl2.admitoto.com/agentplayerlist_old.php*
+// @match        https://agwl2.admitoto.com/editplayerlist.php*
+// @grant        GM_openInTab
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_deleteValue
 // @run-at       document-idle
 // @grant        GM_xmlhttpRequest
 // @connect      agwl2.admitoto.com
@@ -16,6 +23,7 @@
   if (document.getElementById('lc-pengingat-bosku')) return;
   const isArchive=()=>/^\/archives?(?:\/|$)/.test(location.pathname);
   const conversationRoute=()=>location.pathname+(isArchive()?location.search+location.hash:'');
+  const allowedTopics=new Set(['deposit','withdraw','username','password','blocked']);
   let intentCorrections={};
   try{const saved=JSON.parse(localStorage.getItem('lc-intent-corrections-v1')||'{}');if(saved&&typeof saved==='object'&&!Array.isArray(saved))intentCorrections=saved;}catch{}
   function normalizeMemberLanguage(value){
@@ -23,7 +31,8 @@
       .replace(/\b(?:lupaa+|lupah|lupaak)\b/g,'lupa')
       .replace(/\b(?:pasword|paswrod|pasworrd|paswod|paswrd|passwordnya|passwordku|pwku|pwnya)\b/g,'password')
       .replace(/\b(?:usernam|usernme|usernem|usernamenya|usernameku|useridnya|idnya)\b/g,'username')
-      .replace(/\b(?:diblok|keblok|ke blok|di blok|terblok)\b/g,'diblokir')
+      .replace(/\b(?:diblok|keblok|ke blok|di blok|terblok|teblokir|terblokirr+|keblokir|di blokir)\b/g,'diblokir')
+      .replace(/\b(?:akunku|akunnya)\b/g,'akun').replace(/\b(?:ke\s*kunci|di\s*kunci)\b/g,'terkunci')
       .replace(/\b(?:blom|blum|belom|belim|blm|blum)\b/g,'belum')
       .replace(/\b(?:msk|masok)\b/g,'masuk')
       .replace(/\b(?:ggnti|gganti|gnti|gnt|gntii|gantii|gantiin)\b/g,'ganti')
@@ -68,7 +77,7 @@
   // Local language rules: inferred intent is an operator hint, not an AI verdict.
   function detectIntent(value) {
     const correction=intentCorrections[normalizeMemberLanguage(value).trim()];
-    if(Array.isArray(correction)&&correction.length&&correction.every(t=>['blocked','change','password','username','deposit','withdraw','scatter'].includes(t)))return [...correction];
+    if(Array.isArray(correction)){const enabled=correction.filter(t=>allowedTopics.has(t));if(enabled.length)return [...new Set(enabled)];}
     const t=normalizeMemberLanguage(value)
       .replace(/\b(?:lp|lpa|lup)\b(?=[^.!?\n]{0,50}\b(?:id|akun|user(?:name)?|pw|pass?word|pasword|sandi)\b)/g,'lupa')
       .replace(/\b(?:sm|sma)\b/g,'sama')
@@ -85,7 +94,7 @@
       part=part.trim();
       if(!part || /\b(?:bukan|tidak perlu|tidak lupa|tidak salah|jangan)\b/.test(part))continue;
       if(/\b(?:scatter|scater|skater|skatter)\b/.test(part))types.add('scatter');
-      if(/\b(?:akun|account|user\s*id|username|id)\b/.test(part)&&/\b(?:di\s*blok(?:ir)?|terblokir|keblokir|ke\s*blok|blocked|banned|suspend(?:ed)?|terkunci|di\s*lock|locked)\b/.test(part)&&! /\b(?:akun\s+(?:bank|dana|ovo)|rekening|norek|tidak\s+(?:di\s*blok(?:ir)?|terblokir|terkunci|banned|blocked)|sudah\s+(?:dibuka|normal))\b/.test(part))types.add('blocked');
+      if(/\b(?:akun|account|user\s*id|username|id)\b/.test(part)&&/\b(?:di\s*blok(?:ir)?|terblokir|keblokir|ke\s*blok|blokir|kena\s*blok|blocked|banned|suspend(?:ed)?|terkunci|di\s*lock|locked)\b/.test(part)&&! /\b(?:akun\s+(?:bank|dana|ovo)|rekening|norek|tidak\s+(?:di\s*blok(?:ir)?|terblokir|terkunci|banned|blocked)|sudah\s+(?:dibuka|normal))\b/.test(part))types.add('blocked');
       const unresolved=/\b(?:belum|tidak|lupa|salah|gagal|pending|tertunda|nyangkut|hilang|reset|ganti|ubah|cek|tolong|bantu)\b/.test(part);
       if(!unresolved && /\b(?:sudah|berhasil|selesai|sukses)\b/.test(part))continue;
       const recovery=/\b(?:lupa|tidak ingat|tidak inget|tidak hafal|tidak tahu|tidak tau|hilang|reset|riset|ganti|ubah|salah|invalid)\b/;
@@ -95,7 +104,7 @@
       else if(/\b(?:saldo|transfer|tf)\b/.test(part)&&/\b(?:belum masuk|tidak masuk|belum bertambah|tidak bertambah|nyangkut)\b/.test(part)&&! /\b(?:withdraw|penarikan|tarik)\b/.test(part))types.add('deposit');
       if(/\b(?:withdraw|penarikan|tarik (?:dana|saldo|uang))\b/.test(part))types.add('withdraw');
     }
-    return [...types];
+    return [...types].filter(t=>allowedTopics.has(t));
   }
 
   // Interpret adjacent short member fragments together, without borrowing
@@ -185,7 +194,7 @@
     let requested = false, id = '', candidate = '', numericReply=false;
     const label = /\b(?:user\s*id|username|user\s*name|id\s*(?:akun|anda|kamu|bosku)|id)\b/i;
     const request = /\b(?:minta|meminta|boleh|tolong|mohon|sebutkan|berikan|kirim|kirimkan|infokan|informasikan|isi|masukkan|cantumkan|berapa)\b/i;
-    const invalid = /^(?:saya|aku|anda|kamu|nya|bos|bosku|ya|iya|oke|ok|adalah|ini|itu|lupa|belum|tidak|ada|mana|berapa|tolong|cek|deposit|withdraw|username|userid|terblokir|diblokir|keblokir|blocked|banned|suspend|terkunci|locked|bosku|kak|min|admin|kenapa|mengapa|karena|tolong|proses|masih|sudah|bang|yang|kena|bank|dana|ovo|terdaftar|nomor|user|makasih|terimakasih|halo|hello|siap|sebentar|tunggu|bentar|terima)$/i;
+    const invalid = /^(?:saya|aku|anda|kamu|nya|bos|bosku|ya|iya|oke|ok|adalah|ini|itu|lupa|belum|tidak|ada|mana|berapa|tolong|cek|deposit|withdraw|username|userid|terblokir|teblokir|diblokir|keblokir|blokir|blok|dikunci|kekunci|kunci|di|locked|blocked|banned|suspend|terkunci|bosku|kak|min|admin|kenapa|mengapa|karena|tolong|proses|masih|sudah|bang|yang|kena|bank|dana|ovo|terdaftar|nomor|user|makasih|terimakasih|halo|hello|siap|sebentar|tunggu|bentar|terima)$/i;
     for (const m of messages) {
       const t = m.text.trim();
       if (m.kind === 'agent' && label.test(t) && (request.test(t) || /user\s*id.*\?/i.test(t))) requested = true;
@@ -226,6 +235,8 @@
   const ADMIN_PATHS = ['/agentplayerlist.php','/agentplayerlist_old.php'];
   const resetIntent = intentMatcher('password');
   const accountLabel = /(?:nomor\s*rekening|no\.?\s*(?:rekening|rek)\b|norek\b|rekening\b|account\s*(?:number|no\.?))/i;
+
+  if(location.origin===ADMIN_ORIGIN){void runProfileWorker();return;}
 
   const usernameIntent=intentMatcher('username');
   // Inspect sent agent messages only; never retain the password value.
@@ -289,133 +300,6 @@
     if(!accountState.conversationCompleted)applyConversationDone(done);
   }
 
-  const changeMonitorMemory=new Map();
-  const CHANGE_INTERVAL=60*1000;
-  function changeMonitor(chat=route){
-    if(changeMonitorMemory.has(chat))return changeMonitorMemory.get(chat);
-    let state;try{state=JSON.parse(localStorage.getItem('lc-change-monitor-v1:'+chat)||'null');}catch{}
-    if(!state||typeof state!=='object')state={active:false,oldNumber:'',newNumber:'',nextAt:0};
-    if(state.savedPair&&!state.done&&state.nextAt>Date.now()+CHANGE_INTERVAL)state.nextAt=Date.now()+CHANGE_INTERVAL;
-    state.busy=false;changeMonitorMemory.set(chat,state);return state;
-  }
-  function saveChange(state,chat=route){
-    try{localStorage.setItem('lc-change-monitor-v1:'+chat,JSON.stringify({...state,busy:false}));}catch{state.storageError=true;}
-  }
-  function changeSentComplete(messages){
-    let active=false,done=false;
-    for(const m of messages){
-      if(m.kind==='member'&&wantsAccountChange(m.text)){active=true;done=false;}
-      if(!active||m.kind!=='agent')continue;
-      const t=m.text.toLowerCase();
-      if(/\?|\b(?:belum|akan|nanti|jika|apabila|kalau)\b|\b(?:sudah|telah)\s+(?:bisa|dapat)\b/.test(t))continue;
-      if(/\b(?:rek(?:ening)?|norek)\b/.test(t)&&/\b(?:sudah|telah|udah)\b/.test(t)&&/\b(?:diganti(?:kan)?|di\s+ganti(?:kan)?|kami\s+(?:bantu\s+)?ganti(?:kan)?|berhasil\s+(?:kami\s+)?(?:ganti|ubah)|diperbarui|diubah)\b/.test(t))done=true;
-    }return done;
-  }
-  function changeNumbers(messages){
-    const data={oldNumber:'',newNumber:'',oldHolder:'',newHolder:'',oldBank:'',newBank:''};
-    // Section context belongs to member messages only. Empty agent templates
-    // must never supply numbers or select the member's current section.
-    let section='';
-    for(const m of messages){
-      if(m.kind!=='member')continue;
-      const lines=String(m.text).split(/\n|(?=\b(?:Nama\s+Rekening|Nomor\s+Rekening|Bank)\s*:)/i);
-      for(let i=0;i<lines.length;i++){
-        const line=lines[i].trim();
-        const old=/\b(?:rekening|rek|norek)\b[^\d\n]{0,85}\b(?:saat ini(?: terdaftar)?|lama|yang terdaftar|sekarang)\b/i.exec(line);
-        const newer=/\b(?:rekening|rek|norek)\b[^\d\n]{0,85}\b(?:baru|pengganti|yang (?:ingin|mau|akan) (?:di\s*)?ganti(?:kan)?)\b/i.exec(line);
-        const label=newer||old;
-        if(label){
-          section=newer?'new':'old';
-          const tail=line.slice(label.index+label[0].length);
-          const values=numberRuns(tail);
-          if(values.length===1)data[section+'Number']=values[0];
-          else if(/^[\s:=\-]*$/.test(tail)&&/^[\d\s.,()\-]+$/.test(lines[i+1]||'')){
-            const next=numberRuns(lines[i+1]);if(next.length===1)data[section+'Number']=next[0];
-          }
-          continue;
-        }
-        if(!section)continue;
-        const field=/^(nama\s+rek(?:ening)?|a\s*\/\s*n|nomor\s+rek(?:ening)?|no\.?\s*rek(?:ening)?|norek|bank)\s*[:=]\s*(.*)$/i.exec(line);
-        if(!field)continue;
-        let value=field[2].trim();
-        if(!value&&lines[i+1]&&!/[:=]|\b(?:rekening|bank)\b/i.test(lines[i+1]))value=lines[++i].trim();
-        if(!value)continue;
-        if(/^(?:nomor|no\.?\s|norek)/i.test(field[1])){
-          const values=numberRuns(value);if(values.length===1)data[section+'Number']=values[0];
-        }else data[section+(/^bank$/i.test(field[1])?'Bank':'Holder')]=value;
-      }
-    }return data;
-  }
-  function finishChange(reason){
-    const state=changeMonitor();state.active=true;state.done=true;state.busy=false;state.token=(state.token||0)+1;state.nextAt=0;state.reason=reason;state.finishedAt=Date.now();saveChange(state);
-    cards=cards.filter(c=>c.type!=='change');render();
-    $('bubble').classList.add('unread');if(reason==='verified')playNotice();
-  }
-  async function resolveChangeAccount(number){
-    const now=await lookupAt(ADMIN_PATHS[0],number,'change');
-    if(now.state==='found')return {...now,source:'NOW'};
-    const old=await lookupAt(ADMIN_PATHS[1],number,'change');
-    if(old.state==='found')return {...old,source:'OLD'};
-    return {state:now.state==='absent'&&old.state==='absent'?'absent':'unknown'};
-  }
-  async function checkChange(){
-    const state=changeMonitor();if(!state.savedPair||state.busy||state.done||paused||!state.oldNumber||!state.newNumber)return;
-    if(state.oldNumber===state.newNumber){state.message='Rekening lama dan baru sama. Periksa kedua nomor.';saveChange(state);render();return;}
-    const chat=route,token=(state.token||0)+1;state.token=token;state.busy=true;state.nextAt=Date.now()+CHANGE_INTERVAL;state.message='Memeriksa rekening lama dan baru di admin…';saveChange(state);render();
-    const valid=()=>conversationRoute()===chat&&route===chat&&state.token===token&&!state.done;
-    try{
-      const old=await resolveChangeAccount(state.oldNumber);if(!valid())return;
-      if(!state.baseline&&old.state==='found')state.baseline=old.record;
-      if(!state.baseline){const previous=cachedAccount(state.oldNumber,chat);if(previous?.record)state.baseline=previous.record;}
-      const newer=await resolveChangeAccount(state.newNumber);if(!valid())return;
-      state.checkedAt=Date.now();state.oldStatus=old.state;state.newStatus=newer.state;
-      if(old.state==='absent'&&newer.state==='found'){
-        state.latest=newer.record;state.source=newer.source;finishChange('verified');return;
-      }
-      state.message=old.state==='unknown'||newer.state==='unknown'?'Hasil admin belum pasti. Pemeriksaan akan diulang; belum selesai.':old.state==='found'?'Rekening terdaftar masih ditemukan. Menunggu pergantian.':'Rekening pengganti belum terdaftar. Menunggu pergantian.';
-    }catch(e){if(valid())state.message='Pengecekan gagal: '+e.message;}
-    finally{
-      if(state.token===token){state.busy=false;saveChange(state,chat);if(route===chat)render();}
-    }
-  }
-  function syncChange(messages){
-    const state=changeMonitor();
-    if(!state.active&&!messages.some(m=>m.kind==='member'&&wantsAccountChange(m.text)))return;
-    state.active=true;
-    // Only an explicitly saved pair is monitored; messages cannot replace it.
-    if(state.done||!state.savedPair)return;
-    if(!state.busy&&Date.now()>=(state.nextAt||0))checkChange();
-  }
-  function drawChangeMonitor(container){
-    const state=changeMonitor();if(!state.active)return;
-    const box=document.createElement('div');box.className='card change-monitor';box.dataset.tone=state.done?'ready':'review';
-    const heading=document.createElement('b');heading.textContent=state.done?(state.reason==='verified'?'Percakapan selesai — Rekening sudah berhasil diganti':state.reason==='cancelled'?'Permintaan ganti dibatalkan':state.reason==='manual'?'Pergantian ditandai selesai':'Percakapan selesai • rekening sudah diganti'):'PANTAU PERGANTIAN REKENING';box.append(heading);
-    const detail=document.createElement('p');detail.textContent=state.done?(state.reason==='verified'?'Rekening terdaftar sudah tidak ditemukan di Admin Now maupun Old. Rekening pengganti sudah terdaftar. Pemantauan selesai dan hasil tersimpan.':state.reason==='agent'?'Balasan penyelesaian sudah dikirim AI / agen. Pemeriksaan berkala dihentikan.':state.reason==='manual'?'Ditandai selesai oleh operator. Pemeriksaan berkala dihentikan.':'Pemeriksaan berkala dihentikan.'):(state.message||'Isi dua nomor di bawah, lalu tekan Simpan rek. Nomor akan diperiksa sekarang dan setiap 1 menit selama chat ini aktif.');box.append(detail);
-    if(state.done&&state.reason==='verified'){const identity=document.createElement('p');identity.textContent='User ID: '+state.latest.userid+'\nRekening baru: '+state.newNumber;box.append(identity);}
-    if(state.done){
-      if(state.reason==='verified'){
-        const copy=document.createElement('button');copy.textContent='Salin PK selesai';copy.onclick=async()=>{try{await navigator.clipboard.writeText('Untuk pergantian rekening Anda sudah kami bantu gantikan ya bosku. Silakan diperiksa kembali. Terima kasih.');copy.textContent='✓ Tersalin';}catch{setStatus('Clipboard belum diizinkan.');}};box.append(copy);
-      }
-    }else{
-      const fields=[];
-      for(const [label,key] of [['Rekening terdaftar','oldNumber'],['Rekening yang diganti','newNumber']]){
-        const wrapper=document.createElement('label');wrapper.textContent=label;const input=document.createElement('input');input.value=state.draft?.[key]??state[key]??'';input.placeholder=key==='oldNumber'?'Nomor rekening lama':'Nomor rekening baru / pengganti';input.oninput=()=>{state.draft={...(state.draft||{}),[key]:input.value};};input.inputMode='numeric';input.setAttribute('aria-label',label);input.disabled=state.busy;wrapper.append(input);box.append(wrapper);fields.push(input);
-      }
-      const go=document.createElement('button');go.textContent=state.busy?'Memeriksa…':'Simpan rek';go.disabled=state.busy;go.onclick=()=>{
-        const [oldNumber,newNumber]=fields.map(f=>cleanAccount(f.value));if(!/^\d{5,25}$/.test(oldNumber)||!/^\d{5,25}$/.test(newNumber)||oldNumber===newNumber){setStatus('Isi dua nomor rekening berbeda, masing-masing 5–25 digit.');return;}
-        if(state.oldNumber!==oldNumber||state.newNumber!==newNumber){state.baseline=null;state.token=(state.token||0)+1;}
-        Object.assign(state,{oldNumber,newNumber,manual:true,savedPair:true,draft:null,done:false,reason:null,nextAt:0,oldStatus:null,newStatus:null});saveChange(state);checkChange();
-      };box.append(go);
-      const status=document.createElement('small');status.textContent=state.nextAt?'Pemeriksaan berikutnya: '+new Date(state.nextAt).toLocaleTimeString('id-ID')+' • saat chat ini aktif':'Belum disimpan — isi kedua nomor, lalu tekan Simpan rek.';box.append(status);
-      if(state.checkedAt){
-        const result=document.createElement('p');const label=v=>v==='found'?'Terdaftar':v==='absent'?'Tidak terdaftar':'Belum pasti';
-        result.textContent='Rekening terdaftar: '+label(state.oldStatus)+' · '+state.oldNumber+'\nRekening pengganti: '+label(state.newStatus)+' · '+state.newNumber;
-        result.style.whiteSpace='pre-line';box.append(result);
-      }
-      if(state.savedPair){const stop=document.createElement('button');stop.textContent='Hentikan pemantauan';stop.onclick=()=>finishChange('cancelled');box.append(stop);}
-    }
-    container.append(box);
-  }
   function cleanAccount(value){
     return String(value||'').normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/[^0-9]/g,'');
   }
@@ -619,12 +503,47 @@
     return {url:url.href,method,body:method==='POST'?params.toString():null};
   }
   const profileReadUrls=new Set();
+  const profilePlans=new Map(),profileRequests=new Set();
+  const profileRequestKey=(url,method,body)=>JSON.stringify([url,method,body]);
+  function rememberProfileForm(row,userid,pageUrl){
+    const key=new URL(pageUrl).pathname+'|'+userid.toLowerCase();profilePlans.delete(key);
+    const buttons=[...row.querySelectorAll('input[type="submit"][name="cmdsend"]')].filter(e=>/^profil$/i.test(e.value.trim())&&!e.disabled);
+    if(buttons.length!==1)return;
+    const button=buttons[0],form=button.form;
+    if(!form||button.getAttribute('onclick')||form.getAttribute('onsubmit'))return;
+    if(form.querySelectorAll('input[type="submit"][name="cmdsend"][value="Profil"]').length!==1)return;
+    const url=new URL(button.getAttribute('formaction')||form.getAttribute('action')||pageUrl,pageUrl);
+    const method=(button.getAttribute('formmethod')||form.method||'GET').toUpperCase();
+    if(url.origin!==ADMIN_ORIGIN||url.pathname!=='/editplayerlist.php'||!['GET','POST'].includes(method))return;
+    if([...url.searchParams].some(([k,v])=>/delete|save|update|password|unlock/i.test(k)||/^(?:action|cmd|do)$/i.test(k)&&!/^(?:profil|profile|view|show|read)$/i.test(v)))return;
+    const params=new URLSearchParams();
+    for(const field of form.elements){
+      if(field.disabled||!field.name||/^(?:submit|button|reset|image)$/i.test(field.type))continue;
+      // Fast path is only for a navigation form containing hidden player fields/tokens.
+      if(field.type!=='hidden'||/password|balance|information|status|delete|update|save|unlock/i.test(field.name))return;
+      if(/^(?:action|act|do|mode|cmd)$/i.test(field.name)&&!/^(?:profil|profile|view|show|detail|read)$/i.test(field.value))return;
+      params.append(field.name,field.value);
+    }
+    params.append(button.name,button.value);
+    if(method==='GET')url.search=params.toString();
+    profilePlans.set(key,{url:url.href,method,body:method==='POST'?params.toString():null,created:Date.now()});
+  }
+  async function readProfileFast(userid,listPath){
+    const plan=profilePlans.get(listPath+'|'+userid.toLowerCase());
+    if(!plan||Date.now()-plan.created>60000)return null;
+    const key=profileRequestKey(plan.url,plan.method,plan.body);profileRequests.add(key);
+    try{
+      const page=await fetchAdmin(plan.url,plan.method,plan.body,'profile-fast');
+      return {...profileDetails(page,userid),source:'Profil · Information (latar belakang)'};
+    }finally{profileRequests.delete(key);}
+  }
+
   const pendingAdmin=new Map();
   function cancelAdminGroup(group){for(const [handle,kind] of pendingAdmin){if(group&&kind!==group)continue;try{handle.abort();}catch{}pendingAdmin.delete(handle);}}
   function fetchAdmin(url,method='GET',body=null,group='account'){
     return new Promise((resolve,reject)=>{
       const dest=new URL(url);
-      if(dest.origin!==ADMIN_ORIGIN||(!ADMIN_PATHS.includes(dest.pathname)&&dest.pathname!=='/referrallist.php'&&!(method==='GET'&&profileReadUrls.has(dest.href)))){reject(new Error('Alamat admin tidak diizinkan.'));return;}
+      if(dest.origin!==ADMIN_ORIGIN||(!ADMIN_PATHS.includes(dest.pathname)&&dest.pathname!=='/referrallist.php'&&!(method==='GET'&&profileReadUrls.has(dest.href))&&!profileRequests.has(profileRequestKey(dest.href,method,body)))){reject(new Error('Alamat admin tidak diizinkan.'));return;}
       if(typeof GM_xmlhttpRequest!=='function'){reject(new Error('Perbarui izin skrip di Tampermonkey untuk mengakses admin.'));return;}
       let handle;
       const finish=()=>pendingAdmin.delete(handle);
@@ -637,7 +556,8 @@
             const final=new URL(response.finalUrl||dest.href);
             if(final.origin!==ADMIN_ORIGIN||final.pathname!==dest.pathname)throw new Error('Sesi admin berubah / belum login. Buka admin dan login, lalu Cek ulang.');
             const doc=new DOMParser().parseFromString(response.responseText||'','text/html');
-            if(doc.querySelector('input[type="password"],form[action*="login"]'))throw new Error('Admin belum login. Login di Chrome yang sama, lalu Cek ulang.');
+            const profileForm=final.pathname==='/editplayerlist.php'&&[...doc.querySelectorAll('th,td,h1,h2,h3,legend')].some(e=>/^Status\s+\S+/i.test(adminText(e)))&&/Information|Informasi/i.test(adminText(doc.body));
+            if(doc.querySelector('form[action*="login"]')||doc.querySelector('input[type="password"]')&&!profileForm)throw new Error('Admin belum login. Login di Chrome yang sama, lalu Cek ulang.');
             if(/verify you are human|checking your browser|access denied/i.test(adminText(doc.body).slice(0,1500)))throw new Error('Admin menampilkan pemeriksaan akses; hasil belum bisa dibaca.');
             resolve({doc,url:final.href});
           }catch(e){reject(e);}
@@ -658,21 +578,24 @@
   function saveBlocked(state,chat=route){try{localStorage.setItem('lc-blocked-result-v1:'+chat,JSON.stringify(state));}catch{state.storageError=true;}}
   function profileLink(row,pageUrl){
     const urls=[];
-    for(const el of row.querySelectorAll('a,button,option')){
-      const label=[adminText(el),el.title,el.getAttribute('aria-label')].join(' ');
-      if(!/\bprofil(?:e)?\b/i.test(label))continue;
-      const raw=el.getAttribute('href')||el.getAttribute('data-url')||(el.tagName==='OPTION'?el.value:'');
-      const values=[raw,...[...(el.getAttribute('onclick')||'').matchAll(/['"]([^'"]+\.php(?:\?[^'"]*)?)['"]/g)].map(m=>m[1])];
+    for(const el of row.querySelectorAll('a,button,option,[onclick],[data-url],[data-href]')){
+      const label=[adminText(el),el.title,el.getAttribute('aria-label'),...[...el.querySelectorAll('img,[title],[aria-label]')].map(n=>[n.getAttribute('alt'),n.getAttribute('title'),n.getAttribute('aria-label')].join(' '))].join(' ');
+      const attrs=['href','data-url','data-href','onclick','onmousedown'].map(a=>el.getAttribute(a)||'');
+      if(el.tagName==='OPTION')attrs.push(el.value);
+      if(!/\bprofil(?:e)?\b/i.test(label)&&!attrs.some(v=>/editplayerlist\.php(?:[?"']|$)/i.test(v)))continue;
+      // Extract literal popup URLs from href as well as onclick; never execute JS.
+      const values=attrs.flatMap(raw=>[raw,...[...raw.matchAll(/['"]([^'"]+\.php(?:\?[^'"]*)?)['"]/g)].map(m=>m[1])]);
       for(const value of values){
         if(!value||/^(?:javascript:|#)/i.test(value))continue;
-        const u=new URL(value,pageUrl);
+        let u;try{u=new URL(value,pageUrl);}catch{continue;}
         if(u.origin!==ADMIN_ORIGIN||!u.pathname.endsWith('.php')||/delete|remove|logout|reset|update|save|submit|changepass|unlock|lockuser/i.test(u.pathname))continue;
         if([...u.searchParams].some(([k])=>/delete|remove|reset|update|save|password|unlock|lockuser/i.test(k)))continue;
         if([...u.searchParams].some(([k,v])=>/^(?:action|act|do|mode|cmd|submit|status|locked|lock)$/i.test(k)&&! /^(?:view|profile|profil|show|detail|read)$/i.test(v)))continue;
         u.hash='';urls.push(u.href);
       }
     }
-    const unique=[...new Set(urls)];if(unique.length!==1)throw new Error('Tautan Profil pada baris User ID belum dikenali dengan pasti. Buka Tools → Profil di admin.');
+    const preferred=urls.filter(v=>new URL(v).pathname==='/editplayerlist.php');
+    const unique=[...new Set(preferred.length?preferred:urls)];if(unique.length!==1)throw new Error('Tautan Profil pada baris User ID belum dikenali dengan pasti. Buka Tools → Profil di admin.');
     profileReadUrls.add(unique[0]);return unique[0];
   }
   function rowLock(cell){
@@ -682,10 +605,8 @@
   }
   function accountLockRecord(record,row,labels,pageUrl){
     const idx=labels.findIndex(l=>/^(?:userid|user\s*id|username|player)$/i.test(l));
-    record.lock=rowLock(row.cells[idx]);record.lockCheckVersion=2;
-    if(record.lock){
-      try{record.profileUrl=profileLink(row,pageUrl);}catch(e){record.profileError=e.message;}
-    }
+    record.lock=rowLock(row.cells[idx]);record.lockCheckVersion=7;record.profileListPath=new URL(pageUrl).pathname;
+    if(record.lock)rememberProfileForm(row,record.userid,pageUrl);
     return {state:'found',record};
   }
   function troubleDetails(page,userid){
@@ -707,24 +628,116 @@
     const item=entries[0],status=/^unlocked\b/i.test(item.reason)?'Unlocked':/^locked\b/i.test(item.reason)?'Locked':/^lupa\s+password\b/i.test(item.reason)?'Lupa password':'Status belum terbaca';
     return {status,information:item.reason,source:'Gembok · alasan terbaru',reasonDate:item.dateText};
   }
-  async function readLockReason(userid,profileUrl,profileError,group='account',locked=true){
-    let troubleError='';
-    if(locked){
-      // Same read-only page opened by the lock icon in the supplied screenshot.
-      const url=new URL('/trouble.php',ADMIN_ORIGIN);url.searchParams.set('user',userid);profileReadUrls.add(url.href);
-      try{return troubleDetails(await fetchAdmin(url.href,'GET',null,group),userid);}
-      catch(e){troubleError=e.message;}
-    }
-    if(!profileUrl)throw Error((troubleError?troubleError+' ':'')+(profileError||'Tautan Profil belum ditemukan.'));
+  // Run only inside a dedicated admin tab created for this lookup.
+  async function runProfileWorker(){
+    let id=new URLSearchParams(location.hash.slice(1)).get('lc-profile-job');
+    try{id=id||window.opener?.sessionStorage.getItem('lc-profile-job')||sessionStorage.getItem('lc-profile-job');}catch{}
+    if(!id||!/^[a-z0-9-]+$/i.test(id)||typeof GM_getValue!=='function')return;
+    const key='lc-profile-job:'+id,job=GM_getValue(key,null);
+    if(!job||job.expires<Date.now()||job.result||job.error)return;
+    sessionStorage.setItem('lc-profile-job',id);
+    const finish=(result,error)=>{
+      const current=GM_getValue(key,null);if(!current||current.result||current.error)return;
+      GM_setValue(key,{...current,...(result?{result}:{error}),finished:Date.now()});
+      sessionStorage.removeItem('lc-profile-job');
+      if(location.pathname==='/editplayerlist.php')try{window.close();}catch{}
+    };
     try{
-      const result=profileDetails(await fetchAdmin(profileUrl,'GET',null,group),userid);
-      return {...result,source:'Profil · Information',fallbackNote:troubleError};
-    }catch(e){throw Error((troubleError?troubleError+' ':'')+'Profil: '+e.message);}
+      if(document.querySelector('form[action*="login"]'))throw Error('Login admin diperlukan untuk membuka Tools → Profil.');
+      if(location.pathname==='/editplayerlist.php'){
+        if(job.stage!=='profile')return;
+        const result=profileDetails({doc:document,url:location.href},job.userid);
+        finish({...result,source:'Tools → Profil · Information'});return;
+      }
+      if(!ADMIN_PATHS.includes(location.pathname)||location.pathname!==job.listPath)return;
+      if(job.stage==='start'){
+        const req=searchRequest({doc:document,url:location.href},job.userid,'userid');
+        GM_setValue(key,{...job,stage:'searched'});
+        // Submit only the verified player-list search, never the Profile editor.
+        const form=document.createElement('form'),dest=new URL(req.url);form.method=req.method;form.action=dest.origin+dest.pathname;
+        for(const [name,value] of new URLSearchParams(req.method==='POST'?req.body:dest.search)){const input=document.createElement('input');input.type='hidden';input.name=name;input.value=value;form.append(input);}
+        document.body.append(form);HTMLFormElement.prototype.submit.call(form);return;
+      }
+      if(job.stage!=='searched')return;
+      const player=playerById({doc:document,url:location.href},job.userid);
+      if(!player)throw Error('User ID tidak ditemukan pada tab admin; Profil tidak dibuka.');
+      const caption=e=>[adminText(e),e.title,e.getAttribute('aria-label'),...[...e.querySelectorAll('img')].map(x=>x.alt||x.title||'')].join(' ').trim();
+      const visible=e=>!!e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
+      const options=()=>[...player.row.querySelectorAll('a,button,input[type="button"],input[type="submit"],option,[role="menuitem"]')].filter(e=>!e.disabled&&(/^(?:profil|profile)$/i.test(caption(e))||/^(?:profil|profile)$/i.test(e.tagName==='INPUT'?e.value:adminText(e))));
+      let entries=options();
+      if(!entries.some(e=>e.tagName==='OPTION'||visible(e))){
+        const tools=[...player.row.querySelectorAll('a,button,[role="button"]')].filter(e=>/^tools$/i.test(adminText(e)||e.title||''));
+        if(tools.length===1&&!(tools[0].tagName==='BUTTON'&&tools[0].type==='submit'))tools[0].click();
+        await new Promise(r=>setTimeout(r,300));entries=options();
+      }
+      entries=entries.filter(e=>e.tagName==='OPTION'||visible(e));
+      if(entries.length!==1)throw Error('Tombol Profil pada baris User ID belum dikenali secara unik. Kirim HTML tombol Tools → Profil.');
+      const target=entries[0];
+      if(/^(?:INPUT|BUTTON)$/.test(target.tagName)&&target.type==='submit'){
+        // Confirmed admin control: <input name="cmdsend" type="submit" value="Profil" id="xxx">.
+        // Scope by exact player row, never by the potentially repeated id="xxx".
+        if(target.name!=='cmdsend'||!/^profil$/i.test(target.value.trim())||!target.form)throw Error('Tombol submit Profil belum cocok dengan cmdsend=Profil.');
+        const action=new URL(target.getAttribute('formaction')||target.form.getAttribute('action')||location.href,location.href);
+        if(action.origin!==ADMIN_ORIGIN||![...ADMIN_PATHS,'/editplayerlist.php'].includes(action.pathname))throw Error('Tujuan form Profil berbeda dari halaman admin yang dikenali.');
+        // Native click retains the form's hidden player identifier, tokens and submitter value.
+      }
+      const href=target.getAttribute('href')||'';
+      if(href&&!/^(?:javascript:|#)/i.test(href)){
+        const dest=new URL(href,location.href);
+        if(dest.origin!==ADMIN_ORIGIN||dest.pathname!=='/editplayerlist.php')throw Error('Tujuan tombol Profil belum sesuai editplayerlist.php.');
+      }
+      GM_setValue(key,{...job,stage:'profile'});
+      // Execute the original row handler so the site selects this exact player.
+      if(target.tagName==='OPTION'){
+        const select=target.closest('select');if(!select)throw Error('Pilihan Profil tidak memiliki menu.');
+        select.value=target.value;select.dispatchEvent(new Event('change',{bubbles:true}));
+      }else target.click();
+      // Also support a same-page Profile dialog / same-origin iframe.
+      const timer=setInterval(()=>{
+        const current=GM_getValue(key,null);if(!current||current.result||current.error||Date.now()>job.expires){clearInterval(timer);return;}
+        for(const doc of [document,...[...document.querySelectorAll('iframe')].map(e=>{try{return e.contentDocument;}catch{return null;}}).filter(Boolean)]){
+          try{const result=profileDetails({doc,url:location.href},job.userid);finish({...result,source:'Tools → Profil · Information'});clearInterval(timer);return;}catch{}
+        }
+      },500);
+    }catch(e){finish(null,e.message);}
+  }
+  let profileWorkerQueue=Promise.resolve();
+  function readProfileFromPlayerRow(userid,listPath){
+    const run=async()=>{
+      if(typeof GM_openInTab!=='function'||typeof GM_setValue!=='function'||typeof GM_getValue!=='function')throw Error('Simpan versi terbaru dan izinkan akses tab admin di Tampermonkey.');
+      if(!ADMIN_PATHS.includes(listPath))throw Error('Sumber daftar pemain belum diketahui. Cek ulang rekening.');
+      const id=Date.now().toString(36)+'-'+Math.random().toString(36).slice(2),key='lc-profile-job:'+id;
+      GM_setValue(key,{userid,listPath,stage:'start',expires:Date.now()+45000});
+      let tab;
+      try{
+        tab=GM_openInTab(ADMIN_ORIGIN+listPath+'#lc-profile-job='+id,{active:false,insert:true,setParent:true});
+        const deadline=Date.now()+45000;
+        while(Date.now()<deadline){
+          await new Promise(r=>setTimeout(r,500));
+          const value=GM_getValue(key,null);
+          if(value?.error)throw Error(value.error);
+          if(value?.result)return value.result;
+        }
+        throw Error('Tools → Profil belum terbuka dalam 45 detik. Periksa login dan izin popup admin; Profil kosong tidak digunakan.');
+      }finally{try{tab?.close();}catch{}GM_deleteValue(key);}
+    };
+    const pending=profileWorkerQueue.then(run,run);profileWorkerQueue=pending.catch(()=>{});return pending;
+  }
+  async function readLockReason(userid,listPath=ADMIN_PATHS[0]){
+    // Direct Profile lookup: execute Tools → Profil on the exact player row.
+    // Do not request trouble.php or open an unselected editplayerlist.php.
+    try{
+      // Reuse the exact row's form before opening an inactive compatibility tab.
+      let fast=null;try{fast=await readProfileFast(userid,listPath);}catch{}
+      if(fast)return {...fast,fallbackNote:''};
+      return {...await readProfileFromPlayerRow(userid,listPath),fallbackNote:''};
+    }
+    catch(e){throw Error('Profil: '+e.message);}
   }
   async function readRecoveryProfile(record){
     if(!record.lock)return;
     try{
-      record.profile=await readLockReason(record.userid,record.profileUrl,record.profileError);
+      record.profile=await readLockReason(record.userid,record.profileListPath);
       record.profileCheckedAt=Date.now();record.profileError='';
     }catch(e){record.profileError=e.message;}
   }
@@ -754,7 +767,7 @@
   function profileDetails(page,userid){
     const heading=[...page.doc.querySelectorAll('th,td,caption,h1,h2,h3,legend,b,strong')].some(e=>adminText(e).toLowerCase()==='status '+userid.toLowerCase());
     const identity=[...page.doc.querySelectorAll('input[name]')].some(e=>/^(?:userid|user_id|username)$/i.test(e.name)&&e.value.toLowerCase()===userid.toLowerCase());
-    if(!heading&&!identity)throw new Error('Identitas User ID pada halaman Profil belum cocok. Status tidak digunakan.');
+    if(!heading&&!identity)throw new Error('Profil terbuka tetapi User ID tidak cocok. Buka Profil pemain yang benar di admin lalu Cek ulang; alamat lengkap Profil diperlukan jika pemain belum terpilih.');
     const controlFor=(label,selector)=>{
       for(const tr of page.doc.querySelectorAll('tr')){const cells=[...tr.cells];if(cells.length>=2&&label.test(adminText(cells[0])))return cells.slice(1).map(c=>c.querySelector(selector)).find(Boolean);}
       return [...page.doc.querySelectorAll(selector)].find(e=>label.test((e.labels?.[0]?.textContent||e.name||e.id||'').trim()));
@@ -771,8 +784,8 @@
   async function runBlocked(userid,force=false){
     if(paused||!/^\w[\w.-]{2,39}$/.test(userid))return;
     const state=blockedState(),chat=route;
-    if(!force&&state.userid===userid&&['loading','done','error'].includes(state.phase)&&!(state.phase==='error'&&/Centang filter UserId/.test(state.error||'')&&state.filterRevision!==245))return;
-    const token=(state.token||0)+1;Object.assign(state,{active:true,userid,filterRevision:245,phase:'loading',token,status:'',information:'',source:'',reasonDate:'',fallbackNote:'',error:'',lock:null,profileUrl:'',checkedAt:0});saveBlocked(state);render();
+    if(!force&&state.userid===userid&&['loading','done','error'].includes(state.phase)&&!(state.phase==='error'&&/Centang filter UserId|Tautan Profil|Profil:/.test(state.error||'')&&state.filterRevision!==252))return;
+    const token=(state.token||0)+1;Object.assign(state,{active:true,userid,filterRevision:252,phase:'loading',token,status:'',information:'',source:'',reasonDate:'',fallbackNote:'',error:'',lock:null,profileUrl:'',checkedAt:0});saveBlocked(state);render();
     const valid=()=>route===chat&&conversationRoute()===chat&&state.token===token;
     try{
       const page=await fetchAdmin(ADMIN_ORIGIN+ADMIN_PATHS[0],'GET',null,'blocked');if(!valid())return;
@@ -781,9 +794,8 @@
       const player=playerById(result,userid);
       if(!player){state.status='Tidak ditemukan';state.phase='done';}
       else{
-        state.lock=player.lock;let profileError='';
-        try{state.profileUrl=profileLink(player.row,result.url);}catch(e){profileError=e.message;}
-        const details=await readLockReason(userid,state.profileUrl,profileError,'blocked',player.lock);if(!valid())return;
+        state.lock=player.lock;rememberProfileForm(player.row,userid,result.url);
+        const details=await readLockReason(userid,ADMIN_PATHS[0]);if(!valid())return;
         Object.assign(state,details);state.phase='done';
       }
       state.checkedAt=Date.now();
@@ -793,7 +805,7 @@
   function syncBlocked(messages){
     if(!messages.some(m=>m.kind==='member'&&detectIntent(m.text).includes('blocked')))return;
     const context=idContext(messages),state=blockedState();state.active=true;
-    const userid=context.id||(context.requested?context.candidate:'');
+    const userid=state.selectedUserid||context.id||(context.requested?context.candidate:'');
     if(userid)runBlocked(userid);
   }
   function drawBlocked(container){
@@ -801,7 +813,7 @@
     const box=document.createElement('section');box.className='blocked-panel';box.dataset.status=state.status||state.phase;
     const eyebrow=document.createElement('div');eyebrow.className='category';eyebrow.textContent='PEMERIKSAAN AKUN • ADMIN NOW';
     const heading=document.createElement('strong');heading.textContent=state.userid||'Menunggu User ID member';
-    const badge=document.createElement('div');badge.className='blocked-badge';badge.textContent=state.phase==='loading'?'Membaca gembok → Profil bila perlu…':state.status||'Status belum terbaca';
+    const badge=document.createElement('div');badge.className='blocked-badge';badge.textContent=state.phase==='loading'?'Membuka Tools → Profil sesuai User ID…':state.status||'Status belum terbaca';
     box.append(eyebrow,heading,badge);
     if(state.status&&state.status!=='Tidak ditemukan'){
       const label=document.createElement('b');label.textContent=(state.source||'Information dari admin')+(state.reasonDate?' · '+state.reasonDate:'');const info=document.createElement('p');info.className='blocked-information';info.textContent=state.information||'(Information kosong)';box.append(label,info);
@@ -945,7 +957,7 @@
     if(!result.lookupRevision && result.now!=='TERDAFTAR' && /^(?:Belum dicek|Menunggu hasil Now)$/i.test(result.old||''))return null;
     // Refresh old negative results once using stricter, table-scoped evidence.
     if((result.lookupRevision||0)<2&&result.now==='DI PEMAIN NOW TIDAK ADA'&&result.old==='DI PEMAIN OLD TIDAK ADA'&&!result.completed)return null;
-    if(result.record&&(result.record.lockCheckVersion||0)<2&&!result.completed&&!result.conversationCompleted)return null;
+    if(result.record&&(result.record.lockCheckVersion||0)<7&&!result.completed&&!result.conversationCompleted)return null;
     const restored=JSON.parse(JSON.stringify(result));restored.balanceLoading=false;if(restored.record)delete restored.record.referralPending;return restored;
   }
   function saveAccountResult(){
@@ -990,6 +1002,7 @@
     const el=$('account');if(!el)return;
     const signature=JSON.stringify(accountState)+'|'+accountShowResult;if(signature===accountLastRender)return;accountLastRender=signature;
     el.hidden=!accountState.active;el.replaceChildren();if(!accountState.active)return;
+    el.dataset.found=String(Boolean(accountState.record));
     el.dataset.phase=accountState.completed&&!accountShowResult?'finished':accountState.phase;
     if(accountState.completed&&!accountShowResult){
       const icon=document.createElement('div');icon.className='finished-icon';icon.textContent='✓';
@@ -1018,7 +1031,13 @@
     const status=document.createElement('div');status.className='lookup-steps';
     for(const [name,value] of [['NOW',accountState.now],['OLD',accountState.old]]){
       const line=document.createElement('div'),label=document.createElement('b'),valueEl=document.createElement('span');line.dataset.state=/GAGAL|BELUM BISA/.test(value)?'error':/TIDAK ADA/.test(value)?'empty':/TERDAFTAR/.test(value)?'found':/Sedang/.test(value)?'loading':'idle';label.textContent=name;valueEl.textContent=value;line.append(label,valueEl);status.append(line);
-    }el.append(status);
+    }
+    const context=document.createElement('details');context.className='aux-details account-context';
+    const contextTitle=document.createElement('summary');contextTitle.textContent='Detail pemeriksaan';context.append(contextTitle);
+    if(accountState.record&&accountState.phase==='done'){
+      context.open=/GAGAL|BELUM BISA|BELUM ADA/.test(accountState.now+' '+accountState.old);
+      context.append(status);el.append(context);
+    }else el.append(status);
     if(accountState.now==='DI PEMAIN NOW TIDAK ADA'&&accountState.old==='DI PEMAIN OLD TIDAK ADA'){
       const absent=document.createElement('div');absent.className='not-registered';
       const title=document.createElement('strong');title.textContent='TIDAK TERDAFTAR';
@@ -1031,7 +1050,7 @@
       const banner=document.createElement('div');banner.className='player-banner';
       banner.textContent='✓ TERDAFTAR DI PEMAIN '+accountState.source;card.append(banner);
       const table=document.createElement('table');table.className='player-table';
-      for(const [label,value] of [['User ID',record.userid],['Referral (Downline Aktif)',referralText(record)],['Kode referral pemain',record.referral],['Bank / E-wallet',record.bank],['Nama Rekening',record.holder],['Nomor Rekening',record.number]]){
+      for(const [label,value] of [['User ID',record.userid],['Referral (Downline Aktif)',referralText(record)],['Bank / E-wallet',record.bank],['Nama Rekening',record.holder],['Nomor Rekening',record.number]]){
         const tr=document.createElement('tr'),th=document.createElement('th'),td=document.createElement('td');
         th.scope='row';th.textContent=label;td.textContent=value||'Belum terbaca';
         if(label==='Nomor Rekening')td.className='number-highlight';
@@ -1042,11 +1061,13 @@
         const warning=document.createElement('div');warning.className='recovery-lock';
         const title=document.createElement('strong');title.textContent='🔒 USER ID TERKUNCI · '+record.userid;
         const status=document.createElement('p');status.textContent='Status terbaca: '+(record.profile?.status||'Belum berhasil dibaca');
-        const info=document.createElement('p');info.textContent=record.profile?(record.profile.source||'Information')+(record.profile.reasonDate?' · '+record.profile.reasonDate:'')+'\nKeterangan: '+(record.profile.information||'(kosong)'):record.profileError||'Sedang membaca keterangan gembok…';
+        const info=document.createElement('p');info.textContent=record.profile?(record.profile.source||'Information')+(record.profile.reasonDate?' · '+record.profile.reasonDate:'')+'\nKeterangan: '+(record.profile.information||'(kosong)'):record.profileError||'Sedang membuka Profil dan membaca Information…';
         const advice=document.createElement('p');advice.textContent=record.profile?.status==='Unlocked'?'Gembok dan Status Profil berbeda. Periksa langsung di admin.':'Periksa keterangan admin sebelum melanjutkan. Lupa User ID tetap tidak memerlukan reset password.';
         warning.append(title,status,info,advice);card.append(warning);
       }
-      const refnote=document.createElement('small');refnote.textContent=record.referralStats?'Upline '+record.userid+' · '+record.referralStats.from+' sampai '+record.referralStats.to:record.referralError||'Referral diperiksa setelah rekening ditemukan.';card.append(refnote);
+      const refnote=document.createElement('small');refnote.textContent=record.referralStats?'Upline '+record.userid+' · '+record.referralStats.from+' sampai '+record.referralStats.to:record.referralError||'Referral diperiksa setelah rekening ditemukan.';const refdetail=document.createElement('details');refdetail.className='aux-details referral-detail';
+      const refsummary=document.createElement('summary');refsummary.textContent=record.referralError?'Detail referral · perlu diperiksa':'Detail referral';refdetail.open=Boolean(record.referralError);refdetail.append(refsummary,refnote);
+      if(record.referral){const code=document.createElement('p');code.textContent='Kode referral pemain: '+record.referral;refdetail.append(code);}card.append(refdetail);
       if(accountState.phase==='done'&&!record.referralStats&&!record.referralError&&!record.referralPending){
         record.referralPending=true;const chat=route,number=accountState.number,epoch=accountEpoch;
         Promise.resolve().then(async()=>{
@@ -1062,7 +1083,7 @@
       const balanceNote=document.createElement('span');balanceNote.textContent=balance.note;
       const balanceTime=document.createElement('small');balanceTime.textContent='Saat pengecekan • '+new Date(accountState.balanceCheckedAt||accountState.savedAt||Date.now()).toLocaleString('id-ID');
       balanceBox.append(balanceLabel,balanceValue,balanceNote,balanceTime);
-      const refresh=document.createElement('button');refresh.textContent=accountState.balanceLoading?'Mengambil balance…':'↻ Ambil balance terbaru';refresh.disabled=Boolean(accountState.balanceLoading);refresh.title='Cari ulang rekening dari Now ke Old dan perbarui User ID beserta balance, termasuk setelah rekening dipindahkan.';refresh.onclick=refreshBalance;balanceBox.append(refresh);card.append(balanceBox);
+      const refresh=document.createElement('button');refresh.textContent=accountState.balanceLoading?'Mengambil balance…':'↻ Perbarui saldo';refresh.disabled=Boolean(accountState.balanceLoading);refresh.title='Cari ulang rekening dari Now ke Old dan perbarui User ID beserta balance, termasuk setelah rekening dipindahkan.';refresh.onclick=refreshBalance;balanceBox.append(refresh);card.append(balanceBox);
       // Migrate a cached result lacking a balance only once; never poll indefinitely.
       if(balance.tone==='unknown'&&!accountState.balanceReadRevision&&!accountState.balanceLoading&&!paused){
         accountState.balanceReadRevision=1;saveAccountResult();
@@ -1075,7 +1096,7 @@
         try{await navigator.clipboard.writeText(content);copy.textContent='✓ Data tersalin';}catch{setStatus('Clipboard belum diizinkan browser.');}
       };card.append(copy);el.append(card);
     }
-    const note=document.createElement('p');note.textContent=accountState.message||'Ambil rekening dari pesan member setelah Started - Today.';el.append(note);
+    const note=document.createElement('p');note.textContent=accountState.message||'Ambil rekening dari pesan member setelah Started - Today.';if(accountState.record&&accountState.phase==='done')context.append(note);else el.append(note);
     for(const option of accountState.options.filter(n=>n!==accountState.number)){
       const b=document.createElement('button');b.className='account-option';b.textContent='Cek '+option;b.onclick=()=>runAccount(option);el.append(b);
     }
@@ -1089,7 +1110,7 @@
       const retry=document.createElement('button');retry.textContent='Cek ulang';retry.id='account-retry';retry.onclick=()=>runAccount(accountState.number,true);el.append(retry);
     }
     const finish=document.createElement('button');finish.id='account-finish';finish.className='account-finish';finish.textContent=accountState.completed?'Kembali ke pencarian selesai':'✓ Selesai';finish.disabled=!['done','error'].includes(accountState.phase);finish.title='Tampilkan ringkasan selesai; hasil tetap tersimpan';finish.onclick=finishAccount;el.append(finish);
-    const link=document.createElement('a');link.href=ADMIN_ORIGIN+ADMIN_PATHS[0];link.target='_blank';link.rel='noopener noreferrer';link.textContent='Buka admin / login';link.className='admin-link';el.append(link);
+    const link=document.createElement('a');link.href=ADMIN_ORIGIN+ADMIN_PATHS[0];link.target='_blank';link.rel='noopener noreferrer';link.textContent='Buka admin / login';link.className='admin-link';manual.append(link);
   }
   function referralDates(){
     const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
@@ -1178,7 +1199,7 @@
       if(accountState.record?.userid){
         const record=accountState.record;drawAccount();
         await readRecoveryProfile(record);if(!current())return;
-        if(record.lock)accountState.message='Gembok terdeteksi pada User ID '+record.userid+'. Periksa keterangan gembok / Information sebelum melanjutkan pemulihan akun.';
+        if(record.lock)accountState.message='Gembok terdeteksi pada User ID '+record.userid+'. Periksa Status dan Information pada Profil sebelum melanjutkan pemulihan akun.';
         drawAccount();
         try{record.referralStats=await lookupReferral(record.userid);record.referralError='';}
         catch(e){record.referralError=e.message;}
@@ -1296,24 +1317,57 @@
   document.body.appendChild(host);
   const ui = host.attachShadow({mode:'open'});
   ui.innerHTML = `<style>
-:host{font:12px/1.55 'Segoe UI',Arial,sans-serif;color:#e9f3fa;color-scheme:dark}*{box-sizing:border-box}[hidden]{display:none!important}button,input{font:inherit}button{cursor:pointer;color:#dfeef7;background:#20384b;border:1px solid #38586d;border-radius:8px;padding:7px 10px;transition:background .15s,border-color .15s}button:hover{background:#2a4b60;border-color:#72b8ba}button:focus-visible,summary:focus-visible{outline:2px solid #88ded0;outline-offset:3px}button:disabled{opacity:.5;cursor:default}input{width:100%;padding:9px 10px;border:1px solid #38576b;background:#101e2d;color:#f1f7fc;border-radius:8px;margin:8px 0}input:focus{outline:none;border-color:#6dbdb4}input::placeholder{color:#8da4b5}
-#bubble{display:flex;align-items:center;gap:8px;border-radius:26px;padding:10px 14px;border:1px solid #72c5bc;background:linear-gradient(120deg,#236e72,#28465f);font-size:12px;font-weight:700;letter-spacing:.2px;box-shadow:0 6px 24px #020a1755;touch-action:none}#bubble.unread{border-color:#f0cf8a;box-shadow:0 0 0 3px #f0cf8a20,0 6px 24px #020a1755}#count{display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:19px;padding:0 5px;border-radius:12px;font-size:10px;background:#ffffff1f;color:#fff}
-#panel{width:min(310px,calc(100vw - 24px));max-height:calc(100dvh - 80px);overflow:auto;border:1px solid #3a596d;border-radius:19px;margin-bottom:9px;background:#101e2e;box-shadow:0 20px 60px #010a1673;scrollbar-width:thin;scrollbar-color:#38576b transparent}header{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(110deg,#1a3f4d,#1c3147);border-bottom:1px solid #ffffff0c;padding:13px 14px;cursor:move;touch-action:none}header strong{font-size:14px;font-weight:700;letter-spacing:.2px}header strong span{margin-left:5px;padding:2px 5px;border:1px solid #539c9750;border-radius:5px}#close{height:26px;min-width:26px;padding:0;background:#ffffff09;border-color:#ffffff15;font-size:17px}.body{padding:12px}#status{font-size:10px;line-height:1.5;color:#94adbf;margin:0 1px 11px}.category{font-size:9px;letter-spacing:1.1px;font-weight:700;color:#8cc7c7;margin-bottom:7px}
-#account{padding:13px;background:linear-gradient(140deg,#193441,#142838);border:1px solid #355967;border-radius:13px;margin-bottom:12px}.account-number{display:block;font-size:19px;letter-spacing:.8px;line-height:1.35;color:#f0f8fb;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.lookup-steps{display:grid;gap:6px;margin:12px 0}.lookup-steps>div{display:flex;gap:10px;align-items:flex-start;padding:8px 9px;border-radius:8px;background:#0c1e2c80;border:1px solid #ffffff08}.lookup-steps b{flex:0 0 29px;font-size:9px;letter-spacing:.5px;color:#8ad4cb;margin-top:1px}.lookup-steps span{font-size:10px;line-height:1.6;color:#c6d9e4}.lookup-steps>div[data-state="found"]{background:#17524530;border-color:#3c7d6350}.lookup-steps>div[data-state="found"] span{color:#a6e7c9}.lookup-steps>div[data-state="empty"] span{color:#e9cc8d}.lookup-steps>div[data-state="error"] span{color:#f7b4b7}.lookup-steps>div[data-state="loading"] span{color:#a4d4f3}#account p{font-size:11px;line-height:1.65;color:#abc2d0;margin:10px 0}.account-option{font-size:11px;margin:3px;max-width:100%;overflow-wrap:anywhere}.manual-account{border-top:1px solid #ffffff0e;margin-top:12px;padding-top:10px}.manual-account summary{color:#99b6c7;font-size:10px}#account-retry{font-size:10px;margin-top:8px}.admin-link{display:block;margin:10px 0 0;text-align:center;color:#84a2b6;font-size:10px;text-decoration:none}.admin-link:hover{color:#c6e7ed;text-decoration:underline}
-#account .account-finish{display:block;width:100%;margin-top:12px;padding:10px 9px;font-size:12px;font-weight:700;background:linear-gradient(110deg,#2a917b,#24796f);border:1px solid #68bda6;color:#f4fffb;border-radius:9px;box-shadow:0 4px 12px #021c1420}#account .account-finish:hover{background:#319c86}.saved-result{border-radius:8px;padding:8px 9px;margin:0 0 11px;background:#286f5630;border:1px solid #498a6f40;font-size:10px;font-weight:600;color:#abe1c9}.saved-result small{display:block;font-size:9px;font-weight:400;color:#8fb4b1;margin-top:3px;line-height:1.6}
-.player-result{margin:12px 0;border:1px solid #76bcc4;border-radius:10px;overflow:hidden;background:#f1f8fa;color:#193747}.player-banner{padding:9px 10px;font-size:10px;font-weight:700;letter-spacing:.3px;background:#207f90;color:#fff}.player-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}.player-table th,.player-table td{padding:9px 8px;border-bottom:1px solid #d5e4e9;vertical-align:top;text-align:left;overflow-wrap:anywhere}.player-table th{width:38%;background:#e9f2f5;color:#526f7f;font-size:10px;font-weight:600}.player-table td{background:#fff;color:#173b50;font-weight:600;user-select:text}.player-table .userid-value{color:#12627a;font-weight:800;font-size:15px}.player-table .number-highlight{background:#fff2a6;color:#3e3a1b;font-size:13px;font-weight:800;letter-spacing:.2px}.player-result .copy-player{display:block;width:calc(100% - 16px);margin:8px;padding:7px;background:#e4f0f3;color:#235d70;border-color:#bbd7df;font-size:10px}.player-result .copy-player:hover{background:#d1e7ec}
-#account[data-phase="finished"]{padding:23px 16px 16px;text-align:center;background:radial-gradient(ellipse at 50% 0%,#2e6b5938,transparent 72%),#162d35;border:1px solid #3d6e62;border-radius:14px}.finished-icon{width:46px;height:46px;line-height:44px;margin:0 auto 13px;border:1px solid #6ebe9b;border-radius:50%;background:#3d8f662b;color:#a1ebc4;font-size:25px;box-shadow:0 0 0 6px #3d8f660c}.finished-eyebrow{color:#83b9a6;font-size:8px;letter-spacing:1.6px;font-weight:700;margin-bottom:6px}.finished-title{display:block;color:#e0f8ed;font-size:18px;font-weight:700;letter-spacing:-.3px}#account[data-phase="finished"] p{font-size:11px;line-height:1.7;color:#a3c0b9;margin:9px 0 17px}.finished-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.finished-actions button{margin:0!important;padding:8px!important;font-size:11px!important}.finished-actions .view-result{background:#286457;border-color:#4b917a;color:#e5fff2}.finished-actions #account-retry{background:transparent;border-color:#395e59;color:#a8cbc1}.finished-foot{display:block;border-top:1px solid #ffffff0b;margin-top:14px;padding-top:11px;font-size:9px;color:#76a795}
-#cards{max-height:205px;overflow:auto;scrollbar-width:thin}.card{padding:11px;margin:0 0 8px;border:1px solid #304b60;border-left:3px solid #58b7a8;border-radius:10px;background:#172c3d}.card b{font-size:12px;color:#a1e3d4}.card p{font-size:11px;color:#c2d4e0;line-height:1.65;margin:6px 0}.card[data-tone="waiting"]{border-left-color:#cdaa60}.card[data-tone="waiting"] b{color:#e7cf98}.card[data-tone="review"]{border-left-color:#72a6d2}.card[data-tone="review"] b{color:#b7d5ee}.quote{font-size:10px;color:#8da8bb;margin-top:9px;padding-top:8px;border-top:1px solid #ffffff0b;overflow-wrap:anywhere}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.actions button{font-size:10px;padding:6px 8px}.body>details{border-top:1px solid #ffffff0c;margin-top:13px;padding-top:11px;color:#93adbf;font-size:10px}summary{cursor:pointer}small{display:block;color:#718c9f;font-size:9px;line-height:1.5;margin-top:11px}
-  .not-registered{padding:14px 10px;margin:12px 0;border:1px solid #d7957d88;border-radius:10px;background:#70432d30;text-align:center}.not-registered strong{display:block;color:#ffd0b4;font-size:15px;letter-spacing:.5px}.not-registered span{display:block;color:#d6b9a9;font-size:10px;margin-top:5px;line-height:1.6}
-  .card[data-tone="conduct"]{border-color:#87565c;border-left-color:#f29d9b;background:linear-gradient(120deg,#392932,#202c3c)}.card[data-tone="conduct"] b{color:#ffd4ba;font-size:15px}.card[data-tone="conduct"] .category{color:#edaaa9}
-  .balance-box{margin:10px;padding:14px;border:2px solid #94a3b8;border-radius:10px;background:#edf2f7;color:#334155;text-align:center}.balance-box>span{display:block;font-size:10px;font-weight:800;letter-spacing:.5px}.balance-box strong{display:block;font-size:27px;font-weight:800;line-height:1.4;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.balance-box[data-tone="high"]{background:#ffe7e7;border-color:#dc2626;color:#a20f21}.balance-box[data-tone="low"]{background:#e0f7e9;border-color:#16804a;color:#086338}.balance-box small{color:inherit;opacity:.8;font-size:9px;margin-top:8px}
-  .topic-summary{padding:10px;margin-bottom:9px;border:1px solid #608e9f;border-radius:9px;background:#233f50;color:#d5f2f5;font-size:11px;line-height:1.6}
-  .card p{white-space:pre-line}
-  .blocked-panel{padding:14px;margin-bottom:12px;border:1px solid #557c91;border-radius:13px;background:linear-gradient(135deg,#183c4b,#1c2c43)}.blocked-panel>strong{display:block;font-size:19px;color:#e9f9ff;overflow-wrap:anywhere}.blocked-badge{padding:8px 10px;margin:10px 0;border-radius:8px;background:#3a4b60;font-weight:800;font-size:14px}.blocked-panel[data-status="Locked"] .blocked-badge{background:#6a2938;color:#ffd1d8}.blocked-panel[data-status="Unlocked"] .blocked-badge{background:#1e5b48;color:#c4f8df}.blocked-panel[data-status="Lupa password"] .blocked-badge{background:#695128;color:#ffe7b2}.blocked-panel p{font-size:11px;color:#c2d8e4;white-space:pre-wrap;overflow-wrap:anywhere}.blocked-panel .blocked-information{background:#0e2030;padding:10px;border-radius:8px;border:1px solid #456074;color:#f2f8fd;font-size:12px}.blocked-panel>b{font-size:10px;color:#a2c4d7}
-  .intent-correction{display:grid;gap:7px;margin-top:8px}.intent-correction select{width:100%;background:#102b3d;color:#e9f9ff;padding:8px;border:1px solid #608c9f;border-radius:8px}
-  .recovery-lock{margin:10px;padding:12px;border:2px solid #c34860;border-radius:9px;background:#fff0f2;color:#7d1830}.recovery-lock strong{font-size:15px}.recovery-lock p{color:#7d1830!important;white-space:pre-wrap;overflow-wrap:anywhere}
+:host{--bg:#101722;--surface:#182230;--line:#2b394b;--text:#edf2f8;--muted:#a3b2c5;--gold:#dfc294;--mint:#91dfc2;font:12px/1.6 'Segoe UI',Arial,sans-serif;color:var(--text);color-scheme:dark;text-align:left}
+*{box-sizing:border-box}[hidden]{display:none!important}button,input,select{font:inherit}button{cursor:pointer;color:#dce6f3;background:#233044;border:1px solid #3a4a60;border-radius:10px;padding:8px 11px;line-height:1.4;transition:background .16s,border-color .16s,box-shadow .16s;overflow-wrap:anywhere}button:hover{background:#304058;border-color:#70809a}button:active{background:#172133}button:disabled{opacity:.45;cursor:default}button:focus-visible,summary:focus-visible,a:focus-visible{outline:2px solid var(--gold);outline-offset:3px}input,select{width:100%;padding:10px 11px;border:1px solid #3b4a60;background:#101923;color:#f2f5fa;border-radius:10px;margin:7px 0;min-width:0}input:focus,select:focus{outline:2px solid #dfc29444;border-color:var(--gold)}input::placeholder{color:#8798af}label{display:block;color:#b9c7d8}small{display:block;color:#9aaec1;font-size:10px;line-height:1.6;margin-top:10px}a{color:#b1cde8}summary{cursor:pointer;line-height:1.6;padding:3px 0}::selection{background:#dfc29444;color:#fff}
+#bubble{display:flex;align-items:center;gap:10px;margin-left:auto;padding:9px 13px 9px 9px;border-radius:18px;border:1px solid #a68c6670;background:linear-gradient(130deg,#263245,#141d2b);font-size:12px;font-weight:650;box-shadow:0 9px 28px #0005,inset 0 1px #ffffff0c;touch-action:none}#bubble:hover{border-color:var(--gold);background:#263449}.bubble-symbol{display:grid;place-items:center;width:28px;height:28px;border-radius:10px;background:#dfc29417;color:var(--gold);font-size:20px}#count{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 6px;border-radius:8px;font-size:10px;background:#ffffff0b;color:#cbd7e5;border:1px solid #ffffff10}#bubble.unread{border-color:var(--gold);box-shadow:0 0 0 3px #dfc29416,0 9px 28px #0005}#bubble.unread #count{background:var(--gold);color:#24202b}
+#panel{width:min(332px,calc(100vw - 24px));max-height:calc(100dvh - 86px);overflow:auto;border:1px solid #50607680;border-radius:22px;margin-bottom:10px;background:var(--bg);box-shadow:0 22px 70px #0007,0 2px 10px #0004;scrollbar-width:thin;scrollbar-color:#445268 transparent;overscroll-behavior:contain}header{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;padding:16px;background:linear-gradient(120deg,#263244,#172130);border-bottom:1px solid #dfc29426;cursor:move;touch-action:none}.brand-mark{display:grid;place-items:center;flex:0 0 34px;height:36px;border:1px solid #dfc29438;background:#dfc2940d;border-radius:12px;color:var(--gold);font-size:25px}.brand{flex:1;min-width:0}.brand strong{display:block;font-size:15px;font-weight:650;letter-spacing:.1px;color:#f4f0e9}.brand-caption{display:block;font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:#b9aa93;margin-top:2px}.edition{display:inline-block;margin-left:5px;padding:1px 4px;border-radius:4px;font-size:9px;letter-spacing:0;color:#acbbce;background:#ffffff09}#close{flex:0 0 28px;height:28px;padding:0;border-radius:9px;font-size:21px;color:#afbdd0;background:#ffffff06;border-color:#ffffff16}.body{padding:13px}#status{padding:0 1px 11px;border-bottom:1px solid #ffffff09;font-size:10px;line-height:1.65;color:#a1b1c4;margin:0 0 12px;overflow-wrap:anywhere}.category{font-size:9px;letter-spacing:.9px;font-weight:700;color:var(--gold);margin-bottom:8px;line-height:1.6}
+#account{padding:13px;background:linear-gradient(145deg,#1c2939,#16212f);border:1px solid #36485d;border-radius:16px;margin-bottom:12px;overflow-wrap:anywhere}.account-number{display:block;font-size:20px;font-weight:650;letter-spacing:.5px;line-height:1.4;color:#f5f7fb;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.lookup-steps{display:grid;gap:6px;margin:12px 0}.lookup-steps>div{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:9px;background:#101925;border:1px solid #ffffff09}.lookup-steps b{flex:0 0 28px;font-size:9px;letter-spacing:.8px;color:#9dacc0;margin-top:2px}.lookup-steps span{font-size:10px;line-height:1.65;color:#c5d2e3}.lookup-steps>div[data-state="found"]{background:#15342f;border-color:#437e644f}.lookup-steps>div[data-state="found"] span{color:#a5e9c8}.lookup-steps>div[data-state="empty"] span{color:#e8cb98}.lookup-steps>div[data-state="error"] span{color:#ffadb5}.lookup-steps>div[data-state="loading"] span{color:#b4d8ff}#account p{font-size:11px;line-height:1.75;color:#b6c6d8;margin:10px 0}.account-option{font-size:11px;margin:3px;max-width:100%;overflow-wrap:anywhere}.manual-account{border-top:1px solid #ffffff10;margin-top:12px;padding-top:10px}.manual-account summary{color:#b3c0d1;font-size:11px}#account-retry{font-size:11px;margin-top:8px}.admin-link{display:block;margin:12px 0 0;text-align:center;color:#9dafc4;font-size:10px;text-decoration:none}.admin-link:hover{color:var(--gold);text-decoration:underline}
+#account .account-finish{display:block;width:100%;margin-top:12px;padding:11px;font-size:12px;font-weight:700;background:#aacdbb;border:1px solid #c1ddcf;color:#142b25;border-radius:11px;box-shadow:0 3px 9px #0002}#account .account-finish:hover{background:#c4e3d3}.saved-result{border-radius:9px;padding:9px 10px;margin:0 0 12px;background:#17352e;border:1px solid #46765d66;font-size:10px;font-weight:600;color:#aee7c8}.saved-result small{font-size:9px;font-weight:400;color:#a7c4b7;margin-top:3px}
+.player-result{margin:13px 0;border:1px solid #40516a;border-radius:12px;overflow:hidden;background:#101b28;color:#e6edf8}.player-banner{padding:10px 11px;font-size:10px;font-weight:700;letter-spacing:.5px;background:#29374a;color:#e9d5b2;border-bottom:1px solid #ffffff0c}.player-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}.player-table th,.player-table td{padding:10px 9px;border-bottom:1px solid #ffffff0a;vertical-align:top;text-align:left;overflow-wrap:anywhere}.player-table th{width:39%;background:#ffffff03;color:#a1b2c8;font-size:10px;font-weight:500}.player-table td{background:transparent;color:#eaf0f8;font-weight:600;user-select:text}.player-table .userid-value{color:#f0d6ab;font-weight:700;font-size:16px}.player-table .number-highlight{background:#dfc2940c;color:#e8d1aa;font-size:13px;font-weight:700;letter-spacing:.3px}.player-result .copy-player{display:block;width:calc(100% - 20px);margin:10px;padding:9px;background:#253348;color:#d6e3f4;border-color:#40536c;font-size:10px}.player-result .copy-player:hover{background:#35485e}
+.balance-box{margin:11px;padding:14px 10px;border:1px solid #65758a;border-radius:12px;background:#263144;color:#d4deec;text-align:center}.balance-box>span{display:block;font-size:9px;font-weight:700;letter-spacing:1.2px}.balance-box strong{display:block;font-size:28px;font-weight:700;line-height:1.5;letter-spacing:-.6px;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.balance-box[data-tone="high"]{background:linear-gradient(120deg,#4a2530,#35202d);border-color:#d46b7b;color:#ffb2bd}.balance-box[data-tone="low"]{background:linear-gradient(120deg,#193e33,#162e2c);border-color:#528c74;color:#a6ebc7}.balance-box small{color:inherit;opacity:.9;font-size:9px;margin-top:5px}
+.recovery-lock{margin:11px;padding:12px;border:1px solid #b45d72;border-radius:11px;background:#3a222e;color:#ffc1ce}.recovery-lock strong{font-size:13px;letter-spacing:.2px}.recovery-lock p{color:#f2c0ca!important;font-size:11px;white-space:pre-wrap;overflow-wrap:anywhere}.blocked-panel{padding:14px;margin-bottom:12px;border:1px solid #40516b;border-radius:15px;background:linear-gradient(145deg,#223046,#182333)}.blocked-panel>strong{display:block;font-size:20px;font-weight:650;color:#f3f6fa;overflow-wrap:anywhere}.blocked-badge{padding:9px 11px;margin:11px 0;border:1px solid #526079;border-radius:9px;background:#2e3b50;color:#dce5f2;font-weight:650;font-size:12px}.blocked-panel[data-status="Locked"] .blocked-badge{background:#472835;border-color:#a85469;color:#ffbccc}.blocked-panel[data-status="Unlocked"] .blocked-badge{background:#1b3f32;border-color:#558970;color:#b4efd2}.blocked-panel[data-status="Lupa password"] .blocked-badge{background:#433925;border-color:#8e7850;color:#f4dbad}.blocked-panel p{font-size:11px;color:#bdcadc;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.75}.blocked-panel .blocked-information{background:#101b2a;padding:12px;border-radius:10px;border:1px solid #384b64;color:#edf3fc;font-size:12px}.blocked-panel>b{font-size:10px;color:#b6c8df}
+#cards{max-height:none;overflow:visible}.card{padding:13px;margin:0 0 10px;border:1px solid #344357;border-left:3px solid #82c6b1;border-radius:12px;background:#192433;overflow-wrap:anywhere}.card b{font-size:12px;color:#b8ebd9;line-height:1.6}.card p{font-size:11px;color:#c4d1e2;line-height:1.75;margin:7px 0;white-space:pre-line}.card[data-tone="waiting"]{border-left-color:#ddbd87}.card[data-tone="waiting"] b{color:#edcf9c}.card[data-tone="review"]{border-left-color:#9abbe7}.card[data-tone="review"] b{color:#c2d9f5}.card[data-tone="conduct"]{border-left-color:#d791a0;background:#2b2431}.card[data-tone="conduct"] b{color:#f2c6cd}.card[data-tone="conduct"] .category{color:#dbacb6}.quote{font-size:10px;color:#a4b4c8;margin-top:10px;padding:9px 10px;border-left:2px solid #52617a;border-radius:0 7px 7px 0;background:#0c142344;overflow-wrap:anywhere}.actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}.actions button{font-size:10px;padding:8px 10px}.body>.actions{display:grid;grid-template-columns:1fr 1fr;padding-top:12px;border-top:1px solid #ffffff0b}.body>.actions button{min-height:34px}.body>.actions #scan{color:#ead5b4;background:#dfc29412;border-color:#917e5e80}.body>.actions #clear{color:#c9b4bf}.body>details{border:1px solid #344154;border-radius:12px;margin-top:13px;padding:10px 11px;color:#afbed1;font-size:10px;background:#141f2d}.body>details[open] summary{margin-bottom:10px;color:#e3c99f}.body>details button{font-size:10px;margin:4px 2px 3px 0}.body>small{text-align:center;font-size:9px;color:#9baabd;margin:13px 7px 2px}.intent-correction{display:grid;gap:7px;margin-top:10px}.intent-correction select{margin:0;font-size:11px}.topic-summary{padding:11px;margin-bottom:10px;border:1px solid #685c46;border-radius:10px;background:#322e27;color:#e9d6b3;font-size:10px;line-height:1.7}
+.not-registered{padding:16px 10px;margin:12px 0;border:1px solid #9e765b;border-radius:11px;background:#3b2e28;text-align:center}.not-registered strong{display:block;color:#f4c7a6;font-size:14px;letter-spacing:.5px}.not-registered span{display:block;color:#d7bca9;font-size:10px;margin-top:6px;line-height:1.7}
+#account[data-phase="finished"]{padding:24px 15px 16px;text-align:center;background:radial-gradient(ellipse at 50% 0%,#4b9b7133,transparent 72%),#172b2b;border:1px solid #477867;border-radius:16px}.finished-icon{display:grid;place-items:center;width:49px;height:49px;margin:0 auto 16px;border:1px solid #86c8a5;border-radius:17px;background:#37785530;color:#b2efcc;font-size:25px;box-shadow:0 0 0 6px #5a9e7510}.finished-eyebrow{color:#a1c5b4;font-size:9px;letter-spacing:1.3px;font-weight:600;margin-bottom:7px}.finished-title{display:block;color:#edf8f2;font-size:20px;font-weight:650;letter-spacing:-.3px}#account[data-phase="finished"] p{font-size:11px;line-height:1.75;color:#b7cec3;margin:9px 0 18px}.finished-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.finished-actions button{margin:0!important;padding:10px 7px!important;font-size:10px!important}.finished-actions .view-result{background:#2c5146;border-color:#5d8a76;color:#dcf3e6}.finished-actions #account-retry{background:transparent;border-color:#4d7065;color:#b9d4c7}.finished-actions #account-reopen{grid-column:1/-1;background:#adcdbb;border-color:#adcdbb;color:#19362c}.finished-foot{display:block;border-top:1px solid #ffffff10;margin-top:15px;padding-top:12px;font-size:9px;color:#a0bdaf}
+@media(max-width:420px){#panel{width:min(320px,calc(100vw - 24px))}header{padding:13px}.body{padding:11px}.brand strong{font-size:14px}}@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+/* Compact edition: key information first, optional controls folded. */
+:host{--bg:#10151f;--gold:#d5b98e}#panel{width:min(320px,calc(100vw - 24px));border-radius:18px;background:#10151f;border-color:#384357;box-shadow:0 18px 55px #0006}header{padding:13px 14px;background:linear-gradient(115deg,#212b3b,#151e2b)}.brand-mark{flex-basis:30px;height:32px;border-radius:10px;font-size:22px}.brand strong{font-size:14px}.brand-caption,.edition{display:none}.body{padding:11px}#status{font-size:10px;margin-bottom:10px;padding-bottom:9px;color:#aab9ca}.category{font-size:9px;letter-spacing:.6px;margin-bottom:6px}#account{padding:11px;border-radius:13px;background:#182332;border-color:#324359}#account[data-found="true"]>.account-number{display:none}.saved-result{display:inline-block;padding:3px 7px;margin:0 0 8px;border-radius:6px;font-size:9px;background:#1a332b}.saved-result small{display:none}.player-result{margin:9px 0;border-radius:10px;border-color:#3a4960}.player-banner{padding:8px 10px;font-size:9px;background:#253246}.player-table th,.player-table td{padding:8px 9px}.player-table .userid-value{font-size:16px}.balance-box{margin:9px;padding:11px 9px;border-radius:10px}.balance-box strong{font-size:26px}.balance-box button{padding:6px 9px;margin-top:9px;font-size:10px;background:#ffffff08;border-color:currentColor;color:inherit}.balance-box small{font-size:9px}.recovery-lock{margin:9px;padding:10px}.recovery-lock p{line-height:1.6!important}.copy-player{margin:9px!important;width:calc(100% - 18px)!important}#account .account-finish{padding:10px;margin-top:10px}.card{padding:11px;border-radius:11px}.card p{margin:6px 0}.card .actions{margin-top:8px}.card>.actions{justify-content:flex-end}.card>.actions button{background:#254a3e;color:#c4efdc;border-color:#4b7967;min-width:80px}.aux-details{border-top:1px solid #ffffff0c;margin-top:8px;padding-top:5px;font-size:10px;color:#a7b8ca}.aux-details>summary{color:#a7b8ca;font-size:10px;padding:5px 0}.aux-details[open]>summary{color:var(--gold)}.aux-details .quote{margin-top:5px}.aux-details .actions{margin:7px 0 2px}.aux-details .actions button{font-size:9px;padding:7px 8px}.aux-details .lookup-steps{margin:7px 0}.account-context{padding:0;border-top:0;margin:0 0 7px}.referral-detail{margin:0 10px 8px}.referral-detail p{font-size:10px!important}.manual-account{margin-top:9px;padding-top:7px}.manual-account summary{font-size:10px}.body>.actions{display:block;padding-top:9px;margin-top:9px}.body>.actions button{width:100%;min-height:32px;background:transparent!important;border-color:#38495d!important;color:#c0cede!important}.body>details{padding:8px 10px;margin-top:8px;border-radius:10px;background:#141d2a}.body>details .actions{margin:5px 0 12px}#account[data-phase="finished"]{padding:20px 13px 14px}.finished-eyebrow,.finished-foot{display:none}.finished-icon{width:40px;height:40px;border-radius:13px;font-size:22px;margin-bottom:12px}.finished-title{font-size:18px}#account[data-phase="finished"] p{font-size:10px;margin-bottom:13px}.blocked-panel{padding:12px;border-radius:12px}.blocked-panel>strong{font-size:18px}.blocked-panel .blocked-information{padding:10px}.topic-summary{padding:9px;font-size:10px}
+/* Midnight pearl: restrained contrast and warm metallic accents. */
+:host{--bg:#15141d;--surface:#201f2d;--line:#3c394c;--text:#f2eef7;--muted:#b3adbf;--gold:#e0c6a2;--mint:#b0dccb}#panel{width:min(324px,calc(100vw - 24px));background:linear-gradient(160deg,#1e1b2a 0%,#13151f 65%);border:1px solid #69607470;border-radius:22px;box-shadow:0 24px 65px #09081475,0 0 0 1px #0003,inset 0 1px #ffffff0c}header{padding:15px 14px;background:linear-gradient(115deg,#353044,#242333 65%,#222635);border-bottom:1px solid #d4b49230}.brand-mark{background:linear-gradient(140deg,#ead4b0,#b49b80);color:#30293a;border-color:#f1dfc3;box-shadow:0 3px 12px #0003;flex-basis:33px;height:35px;border-radius:12px}.brand strong{font-size:14px;letter-spacing:.25px;color:#fff5e8}#close{background:#ffffff06;border-color:#ffffff18;color:#d9d2e1;border-radius:50%}#close:hover{background:#ffffff12}.body{padding:12px}#status{color:#afaabd;border-color:#ffffff09;padding:0 1px 10px;margin-bottom:11px}#bubble{background:linear-gradient(125deg,#363044,#222333);border:1px solid #b49b805e;border-radius:19px;padding:9px 12px 9px 9px;box-shadow:0 8px 28px #11101c55,inset 0 1px #ffffff0c;color:#f3e8d9}#bubble:hover{background:#3a3248;border-color:#dfc5a3}.bubble-symbol{background:#e4cba31c;color:#efd9b5;border-radius:10px}#count{background:#e8d3b8;color:#31283b;border:0;font-weight:700}.category{color:#d8c2a5;letter-spacing:.7px}
+#account{background:linear-gradient(145deg,#272435,#1c2130);border:1px solid #51465e;border-radius:15px;padding:12px;box-shadow:inset 0 1px #ffffff07}.player-result{background:#181d2a;border-color:#4b455b;border-radius:12px;margin:10px 0}.player-banner{background:linear-gradient(100deg,#44394c,#2c3448);color:#f1d8b4;border-bottom:1px solid #ffffff08;padding:9px 10px;letter-spacing:.7px}.player-table th{background:#ffffff02;color:#b2adc2;font-weight:400}.player-table td{color:#eeeaf6}.player-table th,.player-table td{border-bottom-color:#ffffff08;padding:9px}.player-table .userid-value{color:#f5d9b0;font-size:17px;letter-spacing:.15px}.player-table .number-highlight{background:#b4a1c110;color:#ebd9ef;font-size:13px}.player-result .copy-player{background:#302d42;border-color:#554a67;color:#e6daef;border-radius:9px}.player-result .copy-player:hover{background:#42374f}.balance-box{padding:13px 9px;border-radius:12px}.balance-box strong{font-size:29px;letter-spacing:-.7px}.balance-box[data-tone="low"]{background:linear-gradient(120deg,#244439,#1c3034);border-color:#679682;color:#c1eed4;box-shadow:inset 0 1px #d7ffee0b}.balance-box[data-tone="high"]{background:linear-gradient(120deg,#512b3a,#332433);border-color:#c57887;color:#ffc3cc}.balance-box[data-tone="unknown"]{background:#292b3c;border-color:#706c84;color:#ddd7ea}.balance-box button{border-color:#ffffff30;border-radius:8px;background:#ffffff08;color:inherit}.balance-box button:hover{background:#ffffff14}#account .account-finish,.finished-actions #account-reopen{background:linear-gradient(110deg,#e0c9a6,#c7b198);color:#302a36;border-color:#ead8bc;box-shadow:0 3px 10px #0002;border-radius:10px}#account .account-finish:hover,.finished-actions #account-reopen:hover{background:#efdcbd}
+button{background:#2c2c3e;border-color:#49465d;color:#e1dcec;border-radius:9px}button:hover{background:#3c354e;border-color:#8c769b}input,select{background:#181c29;border-color:#4b455e;color:#f0ebf8;border-radius:9px}input::placeholder{color:#a39baf}.card{background:linear-gradient(135deg,#252232,#202635);border-color:#484055;border-left-color:#9fcdb8;border-radius:13px;padding:12px}.card b{color:#c2e9d7;font-size:12px}.card p{color:#d0c9dd;line-height:1.75}.card[data-tone="review"]{border-left-color:#b3a4dc}.card[data-tone="review"] b{color:#ded0fa}.card[data-tone="waiting"]{border-left-color:#d9ba89}.card[data-tone="waiting"] b{color:#eed2a5}.card[data-tone="conduct"]{background:#332734;border-left-color:#cd94a3}.card>.actions button{background:#bfcfc3;border-color:#d1e0d4;color:#24362f;font-weight:600}.quote{background:#11152066;border-left-color:#796984;color:#bcb2cb}.aux-details,.aux-details>summary{color:#bcb0ca;border-top-color:#ffffff0b}.aux-details[open]>summary{color:#f0d9b4}.body>details{background:#201d2b;border-color:#474055;border-radius:12px}.body>.actions button{border-color:#51475f!important;color:#d9cbe8!important}.body>.actions button:hover{background:#30283d!important}.saved-result{background:#254036;color:#c2e8d0;border-color:#547e6655}.lookup-steps>div{background:#171b28;border-color:#ffffff0a}.blocked-panel{background:linear-gradient(135deg,#2f293d,#202b3d);border-color:#5b4c6b;border-radius:14px}.blocked-panel .blocked-information{background:#171a27;border-color:#514762;color:#eee7f5;border-radius:10px}.blocked-panel>strong{color:#f8e8d3}.blocked-panel p{color:#d0c5db}.recovery-lock{background:linear-gradient(120deg,#402733,#302334);border-color:#b17486;border-radius:11px}.recovery-lock strong{color:#ffd1da}.recovery-lock p{color:#eec2d0!important}.manual-account summary,.admin-link{color:#bcaecb}#account[data-phase="finished"]{background:radial-gradient(ellipse at 50% 0%,#79a58e25,transparent 75%),#212732;border-color:#6d827a}.finished-icon{border-radius:15px;background:#accdb9;color:#21392f;border-color:#d1e7d9;box-shadow:0 0 0 6px #accdb90c}.finished-title{color:#f7efdf}.finished-actions .view-result{background:#303b3c;border-color:#5b7670;color:#d6e8de}.finished-actions #account-retry{border-color:#64716f;color:#c3d3ce}#account[data-phase="finished"] p{color:#bec9c4}.topic-summary{background:#38302e;border-color:#79664e;color:#eddbc2}
+/* Studio: redesigned hierarchy, identity hero and two-column account details. */
+:host{--bg:#0b1420;--surface:#132331;--line:#2a414e;--text:#edf7f8;--muted:#98b3bf;--gold:#a8e8dc;--mint:#a8e8dc;font-family:'Segoe UI',Arial,sans-serif}
+#panel{width:min(336px,calc(100vw - 24px));background:#0c1722;border:1px solid #385360;border-radius:23px;box-shadow:0 24px 70px #07111c66,0 4px 14px #07111c55;overflow:auto}header{padding:17px 15px;gap:11px;background:radial-gradient(ellipse at 0% 0%,#23595066,transparent 80%),#132431;border-bottom:1px solid #72988920}.brand-mark{display:grid;place-items:center;flex:0 0 36px;height:38px;padding:8px;background:linear-gradient(135deg,#b6ead7,#72bbac);border:1px solid #d1f4e5;border-radius:13px;color:#123d39;box-shadow:0 4px 12px #001b2233}.brand-mark svg,.bubble-symbol svg{width:100%;height:100%;display:block}.brand strong{font-size:15px;font-weight:650;letter-spacing:-.2px;color:#eff9f6}.brand-caption{display:block;margin-top:3px;font-size:9px;font-weight:500;letter-spacing:1.3px;color:#9db9b5}.edition{display:none}#close{flex-basis:27px;height:27px;border-radius:9px;background:#ffffff05;border-color:#ffffff13;color:#b9ccce;font-size:20px}#close:hover{background:#ffffff14}.body{padding:12px}#status{margin:0 0 12px;padding:9px 11px;border:1px solid #29404a;border-radius:10px;background:#13222e;color:#b0c5ce;font-size:10px;line-height:1.6}
+#bubble{padding:9px 13px 9px 9px;border-radius:18px;border-color:#75a99988;background:linear-gradient(120deg,#183b3e,#162b39);color:#e7f5f0;box-shadow:0 9px 28px #06182355;gap:10px}#bubble:hover{background:#244447;border-color:#c1e9db}.bubble-symbol{width:29px;height:29px;padding:6px;background:#aee4d3;color:#16433f;border-radius:10px}.bubble-label{display:flex;flex-direction:column;align-items:flex-start;line-height:1.35;font-size:12px;font-weight:650}.bubble-label span{font-size:8px;color:#a6c5c2;letter-spacing:1px;font-weight:400;margin-top:1px}#count{background:#ffffff0b;color:#d9eee6;border:1px solid #ffffff15;border-radius:8px;min-width:23px;height:23px}#bubble.unread #count{background:#b2e1ce;color:#1c3e35}#bubble.unread{border-color:#acdbc8;box-shadow:0 0 0 3px #80c8ad12,0 9px 28px #06182355}
+#account{padding:12px;background:#142330;border:1px solid #2d4653;border-radius:16px;box-shadow:inset 0 1px #ffffff04}.category{color:#a2c5c1;font-size:9px;letter-spacing:.8px;font-weight:600}.saved-result{font-size:9px;border:0;background:#234337;color:#bce2cd;padding:3px 7px}.account-context{margin:1px 0 8px}.player-result{margin:9px 0 11px;background:#101d29;border:1px solid #35505a;border-radius:14px;overflow:hidden}.player-banner{padding:8px 12px;background:#203b3b;color:#b4dccc;border-bottom:1px solid #41645b44;font-size:9px;font-weight:600;letter-spacing:.6px}
+.player-table{display:block;padding:0 11px 10px;width:100%;font-size:12px}.player-table tbody{display:contents}.player-table{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:7px}.player-table tr{display:flex;flex-direction:column;min-width:0;padding:8px 9px;background:#1b2a38;border:1px solid #304350;border-radius:9px}.player-table th,.player-table td{display:block;width:auto;padding:0;background:transparent;border:0;overflow-wrap:anywhere}.player-table th{font-size:9px;line-height:1.5;font-weight:400;color:#9fb5bf;margin-bottom:4px}.player-table td{font-size:11px;color:#e3edf0;font-weight:550;line-height:1.55}.player-table tr:has(.userid-value){grid-column:1/-1;padding:15px 1px 12px;border:0;border-radius:0;background:transparent;margin-bottom:1px;border-bottom:1px solid #38515b66}.player-table tr:has(.userid-value) th{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#8dacae;margin-bottom:5px}.player-table .userid-value{font-size:24px;line-height:1.2;font-weight:650;letter-spacing:-.6px;color:#e9f8f3}.player-table tr:has(.number-highlight){grid-column:1/-1;flex-direction:row;justify-content:space-between;align-items:center;gap:10px;background:#172b35;border-color:#34535e}.player-table tr:has(.number-highlight) th{margin:0;max-width:40%}.player-table .number-highlight{font-size:13px;background:transparent;color:#bce5df;letter-spacing:.4px;font-weight:600;text-align:right}.balance-box{margin:0 11px 11px;padding:15px 10px 11px;border-radius:12px;border-width:1px}.balance-box>span:first-child{font-size:9px;letter-spacing:1.6px;font-weight:500}.balance-box strong{font-size:30px;font-weight:650;letter-spacing:-1px;padding:3px 0;line-height:1.4}.balance-box>span:not(:first-child){font-size:9px;font-weight:400;letter-spacing:0}.balance-box[data-tone="low"]{background:radial-gradient(ellipse at 50% 0%,#4f9a7230,transparent 85%),#18362d;border-color:#598e71;color:#c5f0d4;box-shadow:none}.balance-box[data-tone="high"]{background:radial-gradient(ellipse at 50% 0%,#b25d7030,transparent 85%),#3f2530;border-color:#bb6c7c;color:#ffc8ce}.balance-box[data-tone="unknown"]{background:#263440;border-color:#5b7482;color:#d7e3e8}.balance-box small{font-size:9px;opacity:.85}.balance-box button{display:block;width:100%;margin-top:10px;padding:7px;background:#ffffff06;border-color:#ffffff22;color:inherit;font-size:9px}.balance-box button:hover{background:#ffffff14}.player-result .copy-player{background:transparent;border-color:#385563;color:#b8ced6;margin:10px 11px!important;width:calc(100% - 22px)!important;font-size:10px}.player-result .copy-player:hover{background:#233744}#account .account-finish,.finished-actions #account-reopen{background:linear-gradient(110deg,#b0dfc9,#8ec4b7);color:#173d32;border-color:#c4ebd8;border-radius:11px;padding:11px;font-size:12px;box-shadow:0 4px 12px #001b1833}#account .account-finish:hover,.finished-actions #account-reopen:hover{background:#c7efdb}
+button{background:#203442;border-color:#3b5563;color:#d9e8ed;border-radius:9px}button:hover{background:#2d4754;border-color:#739e9c}input,select{background:#0f202c;border-color:#3c5563;color:#e5f3f5;border-radius:10px}input::placeholder{color:#95acb7}.card{padding:12px;background:#162735;border:1px solid #324c59;border-left:3px solid #93c9b7;border-radius:13px}.card b{font-size:13px;color:#c9ece0;font-weight:600;letter-spacing:-.1px}.card p{font-size:11px;color:#c6d6df;line-height:1.8}.card[data-tone="review"]{border-left-color:#95b9d4;background:#192b3b}.card[data-tone="review"] b{color:#cee3f5}.card[data-tone="waiting"]{border-left-color:#d3b58b;background:#292d30}.card[data-tone="waiting"] b{color:#ebd4ae}.card[data-tone="conduct"]{background:#312731;border-left-color:#d092a4}.card>.actions button{background:#23493c;border-color:#537969;color:#d1eadb;border-radius:8px;font-size:10px;min-width:84px}.quote{background:#0c1c2866;color:#a9c0ce;border-left-color:#537b89}.aux-details,.aux-details>summary,.manual-account summary{color:#9fb8c4;border-color:#ffffff0c;font-size:10px}.aux-details[open]>summary{color:#c7e7de}.body>details{background:#11232f;border-color:#2e4856;border-radius:11px}.body>details>summary{color:#a9bfcb}.body>.actions button{border-color:#365361!important;color:#afc9d3!important;border-radius:10px}.body>.actions button:hover{background:#203b48!important}.blocked-panel{background:#182a39;border:1px solid #3c5767;border-radius:14px}.blocked-panel>strong{font-size:23px;color:#ebf5f3;letter-spacing:-.4px}.blocked-panel .blocked-information{background:#10202d;border-color:#375565;color:#e6f1f5;line-height:1.8}.blocked-panel p{color:#bdd0dd}.blocked-panel[data-status="Locked"] .blocked-badge{background:#432b35;border-color:#ae6b7e;color:#f5bdcc}.blocked-panel[data-status="Unlocked"] .blocked-badge{background:#203d33;border-color:#5e927a;color:#bee8d0}.recovery-lock{background:#3a2530;border-color:#ac687c;margin:10px 11px;border-radius:11px}.recovery-lock strong{color:#ffced7;font-size:12px}.recovery-lock p{color:#e8bec9!important}.admin-link{color:#a4becb}.lookup-steps>div{background:#12212e;border-color:#2c4350}.topic-summary{background:#2b332f;border-color:#647464;color:#d8e3cc}
+#account[data-phase="finished"]{background:radial-gradient(ellipse at 50% 0%,#5c9e7d25,transparent 80%),#172a2d;border-color:#4d7666;padding:24px 13px 16px}.finished-icon{width:52px;height:52px;font-size:26px;border-radius:18px;background:#b5dfc5;color:#234635;border-color:#d4efd8;box-shadow:0 0 0 6px #a8d1b60b;margin-bottom:15px}.finished-title{font-size:20px;color:#edf8f0;letter-spacing:-.4px}#account[data-phase="finished"] p{color:#b9d0c7;font-size:11px}.finished-actions .view-result{background:#254438;border-color:#537867;color:#d4e9db}.finished-actions #account-retry{border-color:#4b6b63;color:#b5cec5}@media(max-width:370px){#panel{width:calc(100vw - 24px)}.player-table .userid-value{font-size:22px}.balance-box strong{font-size:27px}}
+/* Glass edition. Opaque default protects readability when blur is unsupported. */
+:host{--bg:#182239;--surface:#243149;--line:#ffffff26;--gold:#dedbf8;--mint:#c0e9da;--text:#f5f5fc;--muted:#bec8df}#panel{background:linear-gradient(145deg,#30364b,#19283b 65%,#172b36);border:1px solid #b8c5e65c;border-radius:25px;box-shadow:0 26px 70px #101d354d,0 4px 16px #07102030,inset 0 1px #ffffff35;scrollbar-color:#b5c1dc55 transparent}header{background:linear-gradient(110deg,#ffffff12,#ffffff04);border-bottom:1px solid #ffffff18;padding:16px;gap:11px}.brand-mark{background:linear-gradient(145deg,#f1efff,#b8c8e7);color:#394a70;border:1px solid #ffffffa0;border-radius:13px;box-shadow:0 4px 14px #17243c33,inset 0 1px #fff}.brand strong{color:#faf8ff;font-size:15px}.brand-caption{color:#c3c7dc;letter-spacing:1.5px;font-size:8px}#close{background:#ffffff08;border:1px solid #ffffff25;color:#e1e5f2;border-radius:50%;height:28px;flex-basis:28px}#close:hover{background:#ffffff20}.body{padding:13px}#status{background:#ffffff06;border:1px solid #ffffff13;color:#c1cbe0;border-radius:11px;font-size:10px;padding:9px 11px}#bubble{background:linear-gradient(125deg,#3d4562,#243c4b);border:1px solid #c7d4ef70;border-radius:22px;padding:10px;box-shadow:0 10px 35px #10243d55,inset 0 1px #ffffff40;color:#f2f5ff}.bubble-symbol{background:linear-gradient(135deg,#e9e5ff,#b7d9e6);color:#3f4f72;border:1px solid #ffffffe0;border-radius:11px}.bubble-label{font-size:12px;letter-spacing:.15px}.bubble-label span{color:#c0cbde;font-size:8px}#count{background:#ffffff14;border:1px solid #ffffff30;color:#eef2ff;border-radius:9px}#bubble:hover{background:#435572;border-color:#d3ddf1}#bubble.unread{border-color:#d2d8f4;box-shadow:0 0 0 3px #d2d8f416,0 10px 35px #10243d55}#bubble.unread #count{background:#d7d5ee;color:#383f5b}
+#account{background:linear-gradient(140deg,#ffffff0d,#ffffff04);border:1px solid #d0d9ec2e;border-radius:18px;padding:12px;box-shadow:inset 0 1px #ffffff13}.category{color:#d0cae6;font-weight:600;font-size:9px;letter-spacing:.85px}.saved-result{background:#a4d2b921;border:1px solid #b4e1c32d;color:#d3efdc;border-radius:7px;padding:3px 7px}.player-result{background:#18273be6;border:1px solid #c8d7ed33;border-radius:15px;box-shadow:0 5px 15px #0c1c3022}.player-banner{background:linear-gradient(110deg,#c1b4e320,#a5d9d91c);border-color:#ffffff13;color:#d9e5ee;padding:9px 12px;font-size:9px;letter-spacing:.65px}.player-table tr{background:#ffffff06;border-color:#ffffff13;border-radius:10px}.player-table th{color:#b6c1d7;font-size:9px}.player-table td{color:#f0f3fd}.player-table tr:has(.userid-value){background:none;border-bottom-color:#ffffff18;padding-top:17px;padding-bottom:15px}.player-table tr:has(.userid-value) th{color:#acbcd8;font-size:8px;letter-spacing:1.8px}.player-table .userid-value{font-size:25px;color:#f2efff;letter-spacing:-.7px}.player-table tr:has(.number-highlight){background:#c4d9f50a;border-color:#c4d9f522}.player-table .number-highlight{color:#d3e2f4;background:transparent}.balance-box[data-tone="low"]{background:linear-gradient(120deg,#2f5148,#203c40);border-color:#a2c6b87a;color:#d9f5e5;box-shadow:inset 0 1px #ffffff12}.balance-box[data-tone="high"]{background:linear-gradient(120deg,#613849,#412c40);border-color:#e3a1b280;color:#ffd9e1;box-shadow:inset 0 1px #ffffff12}.balance-box[data-tone="unknown"]{background:#344058;border-color:#b9c8e16e;color:#e2e8f5}.balance-box{border-radius:14px;padding:15px 10px 12px}.balance-box strong{font-size:30px;line-height:1.45;font-weight:650}.balance-box button{border:1px solid #ffffff26;background:#ffffff08;border-radius:9px;color:inherit}.balance-box button:hover{background:#ffffff18}.player-result .copy-player{background:#ffffff05;border-color:#ffffff22;color:#d6e0f5;border-radius:10px}.player-result .copy-player:hover{background:#ffffff12}#account .account-finish,.finished-actions #account-reopen{background:linear-gradient(110deg,#e1dbf2,#c4d8e9);border:1px solid #fff8;color:#353f5b;border-radius:12px;box-shadow:0 4px 14px #121e3330,inset 0 1px #ffffff9e;padding:11px;font-weight:650}#account .account-finish:hover,.finished-actions #account-reopen:hover{background:linear-gradient(110deg,#efeaff,#dceafa)}
+button{background:#ffffff0c;border-color:#ffffff26;color:#e5ebfa;border-radius:10px}button:hover{background:#ffffff1b;border-color:#d0d8ee70}input,select{background:#17263de6;border-color:#a4b4d24d;border-radius:11px;color:#eef3fc}input::placeholder{color:#b3bdd0}.card{background:linear-gradient(130deg,#ffffff0f,#ffffff04);border:1px solid #c2d2eb33;border-left:3px solid #b9d6cf;border-radius:16px;box-shadow:inset 0 1px #ffffff0b;padding:13px}.card b{color:#e4f2ed;font-size:13px}.card p{color:#d4deef;line-height:1.8;font-size:11px}.card[data-tone="review"]{background:linear-gradient(130deg,#c5c0f119,#b8d4ed09);border-left-color:#cac0ed}.card[data-tone="review"] b{color:#e9dffb}.card[data-tone="waiting"]{background:linear-gradient(130deg,#eed1a41a,#d0bb9e06);border-left-color:#decaac}.card[data-tone="waiting"] b{color:#f3e4cf}.card[data-tone="conduct"]{background:linear-gradient(130deg,#ca94af23,#ac91be0d);border-left-color:#ddb7cd}.card>.actions button{background:#d6e5e0e8;border:1px solid #ffffff50;color:#344942;box-shadow:0 3px 8px #12223522;border-radius:9px}.quote{color:#c5d0e6;background:#111f353d;border-left-color:#c7d2ec66}.aux-details,.aux-details>summary,.manual-account summary{color:#bfc9dd;border-color:#ffffff16}.aux-details[open]>summary{color:#f0e7ff}.body>details{background:#ffffff05;border-color:#ffffff20;border-radius:13px}.body>details>summary{color:#c8d1e3}.body>.actions button{background:#ffffff04!important;border-color:#c3d0e633!important;color:#d5deef!important;border-radius:12px}.body>.actions button:hover{background:#ffffff14!important}.blocked-panel{background:linear-gradient(130deg,#ffffff0e,#ffffff05);border-color:#c8d5ed3d;border-radius:16px}.blocked-panel>strong{color:#f2f0fb;font-size:23px}.blocked-panel .blocked-information{background:#16263ad9;border-color:#b7c9e735;color:#edf2ff;border-radius:12px}.blocked-panel p{color:#d5dff0}.blocked-panel[data-status="Locked"] .blocked-badge{background:#5a3549;border-color:#d39aad66;color:#f9d6e0}.blocked-panel[data-status="Unlocked"] .blocked-badge{background:#314d45;border-color:#a2c7b366;color:#d3f0df}.blocked-panel[data-status="Lupa password"] .blocked-badge{background:#51483b;border-color:#d9c19b77;color:#f0dfbe}.recovery-lock{background:linear-gradient(120deg,#563144,#3d2b40);border-color:#d29aae70;border-radius:13px}.recovery-lock strong{color:#ffdae5}.recovery-lock p{color:#f3cddc!important}.admin-link{color:#bfcee6}.lookup-steps>div{background:#17253c88;border-color:#ffffff17}.topic-summary{background:#e4d5ac14;border-color:#e5d1ad44;color:#ece3d4}.not-registered{background:#4c3d37;border-color:#d7b49780;color:#ffe1c8}#account[data-phase="finished"]{background:radial-gradient(ellipse at 50% 0%,#c9ded025,transparent 85%),#253c3ee6;border-color:#afcdb964;border-radius:18px}.finished-icon{background:linear-gradient(130deg,#e1eee1,#b7d4c4);border-color:#f2fff0;color:#365748;box-shadow:0 0 0 7px #d0e4d40a,0 6px 18px #102c2422;border-radius:18px}.finished-title{color:#f1f6f1}.finished-actions .view-result{background:#ffffff09;border-color:#ffffff30;color:#d4e8de}.finished-actions #account-retry{border-color:#d6ead140;color:#d4e2da}#account[data-phase="finished"] p{color:#cadbd3}
+@supports ((backdrop-filter:blur(20px)) or (-webkit-backdrop-filter:blur(20px))){#panel{background:linear-gradient(145deg,rgba(39,45,66,.90),rgba(22,40,58,.88) 65%,rgba(23,44,51,.90));backdrop-filter:blur(24px) saturate(120%);-webkit-backdrop-filter:blur(24px) saturate(120%)}#bubble{background:linear-gradient(125deg,rgba(55,65,94,.90),rgba(32,57,72,.88));backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}}@media(prefers-reduced-transparency:reduce){#panel{background:#202e42;backdrop-filter:none;-webkit-backdrop-filter:none}#bubble{background:#304159;backdrop-filter:none;-webkit-backdrop-filter:none}}
+/* Rose graphite: warm glass, quiet surfaces and restrained metallic accents. */
+:host{--bg:#211c20;--surface:#30282b;--line:#9f7b714d;--text:#faf2ec;--muted:#c5b4af;--gold:#e8beb0;--mint:#c5dfca}#panel{background:linear-gradient(145deg,#3b2e32,#262126 65%,#252329);border:1px solid #b291815e;box-shadow:0 24px 65px #1e111a55,inset 0 1px #ffe8db30;border-radius:24px;scrollbar-color:#b5978955 transparent}header{background:linear-gradient(110deg,#e2a68c14,#ffffff03);border-bottom-color:#d9b3a422}.brand-mark{background:linear-gradient(140deg,#f9ddcc,#cf9f8d);border-color:#ffe9db;color:#593c38;box-shadow:0 4px 14px #28141938,inset 0 1px #fff7ef}.brand strong{color:#fff3e9;letter-spacing:.1px}.brand-caption{color:#c5a99b}#close{color:#dec8bc;border-color:#dabba128;background:#ffffff05}#close:hover{background:#e4b8a41c}.body{padding:13px}#status{background:#201c2466;border:1px solid #cfaa9726;color:#cdbcb3}#bubble{background:linear-gradient(125deg,#4a353b,#302b33);border-color:#cea89580;color:#f8e7da;box-shadow:0 10px 32px #30151e4d,inset 0 1px #ffdccb36}.bubble-symbol{background:linear-gradient(135deg,#f6d7c5,#d2a38e);border-color:#ffe9dacc;color:#653f37}.bubble-label span{color:#d5b4a5}#count{background:#f0c7ae15;border-color:#f0c7ae30;color:#f4deca}#bubble:hover{background:#564047;border-color:#ecc1a8}#bubble.unread{border-color:#e9b69e;box-shadow:0 0 0 3px #edbb9b15,0 10px 32px #30151e4d}#bubble.unread #count{background:#efc5ad;color:#583e35}
+#account{background:linear-gradient(145deg,#f0bda50c,#ffffff03);border-color:#b68d7c45;box-shadow:inset 0 1px #ffe4d615}.category{color:#dfb7a2;letter-spacing:.75px}.saved-result{background:#b6c9b518;color:#dcebd7;border-color:#becfb426}.player-result{background:#241f28ed;border-color:#b1907b4d;box-shadow:0 5px 15px #160d1824}.player-banner{background:linear-gradient(110deg,#bc8c7429,#d0ae940b);border-color:#f4c9b01c;color:#e9c5af;letter-spacing:.8px}.player-table tr{background:#ffe4ce05;border-color:#e3bfa318}.player-table th{color:#bfa9a1}.player-table td{color:#f0e5df}.player-table tr:has(.userid-value){border-bottom-color:#cfa99625}.player-table tr:has(.userid-value) th{color:#c2a68f}.player-table .userid-value{color:#f7d9c2;font-size:25px;font-weight:600}.player-table tr:has(.number-highlight){background:#d6b49d0b;border-color:#caab8f2e}.player-table .number-highlight{color:#f1cfb8}.player-result .copy-player{background:#d9aa9207;border-color:#c4a28f38;color:#e4cbbb}.player-result .copy-player:hover{background:#d9aa9216}.balance-box[data-tone="low"]{background:linear-gradient(115deg,#354a3d,#293a36);border-color:#94b39477;color:#ddf0d8}.balance-box[data-tone="high"]{background:linear-gradient(115deg,#63393e,#412932);border-color:#d99a9b80;color:#ffdbda}.balance-box[data-tone="unknown"]{background:#3c353d;border-color:#b5a1aa70;color:#eadfe4}.balance-box button{background:#ffffff05;border-color:#ffffff25;color:inherit}#account .account-finish,.finished-actions #account-reopen{background:linear-gradient(110deg,#efcdb4,#d4ab94);border:1px solid #ffe1cd9c;color:#513b32;box-shadow:0 4px 12px #26121c30,inset 0 1px #fff1df80;font-weight:650}#account .account-finish:hover,.finished-actions #account-reopen:hover{background:linear-gradient(110deg,#ffe3cb,#ecc5a9)}
+button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{background:#deb49a1b;border-color:#c6a28b80}input,select{background:#221f29eb;border-color:#b4968550;color:#f4e9e1}input::placeholder{color:#baa79d}.card{background:linear-gradient(130deg,#f5c3a70c,#ffffff03);border-color:#b8948140;border-left-color:#afc4a9;box-shadow:inset 0 1px #ffe4d50a}.card b{color:#e2eddb}.card p{color:#e1d1c8}.card[data-tone="review"]{background:linear-gradient(130deg,#e0b7b40f,#bba6b508);border-left-color:#ccb1c0}.card[data-tone="review"] b{color:#f0d5e1}.card[data-tone="waiting"]{background:linear-gradient(130deg,#e7bc8c16,#d8b89405);border-left-color:#dcba8e}.card[data-tone="waiting"] b{color:#f5dbb9}.card[data-tone="conduct"]{background:linear-gradient(130deg,#ca8c9b1c,#b18f9b09);border-left-color:#d4a1ae}.card>.actions button{background:#d9dfcfe8;border-color:#f2efda60;color:#3f4c3b}.quote{background:#201c294d;color:#cdb9b0;border-left-color:#bc9a8666}.aux-details,.aux-details>summary,.manual-account summary{color:#c4aea1;border-color:#eacdb21a}.aux-details[open]>summary{color:#f5d5bf}.body>details{background:#211d270f;border-color:#b5977f30}.body>details>summary{color:#d6beb0}.body>.actions button{background:#e1bca104!important;border-color:#bd9b8238!important;color:#dfc7b7!important}.body>.actions button:hover{background:#deb69a14!important}.blocked-panel{background:linear-gradient(130deg,#d7afa00e,#ffffff03);border-color:#bc9b8545}.blocked-panel>strong{color:#f7dbca}.blocked-panel .blocked-information{background:#241e2ad9;border-color:#baa18b38;color:#f6e9e2}.blocked-panel p{color:#dfccc2}.blocked-panel[data-status="Locked"] .blocked-badge{background:#56333e;border-color:#d2a0a266;color:#f8d7da}.blocked-panel[data-status="Unlocked"] .blocked-badge{background:#35483b;border-color:#a9b89a66;color:#e4edda}.blocked-panel[data-status="Lupa password"] .blocked-badge{background:#514033;border-color:#d8ba9577;color:#f6e0c1}.recovery-lock{background:linear-gradient(120deg,#56343e,#402a37);border-color:#cc969f70}.recovery-lock strong{color:#ffdcdf}.recovery-lock p{color:#efd1d3!important}.admin-link{color:#d7bca9}.lookup-steps>div{background:#261f2c77;border-color:#deb79b20}.topic-summary{background:#e3c2a211;border-color:#d6b28b44;color:#ebd8bd}.not-registered{background:#49382f;border-color:#d9b08d80;color:#ffe5ce}#account[data-phase="finished"]{background:radial-gradient(ellipse at 50% 0%,#c8ceb522,transparent 85%),#303832e8;border-color:#b8c0a564}.finished-icon{background:linear-gradient(130deg,#e6ead7,#bfccb3);border-color:#f0f2de;color:#465741;box-shadow:0 0 0 7px #d9dfc30a,0 6px 18px #242c1c22}.finished-title{color:#f6f2e4}.finished-actions .view-result{background:#ffffff07;border-color:#d4d2b530;color:#e4e8d5}.finished-actions #account-retry{border-color:#d8d9b940;color:#dbdfca}#account[data-phase="finished"] p{color:#d1d6c4}
+@supports ((backdrop-filter:blur(20px)) or (-webkit-backdrop-filter:blur(20px))){#panel{background:linear-gradient(145deg,rgba(53,40,45,.93),rgba(35,31,39,.91) 65%,rgba(36,34,40,.93));backdrop-filter:blur(25px) saturate(105%);-webkit-backdrop-filter:blur(25px) saturate(105%)}#bubble{background:linear-gradient(125deg,rgba(69,48,55,.94),rgba(42,38,47,.92));backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}}@media(prefers-reduced-transparency:reduce){#panel{background:#30272e;backdrop-filter:none;-webkit-backdrop-filter:none}#bubble{background:#46353d;backdrop-filter:none;-webkit-backdrop-filter:none}}
+/* Admin reference palette: turquoise, gray, white, yellow and black. */
+.player-result{background:#fff;color:#111;border:1px solid #22a1b9;border-radius:10px;box-shadow:none}.player-banner{background:#209fb6;color:#fff;border-bottom:1px solid #178da4;font-size:10px;font-weight:700;padding:10px 11px;letter-spacing:.35px}.player-table{display:table;width:100%;padding:0;border-collapse:collapse;table-layout:fixed;background:#fff;color:#111}.player-table tbody{display:table-row-group}.player-table tr,.player-table tr:has(.userid-value),.player-table tr:has(.number-highlight){display:table-row;background:#fff;border:0;border-radius:0;margin:0;padding:0}.player-table th,.player-table tr:has(.userid-value) th,.player-table tr:has(.number-highlight) th{display:table-cell;width:40%;max-width:none;background:#dedede;color:#111;font-size:10px;font-weight:600;line-height:1.55;letter-spacing:0;text-transform:none;padding:9px 8px;border-bottom:1px solid #32abc3;border-right:1px solid #32abc3;margin:0;vertical-align:middle}.player-table td{display:table-cell;background:#fff;color:#111;font-size:12px;font-weight:500;padding:9px 8px;line-height:1.55;border-bottom:1px solid #32abc3;vertical-align:middle;overflow-wrap:anywhere}.player-table .userid-value{font-size:17px;font-weight:700;letter-spacing:0;color:#111;line-height:1.4;background:#fff}.player-table .number-highlight{background:#ffff00;color:#000;font-size:13px;font-weight:700;text-align:left;letter-spacing:.2px}.player-result .referral-detail{color:#333;border-top-color:#ddd;margin:9px 10px}.player-result .referral-detail>summary{color:#333}.player-result .referral-detail[open]>summary{color:#06758b}.player-result small{color:#44545b}.player-result .referral-detail p{color:#33434c!important}.player-result .balance-box{background:#f5f7f8;color:#26333a;border:1px solid #80939b;border-radius:8px;box-shadow:none;margin:11px 10px;padding:0 10px 11px;overflow:hidden}.player-result .balance-box>span:first-child{display:block;background:#ffff00;color:#111;margin:0 -10px 8px;padding:8px 10px;letter-spacing:.8px;font-size:10px;font-weight:700;border-bottom:1px solid #dedc62}.player-result .balance-box strong{font-size:29px;font-weight:750;letter-spacing:-.4px;padding:0;line-height:1.5}.player-result .balance-box[data-tone="high"]{background:#fff1f2;border-color:#ce3449;color:#a71930}.player-result .balance-box[data-tone="low"]{background:#effaf2;border-color:#358456;color:#14623b}.player-result .balance-box[data-tone="unknown"]{background:#f3f5f6;border-color:#8e9ba0;color:#35454e}.player-result .balance-box small{color:inherit;opacity:1}.player-result .balance-box button{background:#fff;border-color:currentColor;color:inherit;box-shadow:none}.player-result .balance-box button:hover{background:#ffffffb3}.player-result .copy-player{background:#209fb6;border:1px solid #158ca3;color:#fff;font-weight:600;border-radius:7px;padding:9px}.player-result .copy-player:hover{background:#16869d;border-color:#147a90}.player-result .recovery-lock{background:#fff0f2;border-color:#bc5265;color:#7d1932;border-radius:8px}.player-result .recovery-lock strong{color:#851f39}.player-result .recovery-lock p{color:#7d1932!important}
+/* Whole assistant follows the supplied admin palette. */
+:host{--bg:#fff;--surface:#f4f4f4;--line:#22a1b9;--text:#111;--muted:#48565c;--gold:#08778d;--mint:#08778d;color:#111;color-scheme:light}#panel{background:#fff;border:1px solid #209fb6;box-shadow:0 16px 45px #14374333;border-radius:15px;backdrop-filter:none;-webkit-backdrop-filter:none;scrollbar-color:#209fb6 #eee}header{background:#209fb6;border-bottom:1px solid #13869b;padding:14px;color:#fff}.brand-mark{background:#fff;color:#13869b;border-color:#fff;box-shadow:none;border-radius:9px}.brand strong{color:#fff}.brand-caption{color:#e9faff}#close{background:#ffffff19;border-color:#ffffff70;color:#fff;border-radius:7px}#close:hover{background:#ffffff30}.body{background:#fff;padding:12px}#status{background:#f2f2f2;border-color:#d2d2d2;color:#39474d;border-radius:7px}#bubble{background:#209fb6;border:1px solid #13869b;color:#fff;box-shadow:0 6px 20px #164c5633;border-radius:13px;backdrop-filter:none;-webkit-backdrop-filter:none}.bubble-symbol{background:#fff;color:#13869b;border-color:#fff;border-radius:8px}.bubble-label span{color:#e6faff}#count{background:#fff;color:#0b7288;border:1px solid #fff;border-radius:6px}#bubble:hover{background:#168ca3;border-color:#0a7287}#bubble.unread{border-color:#08748a;box-shadow:0 0 0 3px #209fb625,0 6px 20px #164c5633}#bubble.unread #count{background:#ffff00;color:#111;border-color:#ffff00}
+#account{background:#f5f5f5;border-color:#22a1b9;border-radius:10px;box-shadow:none}.category{color:#08758b;font-weight:700}.account-number{color:#111}.saved-result{background:#eaf7ed;color:#215d36;border:1px solid #94bc9f}#account p{color:#303c42}.lookup-steps>div{background:#fff;border-color:#a1cbd4}.lookup-steps b{color:#146b7e}.lookup-steps span{color:#222}.lookup-steps>div[data-state="found"]{background:#ecf8ee;border-color:#89b99b}.lookup-steps>div[data-state="found"] span{color:#17613a}.lookup-steps>div[data-state="empty"] span{color:#78500b}.lookup-steps>div[data-state="error"] span{color:#aa1931}.lookup-steps>div[data-state="loading"] span{color:#05697d}.aux-details,.aux-details>summary,.manual-account summary{color:#37484e;border-color:#c7d9df}.aux-details[open]>summary{color:#08758b}.saved-result small,small{color:#485a61}#account .account-finish{background:#209fb6;border-color:#13869b;color:#fff;box-shadow:none;border-radius:8px}#account .account-finish:hover{background:#16869c}.admin-link{color:#076d83}.admin-link:hover{color:#03495b}button{background:#209fb6;color:#fff;border:1px solid #12859c;border-radius:7px;box-shadow:none}button:hover{background:#16869c;border-color:#0b6b80}button:focus-visible,summary:focus-visible,a:focus-visible{outline-color:#086d83}input,select{background:#fff;border-color:#98aeb5;color:#111;border-radius:7px}input:focus,select:focus{outline-color:#209fb633;border-color:#168ba2}input::placeholder{color:#64757d}label{color:#273b44}.body>.actions button{background:#209fb6!important;color:#fff!important;border-color:#13869b!important;border-radius:7px}.body>.actions button:hover{background:#16869c!important}.body>details{background:#f1f1f1;border-color:#c5ced1;border-radius:8px;color:#37484e}.body>details>summary,.body>details[open]>summary{color:#146b7e}
+.card{background:#fff;border:1px solid #b6ccd2;border-left:3px solid #209fb6;border-radius:8px;box-shadow:none}.card b{color:#134c5a;font-weight:700}.card p{color:#263b43}.card[data-tone="review"]{background:#f3fafc;border-left-color:#209fb6}.card[data-tone="review"] b{color:#105a6c}.card[data-tone="waiting"]{background:#fffbe9;border-left-color:#b99a16}.card[data-tone="waiting"] b{color:#735900}.card[data-tone="conduct"]{background:#fff2f2;border-left-color:#be4c61}.card[data-tone="conduct"] b,.card[data-tone="conduct"] .category{color:#9c2740}.card>.actions button{background:#209fb6;border-color:#13869b;color:#fff;box-shadow:none}.quote{background:#eee;color:#334a53;border-left-color:#209fb6}.topic-summary{background:#ffffbf;border-color:#bdbd54;color:#333}.blocked-panel{background:#fff;border-color:#209fb6;border-radius:10px}.blocked-panel>strong{color:#111}.blocked-panel>b{color:#13697c}.blocked-panel p{color:#33464f}.blocked-badge{background:#dedede;border-color:#a7b8be;color:#111}.blocked-panel .blocked-information{background:#f3f3f3;border-color:#a7c1c9;color:#111;border-radius:7px}.blocked-panel[data-status="Locked"] .blocked-badge{background:#ffe7ec;border-color:#bc5b72;color:#8f1c36}.blocked-panel[data-status="Unlocked"] .blocked-badge{background:#e7f7e9;border-color:#609d73;color:#1b5e32}.blocked-panel[data-status="Lupa password"] .blocked-badge{background:#fff9cc;border-color:#b3a35c;color:#705514}.not-registered{background:#fffbe0;border-color:#aaa048;border-radius:8px}.not-registered strong{color:#5e510a}.not-registered span{color:#655d36}#account[data-phase="finished"]{background:#f1faf4;border-color:#6c9f80;border-radius:11px}.finished-icon{background:#dcf0e2;border-color:#72a884;color:#25643a;box-shadow:none}.finished-title{color:#204d32}#account[data-phase="finished"] p{color:#385a44}.finished-actions .view-result,.finished-actions #account-reopen{background:#209fb6;border-color:#13869b;color:#fff;box-shadow:none}.finished-actions .view-result:hover,.finished-actions #account-reopen:hover{background:#16869c}.finished-actions #account-retry{background:#fff;border-color:#6ba5b2;color:#166477}.finished-foot{color:#416651}.intent-correction select{background:#fff;border-color:#98aeb5;color:#111}
+/* Outer shell only. Account results and admin status components are unchanged. */
+#panel{background:#eaf0f4;border:1px solid #809caf;border-radius:21px;box-shadow:0 20px 55px #15364b38,inset 0 1px #fff}header{background:linear-gradient(120deg,#183748,#215c6a);border-bottom:1px solid #93c2c233;padding:16px;color:#fff}.brand-mark{background:linear-gradient(140deg,#e9f7ef,#b4d8cb);border-color:#f0fff5;color:#27594f;border-radius:12px;box-shadow:0 3px 10px #102f3c30}.brand strong{color:#f4faf7;letter-spacing:.15px}.brand-caption{color:#b8d5d3;letter-spacing:1.4px}#close{background:#ffffff09;border-color:#c8e1df44;color:#e2eeeb;border-radius:9px}#close:hover{background:#ffffff1b}.body{background:linear-gradient(145deg,#f5f7f9,#e9eff3);padding:13px}#status{background:#fff9;border-color:#c6d5df;color:#526b7a;border-radius:10px;box-shadow:0 1px 2px #15374b08}#bubble{background:linear-gradient(120deg,#1c3c50,#286774);border:1px solid #7faeb2;color:#f1f8f7;border-radius:20px;box-shadow:0 8px 25px #16384c38,inset 0 1px #ffffff20;padding:10px}.bubble-symbol{background:linear-gradient(135deg,#eaf8ee,#b8dbcd);color:#2b5e54;border-color:#effff5;border-radius:10px}.bubble-label span{color:#bbd9d7}#count{background:#ffffff15;border-color:#ffffff30;color:#edf7f4;border-radius:8px}#bubble:hover{background:linear-gradient(120deg,#244d60,#307887);border-color:#acd4d1}#bubble.unread{border-color:#afd5c4;box-shadow:0 0 0 3px #afdbc526,0 8px 25px #16384c38}#bubble.unread #count{background:#d9ebdc;border-color:#d9ebdc;color:#285348}
+.body>.actions button{background:linear-gradient(100deg,#25485c,#316b79)!important;color:#f3f8f9!important;border-color:#315f73!important;border-radius:10px;box-shadow:0 2px 5px #17354b15}.body>.actions button:hover{background:#397889!important;border-color:#37778a!important}.body>details{background:#f7fafc;border-color:#c3d3df;border-radius:12px;color:#496273;box-shadow:0 1px 2px #17364c08}.body>details>summary,.body>details[open]>summary{color:#315a6c;font-weight:600}.body>details button{background:#e5edf2;border-color:#b4c8d5;color:#31586c;border-radius:8px}.body>details button:hover{background:#d6e6ee;border-color:#8eafc1}.body>details input{background:#fff;border-color:#b4c7d4;color:#223e4f;border-radius:9px}.body>details input:focus{border-color:#377d8d;outline-color:#377d8d28}.body>details label,.body>details small{color:#536e7e}
+/* Crimson/black outer shell. Admin result components retain their existing colors. */
+#panel{background:#151114;border:1px solid #81404a;border-radius:21px;box-shadow:0 22px 60px #18080c66,inset 0 1px #ffffff0b}header{background:linear-gradient(115deg,#741f30,#39151e 65%,#1e151b);border-bottom:1px solid #cf657c40;color:#fff;padding:16px}.brand-mark{background:linear-gradient(140deg,#ffd9df,#dc8392);border:1px solid #ffe4e9;color:#6a1e30;border-radius:12px;box-shadow:0 3px 12px #19070c44}.brand strong{color:#fff0f3}.brand-caption{color:#e2acb8}#close{background:#ffffff06;border-color:#e5a1b139;color:#f0ccd5}#close:hover{background:#b14a6033}.body{background:linear-gradient(145deg,#22171d,#131216 70%);padding:13px}#status{background:#2a1c23;border:1px solid #68404d;color:#dfc1cc;border-radius:10px;box-shadow:none}#bubble{background:linear-gradient(120deg,#821f34,#461a29 60%,#20151d);border:1px solid #bc687b;color:#fff1f5;border-radius:20px;box-shadow:0 9px 30px #2a091746,inset 0 1px #ffffff13}.bubble-symbol{background:linear-gradient(135deg,#ffd9e2,#dd8fa0);border-color:#ffe9ee;color:#741f36;border-radius:10px}.bubble-label span{color:#e6afbd}#count{background:#ffffff0e;border-color:#f2bbca40;color:#ffe5ed}#bubble:hover{background:linear-gradient(120deg,#a12a45,#5c2235 70%,#291923);border-color:#e498ab}#bubble.unread{border-color:#f1a3b6;box-shadow:0 0 0 3px #d95c7c22,0 9px 30px #2a091746}#bubble.unread #count{background:#ffd7e2;border-color:#ffd7e2;color:#6c1731}
+.body>.actions button{background:linear-gradient(100deg,#84253b,#a73851)!important;border-color:#be6579!important;color:#fff0f4!important;border-radius:10px;box-shadow:0 3px 8px #16050a33}.body>.actions button:hover{background:#b54560!important;border-color:#e39aae!important}.body>details{background:#21191f;border-color:#65414f;color:#d5b8c3;border-radius:12px;box-shadow:inset 0 1px #ffffff04}.body>details>summary,.body>details[open]>summary{color:#f0becd;font-weight:600}.body>details p,.body>details label,.body>details small{color:#d2b7c2}.body>details button{background:#38212d;border-color:#754452;color:#f0cbd7;border-radius:8px}.body>details button:hover{background:#572b3e;border-color:#b16b81}.body>details input{background:#16131a;border-color:#714554;color:#faeaf0;border-radius:9px}.body>details input::placeholder{color:#b999a6}.body>details input:focus{border-color:#d77994;outline-color:#d779942d}
   </style>
-  <section id="panel" hidden><header><strong>✦ Chat Assist <span style="font-size:10px;color:#6ce0c5">2.45</span></strong><button id="close" title="Kecilkan">−</button></header><div class="body"><p id="status">Menunggu chat…</p><div id="account" hidden></div><div id="cards"></div><div class="actions"><button id="scan">Baca ulang</button><button id="pause">Jeda</button><button id="clear">Bersihkan</button><button id="sound" aria-pressed="false">Suara: mati</button></div><details><summary>Pengaturan pembacaan</summary><p>Jika pesan member belum dikenali, isi selector CSS khusus baris pesan member. Selector harus membedakan member dari agen.</p><label>Selector pesan member<input id="member" placeholder="Otomatis berdasarkan penanda pengirim"></label><label>Selector pesan AI / agen (opsional)<input id="agent" placeholder="Penanda khusus pengirim AI / agen"></label><label>Selector area percakapan (opsional)<input id="scope" placeholder="Otomatis dari penanda Started - Today"></label><button id="save">Simpan pengaturan</button> <button id="restore">Tampilkan lagi pengingat selesai</button> <button id="position">Reset posisi bubble</button><small>Chats dan Archives: hanya membaca pesan setelah Started - Today terakhir. Gulir sampai penanda tersebut dimuat, lalu klik Baca ulang.</small></details><small>Blok rekening di chat untuk cek • hasil tersimpan otomatis</small></div></section><button id="bubble">✦ Asisten <span id="count">0</span></button>`;
+  <section id="panel" hidden><header><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5h14v10H10l-5 4V5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 9h6M9 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><div class="brand"><strong>Asisten Pribadi <span class="edition">2.68</span></strong><span class="brand-caption">CHAT ASSIST</span></div><button id="close" title="Kecilkan" aria-label="Kecilkan asisten">−</button></header><div class="body"><p id="status">Menunggu chat…</p><div id="account" hidden></div><div id="cards"></div><div class="actions"><button id="scan">↻ Baca ulang chat</button></div><details><summary>Opsi &amp; pengaturan</summary><div class="actions"><button id="pause">Jeda</button><button id="clear">Bersihkan</button><button id="sound" aria-pressed="false">Suara: mati</button></div><p>Jika pesan member belum dikenali, isi selector CSS khusus baris pesan member. Selector harus membedakan member dari agen.</p><label>Selector pesan member<input id="member" placeholder="Otomatis berdasarkan penanda pengirim"></label><label>Selector pesan AI / agen (opsional)<input id="agent" placeholder="Penanda khusus pengirim AI / agen"></label><label>Selector area percakapan (opsional)<input id="scope" placeholder="Otomatis dari penanda Started - Today"></label><button id="save">Simpan pengaturan</button> <button id="restore">Tampilkan lagi pengingat selesai</button> <button id="position">Reset posisi bubble</button><small>Chats dan Archives: hanya membaca pesan setelah Started - Today terakhir. Gulir sampai penanda tersebut dimuat, lalu klik Baca ulang.</small></details></div></section><button id="bubble"><span class="bubble-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5h14v10H10l-5 4V5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 9h6M9 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span class="bubble-label">Asisten<span>CHAT ASSIST</span></span><span id="count">0</span></button>`;
   const $ = id => ui.getElementById(id);
   $('member').value = cfg.member || ''; $('agent').value = cfg.agent || ''; $('scope').value = cfg.scope || '';
   const completedByChat = new Map(), sources = new Map();
@@ -1349,21 +1403,23 @@
     return [...pending,...secondary];
   }
   function render() {
-    const value = JSON.stringify({cards,change:{...changeMonitor(),draft:undefined},blocked:blockedState()});
+    cards=cards.filter(c=>allowedTopics.has(c.type));
+    const value = JSON.stringify({cards,blocked:blockedState()});
     if (value === lastRender) return;
     lastRender = value; $('cards').replaceChildren(); $('count').textContent = cards.length; $('bubble').setAttribute('aria-label','Pengingat: '+cards.length+' aktif. Alt Shift B untuk buka atau tutup.');
-    drawBlocked($('cards'));
-    drawChangeMonitor($('cards'));
-    const topicLabels={blocked:'Akun diblokir',change:'Ganti rekening',deposit:'Deposit',withdraw:'Withdraw',password:'Password',username:'User ID',scatter:'PL scatter'};
+    if(cards.some(c=>c.type==='blocked')||blockedState().selectedUserid)drawBlocked($('cards'));
+    const topicLabels={blocked:'Akun Terkunci / Terblokir',deposit:'Cek Deposit',withdraw:'Cek Withdraw',password:'Lupa Password',username:'Lupa Username'};
     const topics=[...new Set(cards.filter(c=>c.title!=='PERMINTAAN GANTI DIBATALKAN').map(c=>topicLabels[c.type]).filter(Boolean))];
-    if(topics.length>1){const summary=document.createElement('div');summary.className='topic-summary';summary.textContent='PERMINTAAN AKTIF: '+topics.join(' • ')+'. Tangani masing-masing; tandai Selesai setelah ditangani.';$('cards').append(summary);}
+    if(topics.length>1){const summary=document.createElement('div');summary.className='topic-summary';summary.textContent='Aktif: '+topics.join(' • ');$('cards').append(summary);}
     for (const c of presentationCards(cards)) {
       const box=document.createElement('div'); box.className='card'; box.dataset.tone=c.tone || 'ready';
       const category=document.createElement('div');category.className='category';category.textContent=c.category || 'PENGINGAT MEMBER';box.append(category);
       const title=document.createElement('b'); title.textContent=c.title;
       const body=document.createElement('p'); body.textContent=c.body;
       const quote=document.createElement('div'); quote.className='quote'; quote.textContent='Pesan: '+c.message;
-      box.append(title,body,quote);
+      box.append(title,body);
+      const extra=document.createElement('details');extra.className='aux-details';
+      const extraTitle=document.createElement('summary');extraTitle.textContent='Pesan & opsi';extra.append(extraTitle,quote);
       const actions=document.createElement('div');actions.className='actions';
       const jump=document.createElement('button');jump.textContent='↗ Lihat pesan';
       jump.onclick=()=>{
@@ -1387,19 +1443,11 @@
           setTimeout(()=>{if(copy.isConnected)copy.textContent='Salin';},1500);
         }catch{setStatus('Tidak bisa menyalin. Izinkan clipboard pada browser atau salin teks pengingat secara manual.');}
       };
-      if(c.type==='image-review'){
-        const scatter=document.createElement('button');scatter.textContent='Bukti scatter / PL';
-        scatter.onclick=()=>{Object.assign(c,{type:'image-scatter',category:'BUKTI SCATTER • DITANDAI OPERATOR',title:'PL SCATTER — PERIKSA BUKTI',tone:'review',body:'Cocokkan detail putaran dan riwayat permainan: nomor transaksi / kode tiket, waktu, nominal taruhan, serta jumlah scatter. Tanda ini belum berarti bukti disetujui.'});render();};
-        actions.append(scatter);
-        const flag=document.createElement('button');flag.textContent='Gambar tidak pantas';
-        flag.onclick=()=>{Object.assign(c,{type:'image-flagged',category:'GAMBAR DITANDAI OPERATOR',title:'Kasih PK doa aja',tone:'conduct',body:'Gambar ditandai tidak pantas setelah diperiksa operator.'});render();};
-        actions.append(flag);
-      }
       const correct=document.createElement('button');correct.textContent='Koreksi maksud';correct.onclick=()=>{
         if(box.querySelector('.intent-correction'))return;
         const panel=document.createElement('div');panel.className='intent-correction';
         const select=document.createElement('select');select.setAttribute('aria-label','Pilih maksud member');
-        for(const [value,label] of [['','Pilih maksud member…'],['blocked','Akun diblokir'],['change','Ganti rekening / akun'],['password','Lupa password'],['username','Lupa User ID'],['password,username','Lupa ID dan password'],['deposit','Deposit'],['withdraw','Withdraw'],['scatter','PL scatter']]){const option=document.createElement('option');option.value=value;option.textContent=label;select.append(option);}
+        for(const [value,label] of [['','Pilih maksud member…'],['deposit','Cek Deposit'],['withdraw','Cek Withdraw'],['username','Lupa Username'],['password','Lupa Password'],['blocked','Akun Terkunci / Terblokir']]){const option=document.createElement('option');option.value=value;option.textContent=label;select.append(option);}
         const save=document.createElement('button');save.textContent='Simpan koreksi';save.onclick=()=>{
           if(!select.value)return;
           const source=sources.get(c.signature),phrase=normalizeMemberLanguage(source?text(source):c.message).trim();if(!phrase)return;
@@ -1409,10 +1457,11 @@
           cards=[];seen.clear();scan();
         };panel.append(select,save);box.append(panel);
       };
-      actions.append(jump,copy,correct,done);box.append(actions);$('cards').append(box);
+      const secondary=document.createElement('div');secondary.className='actions';secondary.append(jump,copy,correct);extra.append(secondary);
+      actions.append(done);box.append(actions,extra);$('cards').append(box);
     }
   }
-  function reset() { cancelAdminGroup();seen.clear(); sources.clear(); cards=[]; render();resetAccount(); }
+  function reset() { if(!blockedState().selectedUserid)cancelAdminGroup();seen.clear(); sources.clear(); cards=[]; render();resetAccount(); }
   function completed() {
     if(!completedByChat.has(route)){
       if(completedByChat.size>=40)completedByChat.delete(completedByChat.keys().next().value);
@@ -1457,7 +1506,7 @@
   }
   function scan(){
     const next=conversationRoute();
-    if(next!==route){liveChatContext=null;clearTimeout(selectionTimer);route=next;baselineReady=false;reset();$('bubble').classList.remove('unread');}
+    if(next!==route){cancelAdminGroup();liveChatContext=null;clearTimeout(selectionTimer);route=next;baselineReady=false;reset();$('bubble').classList.remove('unread');}
     host.hidden=!/^\/chats(?:\/|$)/.test(location.pathname)&&!isArchive();
     if(host.hidden || paused) return;
     liveChatContext=null;
@@ -1494,18 +1543,10 @@
       transcript=contextualMessages(transcript);
       const contextualText=new Map(transcript.map(m=>[m.e,m.text]));
       liveChatContext={route,scope,candidates,messages:transcript};
-      const earlierChange=cards.find(c=>c.type==='change'&&c.title!=='PERMINTAAN GANTI DIBATALKAN');
-      if(earlierChange&&!transcript.some(m=>m.kind==='member'&&wantsAccountChange(m.text))){
-        transcript=[{kind:'member',text:'mau ganti rekening'},...transcript];
-      }
-      syncChange(transcript);
       syncAccount(liveChatContext.messages);
       syncBlocked(transcript);
       const context = idContext(transcript);
-      let uncertainty=clarification(transcript);
-      // A brief follow-up or a virtualized earlier message must not erase an
-      // already recognized, still-active service request.
-      if(uncertainty&&uncertainty.title!=='PASTIKAN KEBUTUHAN AKUN'&&cards.some(c=>['blocked','change','deposit','withdraw','password','username','scatter'].includes(c.type)&&c.title!=='PERMINTAAN GANTI DIBATALKAN'))uncertainty=null;
+      const uncertainty=null;
       const lastRecovery=[...transcript].reverse().find(m=>m.kind==='member'&&detectIntent(m.text).some(t=>t==='password'||t==='username'));
       const combinedRecovery=!uncertainty&&lastRecovery&&['password','username'].every(t=>detectIntent(lastRecovery.text).includes(t));
       if(combinedRecovery)cards=cards.filter(c=>c.type!=='username');
@@ -1516,46 +1557,14 @@
         if(!completed().has(signature))cards.push({signature,type:'clarify',category:'BANTU PAHAMI MEMBER',tone:'review',...uncertainty,message:uncertainty.message.slice(0,240)});
       }
       const occurrences=new Map(); let added=false;
-      let latestConduct=null;
-      for(const e of candidates){
-        const advice=conductNotice(text(e));
-        if(advice)latestConduct={e,advice};
-      }
-      if(latestConduct){
-        const {e,advice}=latestConduct;
-        const signature='conduct|'+(e.getAttribute('data-message-id')||e.getAttribute('data-event-id')||text(e));
-        sources.set(signature,e);
-        cards=cards.filter(c=>c.type!=='conduct'&&c.type!=='clarify');
-        if(!completed().has(signature)){
-          cards.push({signature,type:'conduct',...advice});
-          if(!seen.has(signature)){seen.add(signature);added=true;}
-        }
-      }
-      for(const e of candidates.filter(memberHasImage)){
-        const src=[...e.querySelectorAll('img')].map(i=>i.getAttribute('src')||'').join('|');
-        const signature='image-review|'+(e.getAttribute('data-message-id')||e.getAttribute('data-event-id')||src);
-        sources.set(signature,e);
-        if(completed().has(signature))continue;
-        // Only associate nearby member messages; a different explicit topic ends association.
-        const index=candidates.indexOf(e);
-        const nearby=candidates.slice(Math.max(0,index-3),Math.min(candidates.length,index+3));
-        const topics=nearby.map(n=>detectIntent(text(n))).filter(a=>a.length);
-        const scatter=topics.length&&topics.at(-1).includes('scatter');
-        const existing=cards.find(c=>c.signature===signature);
-        const imageAdvice=scatter?{category:'LAMPIRAN • KONTEKS PL SCATTER',title:'PL SCATTER — PERIKSA GAMBAR',body:'Pesan di sekitar gambar menyebut scatter. Periksa apakah lampiran berupa detail putaran atau riwayat permainan; cocokkan transaksi, waktu, taruhan, dan jumlah scatter. Isi gambar belum dibaca otomatis.'}:{category:'GAMBAR DARI MEMBER',title:'Periksa isi gambar',body:'Jika ini bukti putaran / riwayat scatter, pilih Bukti scatter / PL. Jika tidak pantas, pilih Gambar tidak pantas. Isi gambar belum dinilai otomatis.'};
-        if(existing){if(existing.type==='image-review')Object.assign(existing,imageAdvice);continue;}
-        if(seen.has(signature))continue;
-        seen.add(signature);added=true;
-        cards.push({signature,type:'image-review',tone:'review',...imageAdvice,message:'Gambar member • klik Lihat pesan untuk memeriksa.'});
-      }
       for(const e of candidates){
         const message=contextualText.get(e)||text(e); if(!message)continue;
         const n=(occurrences.get(message)||0)+1;occurrences.set(message,n);
         const identity=e.getAttribute('data-message-id') || e.getAttribute('data-event-id') || message+'#'+n;
         for(const [type,re,title,body] of rules){
+          if(!allowedTopics.has(type))continue;
           if(!re.test(message))continue;
           if(combinedRecovery&&type==='username')continue;
-          if(type==='change'&&changeMonitor().done)continue;
           if(uncertainty&&['password','username'].includes(type))continue;
           if(['password','username'].includes(type)&&isAccountFinished())continue;
           const signature=identity+'|'+type;
@@ -1570,7 +1579,6 @@
           seen.add(signature);cards.push({signature,type,...advice,message:message.slice(0,240)});added=true;
         }
       }
-      if(changeMonitor().done)cards=cards.filter(c=>c.type!=='change');
       for(const card of cards) if(['deposit','withdraw','blocked'].includes(card.type)) Object.assign(card,contextualAdvice(card.type,context));
       for(const card of cards)if(['password','username'].includes(card.type))Object.assign(card,recoveryAdvice(card.type,transcript));
       for(const card of cards)if(card.type==='change')Object.assign(card,changeAdvice(transcript));
@@ -1655,6 +1663,47 @@
     }
   });
 
+  function selectedChatUserid(){
+    const context=liveChatContext,selection=window.getSelection();
+    if(conversationRoute()!==route||paused||!selection||selection.isCollapsed||selection.rangeCount!==1)return '';
+    const asElement=node=>node?.nodeType===1?node:node?.parentElement;
+    const anchor=asElement(selection.anchorNode),focus=asElement(selection.focusNode);
+    if(!anchor||!focus||excluded(anchor)||excluded(focus)||anchor.closest('input,textarea,[contenteditable="true"]')||focus.closest('input,textarea,[contenteditable="true"]'))return '';
+    let message=context?.route===route?context.messages.find(m=>m.e?.isConnected&&m.e.contains(anchor)&&m.e.contains(focus)):null;
+    // Manual selection does not depend on automatic sender classification.
+    if(!message){
+      const marker=findStart(document.body);if(!marker)return '';
+      const scope=(cfg.scope?document.querySelector(cfg.scope):null)||inferScope(marker);
+      if(!scope||!scope.contains(marker)||!scope.contains(anchor)||!scope.contains(focus))return '';
+      const after=e=>!e.contains(marker)&&!!(marker.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING);
+      if(!after(anchor)||!after(focus))return '';
+      let row=asElement(selection.getRangeAt(0).commonAncestorContainer);
+      while(row?.parentElement&&row.parentElement!==scope&&row.textContent.length<120)row=row.parentElement;
+      if(!row||row.contains(marker))return '';
+      message={e:row};
+    }
+    const raw=selection.toString().normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g,'').trim();
+    const userid=raw.replace(/^(?:user\s*id|username|id)\s*[:=]\s*/i,'');
+    if(!/^\w[\w.-]{2,39}$/.test(userid))return '';
+    const range=selection.getRangeAt(0),prefix=range.cloneRange();
+    prefix.selectNodeContents(message.e);prefix.setEnd(range.startContainer,range.startOffset);
+    const linePrefix=prefix.toString().split(/\n/).pop();
+    if(/(?:password|kata sandi|nomor rekening|norek|no\.?\s*rek|telepon|phone|email)\s*[:=]\s*$/i.test(linePrefix))return '';
+    const labelled=/^(?:user\s*id|username|id)\s*[:=]/i.test(raw)||/(?:user\s*id|username|id)\s*[:=]\s*$/i.test(linePrefix);
+    const blocked=context?.route===route&&context.messages.some(m=>m.kind==='member'&&detectIntent(m.text).includes('blocked'));
+    // Bare numbers remain rekening unless an ID label or blocked context identifies them.
+    if(/^\d+$/.test(userid)&&!labelled&&!blocked)return '';
+    if(/^(?:akun|saya|aku|bos|bosku|kenapa|terblokir|teblokir|diblokir|terkunci|locked|blocked|password|username|userid|tolong|admin)$/i.test(userid))return '';
+    return userid;
+  }
+  function checkSelectedUserid(){
+    const userid=selectedChatUserid();if(!userid)return false;
+    const state=blockedState();state.active=true;state.selectedUserid=userid;saveBlocked(state);
+    $('panel').hidden=false;
+    runBlocked(userid,state.phase==='error');render();clampPosition();
+    setStatus('User ID pilihan: '+userid+' — membaca Status dan Information dari Profil.');
+    return true;
+  }
   function selectedChatAccount(){
     const context=liveChatContext,selection=window.getSelection();
     if(!context||context.route!==route||conversationRoute()!==route||paused||!selection||selection.isCollapsed||selection.rangeCount!==1)return '';
@@ -1670,6 +1719,7 @@
     return choices.length===1?choices[0]:'';
   }
   function checkSelectedAccount(){
+    if(checkSelectedUserid())return;
     const number=selectedChatAccount();if(!number)return;
     const previous=selectionPins.get(route);
     if(previous?.number===number&&accountState.number===number){
@@ -1695,7 +1745,7 @@
     clearTimeout(selectionTimer);
     if(selectionDragging||selectionKeyboard)return;
     const chat=conversationRoute();
-    selectionTimer=setTimeout(()=>{if(chat===location.pathname&&chat===route)checkSelectedAccount();},450);
+    selectionTimer=setTimeout(()=>{if(chat===conversationRoute()&&chat===route)checkSelectedAccount();},450);
   }
   document.addEventListener('selectionchange',scheduleSelectedAccount);
   document.addEventListener('pointerdown',e=>{
