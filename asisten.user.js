@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         LiveChat • Pengingat Member
 // @namespace    local.livechat.pengingat
-// @version      2.68.0
-// @description  Pengingat lokal dari pesan member setelah Started - Today. Tidak mengirim chat atau mengubah akun.
+// @version      2.68.1
+// @description  Pengingat lokal setelah Started - Today. Tanpa pencarian User ID untuk akun terblokir.
 // @match        https://my.livechatinc.com/*
 // @match        https://agwl2.admitoto.com/agentplayerlist.php*
 // @match        https://agwl2.admitoto.com/agentplayerlist_old.php*
@@ -23,7 +23,7 @@
   if (document.getElementById('lc-pengingat-bosku')) return;
   const isArchive=()=>/^\/archives?(?:\/|$)/.test(location.pathname);
   const conversationRoute=()=>location.pathname+(isArchive()?location.search+location.hash:'');
-  const allowedTopics=new Set(['deposit','withdraw','username','password','blocked']);
+  const allowedTopics=new Set(['deposit','withdraw','username','password']);
   let intentCorrections={};
   try{const saved=JSON.parse(localStorage.getItem('lc-intent-corrections-v1')||'{}');if(saved&&typeof saved==='object'&&!Array.isArray(saved))intentCorrections=saved;}catch{}
   function normalizeMemberLanguage(value){
@@ -94,7 +94,6 @@
       part=part.trim();
       if(!part || /\b(?:bukan|tidak perlu|tidak lupa|tidak salah|jangan)\b/.test(part))continue;
       if(/\b(?:scatter|scater|skater|skatter)\b/.test(part))types.add('scatter');
-      if(/\b(?:akun|account|user\s*id|username|id)\b/.test(part)&&/\b(?:di\s*blok(?:ir)?|terblokir|keblokir|ke\s*blok|blokir|kena\s*blok|blocked|banned|suspend(?:ed)?|terkunci|di\s*lock|locked)\b/.test(part)&&! /\b(?:akun\s+(?:bank|dana|ovo)|rekening|norek|tidak\s+(?:di\s*blok(?:ir)?|terblokir|terkunci|banned|blocked)|sudah\s+(?:dibuka|normal))\b/.test(part))types.add('blocked');
       const unresolved=/\b(?:belum|tidak|lupa|salah|gagal|pending|tertunda|nyangkut|hilang|reset|ganti|ubah|cek|tolong|bantu)\b/.test(part);
       if(!unresolved && /\b(?:sudah|berhasil|selesai|sukses)\b/.test(part))continue;
       const recovery=/\b(?:lupa|tidak ingat|tidak inget|tidak hafal|tidak tahu|tidak tau|hilang|reset|riset|ganti|ubah|salah|invalid)\b/;
@@ -131,7 +130,6 @@
 
   const intentMatcher=type=>({test:value=>detectIntent(value).includes(type)});
   const rules = [
-    ['blocked',intentMatcher('blocked'),'MINTA USER ID','Periksa User ID yang sudah diberikan member sebelum meminta ulang.'],
     ['change',intentMatcher('change'),'TANYAKAN ALASAN PERUBAHAN','Periksa apakah AI / agen sudah menanyakan alasan perubahan.'],
     ['scatter', intentMatcher('scatter'), 'PL SCATTER — PERIKSA BUKTI', 'Periksa gambar detail putaran dan riwayat permainan. Cocokkan nomor transaksi / kode tiket, waktu, nominal taruhan, dan jumlah scatter. Jika bukti belum lengkap, minta bagian yang kurang saja ya bosku.'],
     ['deposit', intentMatcher('deposit'), 'MINTA BUKTI', 'Minta bukti deposit kepada member ya bosku.'],
@@ -210,7 +208,7 @@
     return {requested,id,candidate};
   }
   function contextualAdvice(type, context) {
-    const category = type==='blocked'?'AKUN DIBLOKIR • CEK USER ID':type === 'deposit' ? 'CEK DEPOSIT' : 'CEK WITHDRAW';
+    const category = type === 'deposit' ? 'CEK DEPOSIT' : 'CEK WITHDRAW';
     let title, body, tone;
     if (context.id) {
       title='USER ID SUDAH ADA DI ATAS'; tone='ready';
@@ -222,11 +220,10 @@
       title='USER ID SUDAH DIMINTA'; tone='waiting';
       body='AI / agen sudah meminta User ID. Jangan minta lagi ya bosku; cek atau tunggu jawaban member di atas.';
     } else {
-      title=type==='blocked'?'MINTA USER ID MEMBER':'CEK USER ID TERLEBIH DAHULU'; tone='review';
+      title='CEK USER ID TERLEBIH DAHULU'; tone='review';
       body='User ID belum terdeteksi pada chat yang terbaca. Cek chat di atas terlebih dahulu; jika memang belum ada dan belum diminta, baru minta User ID ya bosku.';
     }
     if (type==='deposit') body+=' Untuk deposit, cek bukti di atas; jika belum dikirim, minta bukti deposit ya bosku.';
-    else if(type==='blocked')body+=' Periksa status akun memakai User ID tersebut. Akun diblokir bukan otomatis lupa password; jangan arahkan reset tanpa permintaan yang jelas.';
     else body+=' Lanjutkan pengecekan withdraw setelah User ID dipastikan.';
     return {category,title,body,tone};
   }
@@ -340,7 +337,7 @@
     const names=new Set(),banks=new Set(),requested=new Set();let pending=[];
     const bankRE=/\b(?:bca|bri|bni|bsi|cimb(?: niaga)?|mandiri|danamon|maybank|(?:bank )?jago|seabank|sea bank|dana|ovo|gopay|go pay|link\s*aja)\b/ig;
     const holderRE=/\b(?:nama\s*(?:pemilik\s*)?rek(?:ening)?|atas\s+nama|a\/?n)\b\s*(?:saya|nya)?\s*[:=\-]?\s*(.*)/i;
-    const validName=t=>/^[\p{L}][\p{L} .'-]{1,79}$/u.test(t)&&!/(?:lupa|belum|tidak|gak|saya|aku|tolong|minta|terblokir|hilang|kenapa|saldo|masuk|iya|oke|bosku|password|rekening|username)/i.test(t);
+    const validName=t=>/^[\p{L}][\p{L} .'-]{1,79}$/u.test(t)&&!/\b(?:lupa|belum|tidak|gak|saya|aku|tolong|minta|terblokir|hilang|kenapa|saldo|masuk|iya|oke|bosku|password|rekening|username)\b/i.test(t);
     const fields=t=>{
       const result=[];
       if(/\b(?:nomor\s*rek(?:ening)?|no\.?\s*rek(?:ening)?|norek)\b/i.test(t))result.push('number');
@@ -568,14 +565,6 @@
     });
   }
 
-  const blockedMemory=new Map();
-  function blockedState(chat=route){
-    if(blockedMemory.has(chat))return blockedMemory.get(chat);
-    let state;try{state=JSON.parse(localStorage.getItem('lc-blocked-result-v1:'+chat)||'null');}catch{}
-    if(!state||typeof state!=='object')state={active:false,userid:'',phase:'idle'};
-    if(state.phase==='loading')state.phase='idle';blockedMemory.set(chat,state);return state;
-  }
-  function saveBlocked(state,chat=route){try{localStorage.setItem('lc-blocked-result-v1:'+chat,JSON.stringify(state));}catch{state.storageError=true;}}
   function profileLink(row,pageUrl){
     const urls=[];
     for(const el of row.querySelectorAll('a,button,option,[onclick],[data-url],[data-href]')){
@@ -780,49 +769,6 @@
     const info=controlFor(/^(?:information|informasi)\s*:?$/i,'textarea,input');
     if(!info)throw new Error('Kolom Information belum dikenali pada Profil.');
     return {status,information:String(info.value||'').trim()};
-  }
-  async function runBlocked(userid,force=false){
-    if(paused||!/^\w[\w.-]{2,39}$/.test(userid))return;
-    const state=blockedState(),chat=route;
-    if(!force&&state.userid===userid&&['loading','done','error'].includes(state.phase)&&!(state.phase==='error'&&/Centang filter UserId|Tautan Profil|Profil:/.test(state.error||'')&&state.filterRevision!==252))return;
-    const token=(state.token||0)+1;Object.assign(state,{active:true,userid,filterRevision:252,phase:'loading',token,status:'',information:'',source:'',reasonDate:'',fallbackNote:'',error:'',lock:null,profileUrl:'',checkedAt:0});saveBlocked(state);render();
-    const valid=()=>route===chat&&conversationRoute()===chat&&state.token===token;
-    try{
-      const page=await fetchAdmin(ADMIN_ORIGIN+ADMIN_PATHS[0],'GET',null,'blocked');if(!valid())return;
-      const req=searchRequest(page,userid,'userid');
-      const result=await fetchAdmin(req.url,req.method,req.body,'blocked');if(!valid())return;
-      const player=playerById(result,userid);
-      if(!player){state.status='Tidak ditemukan';state.phase='done';}
-      else{
-        state.lock=player.lock;rememberProfileForm(player.row,userid,result.url);
-        const details=await readLockReason(userid,ADMIN_PATHS[0]);if(!valid())return;
-        Object.assign(state,details);state.phase='done';
-      }
-      state.checkedAt=Date.now();
-    }catch(e){if(valid()){state.phase='error';state.error=e.message;}}
-    finally{if(valid()){saveBlocked(state);render();}else if(state.token===token){state.phase='idle';saveBlocked(state,chat);}}
-  }
-  function syncBlocked(messages){
-    if(!messages.some(m=>m.kind==='member'&&detectIntent(m.text).includes('blocked')))return;
-    const context=idContext(messages),state=blockedState();state.active=true;
-    const userid=state.selectedUserid||context.id||(context.requested?context.candidate:'');
-    if(userid)runBlocked(userid);
-  }
-  function drawBlocked(container){
-    const state=blockedState();if(!state.active)return;
-    const box=document.createElement('section');box.className='blocked-panel';box.dataset.status=state.status||state.phase;
-    const eyebrow=document.createElement('div');eyebrow.className='category';eyebrow.textContent='PEMERIKSAAN AKUN • ADMIN NOW';
-    const heading=document.createElement('strong');heading.textContent=state.userid||'Menunggu User ID member';
-    const badge=document.createElement('div');badge.className='blocked-badge';badge.textContent=state.phase==='loading'?'Membuka Tools → Profil sesuai User ID…':state.status||'Status belum terbaca';
-    box.append(eyebrow,heading,badge);
-    if(state.status&&state.status!=='Tidak ditemukan'){
-      const label=document.createElement('b');label.textContent=(state.source||'Information dari admin')+(state.reasonDate?' · '+state.reasonDate:'');const info=document.createElement('p');info.className='blocked-information';info.textContent=state.information||'(Information kosong)';box.append(label,info);
-    }
-    const note=document.createElement('p');note.textContent=state.error||(state.lock===true?'Indikator gembok ditemukan di sebelah User ID.':state.lock===false?'Indikator gembok belum terdeteksi. Acuan status: kolom Status pada Profil.':'User ID akan dicari setelah diberikan member.');box.append(note);
-    if(state.lock===true&&state.status==='Unlocked'){const warn=document.createElement('p');warn.textContent='Indikator gembok dan Status Profil berbeda. Periksa langsung sebelum menyimpulkan.';box.append(warn);}
-    if(state.checkedAt){const time=document.createElement('small');time.textContent='Hasil saat pengecekan: '+new Date(state.checkedAt).toLocaleString('id-ID');box.append(time);}
-    const field=document.createElement('input');field.placeholder='User ID yang ingin diperiksa';field.value=state.userid||'';field.setAttribute('aria-label','User ID pemeriksaan blokir');
-    const check=document.createElement('button');check.textContent='Periksa / perbarui profil';check.disabled=state.phase==='loading';check.onclick=()=>{const uid=field.value.trim();if(!/^\w[\w.-]{2,39}$/.test(uid)){setStatus('Periksa User ID: 3–40 karakter huruf, angka, titik, garis bawah atau tanda hubung.');return;}runBlocked(uid,true);};box.append(field,check);container.append(box);
   }
   function parseBalance(value){
     const raw=String(value??'').normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/−/g,'-').trim().replace(/^(?:rp\.?|idr)\s*/i,'').replace(/\s/g,'');
@@ -1367,7 +1313,7 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
 #panel{background:#151114;border:1px solid #81404a;border-radius:21px;box-shadow:0 22px 60px #18080c66,inset 0 1px #ffffff0b}header{background:linear-gradient(115deg,#741f30,#39151e 65%,#1e151b);border-bottom:1px solid #cf657c40;color:#fff;padding:16px}.brand-mark{background:linear-gradient(140deg,#ffd9df,#dc8392);border:1px solid #ffe4e9;color:#6a1e30;border-radius:12px;box-shadow:0 3px 12px #19070c44}.brand strong{color:#fff0f3}.brand-caption{color:#e2acb8}#close{background:#ffffff06;border-color:#e5a1b139;color:#f0ccd5}#close:hover{background:#b14a6033}.body{background:linear-gradient(145deg,#22171d,#131216 70%);padding:13px}#status{background:#2a1c23;border:1px solid #68404d;color:#dfc1cc;border-radius:10px;box-shadow:none}#bubble{background:linear-gradient(120deg,#821f34,#461a29 60%,#20151d);border:1px solid #bc687b;color:#fff1f5;border-radius:20px;box-shadow:0 9px 30px #2a091746,inset 0 1px #ffffff13}.bubble-symbol{background:linear-gradient(135deg,#ffd9e2,#dd8fa0);border-color:#ffe9ee;color:#741f36;border-radius:10px}.bubble-label span{color:#e6afbd}#count{background:#ffffff0e;border-color:#f2bbca40;color:#ffe5ed}#bubble:hover{background:linear-gradient(120deg,#a12a45,#5c2235 70%,#291923);border-color:#e498ab}#bubble.unread{border-color:#f1a3b6;box-shadow:0 0 0 3px #d95c7c22,0 9px 30px #2a091746}#bubble.unread #count{background:#ffd7e2;border-color:#ffd7e2;color:#6c1731}
 .body>.actions button{background:linear-gradient(100deg,#84253b,#a73851)!important;border-color:#be6579!important;color:#fff0f4!important;border-radius:10px;box-shadow:0 3px 8px #16050a33}.body>.actions button:hover{background:#b54560!important;border-color:#e39aae!important}.body>details{background:#21191f;border-color:#65414f;color:#d5b8c3;border-radius:12px;box-shadow:inset 0 1px #ffffff04}.body>details>summary,.body>details[open]>summary{color:#f0becd;font-weight:600}.body>details p,.body>details label,.body>details small{color:#d2b7c2}.body>details button{background:#38212d;border-color:#754452;color:#f0cbd7;border-radius:8px}.body>details button:hover{background:#572b3e;border-color:#b16b81}.body>details input{background:#16131a;border-color:#714554;color:#faeaf0;border-radius:9px}.body>details input::placeholder{color:#b999a6}.body>details input:focus{border-color:#d77994;outline-color:#d779942d}
   </style>
-  <section id="panel" hidden><header><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5h14v10H10l-5 4V5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 9h6M9 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><div class="brand"><strong>Asisten Pribadi <span class="edition">2.68</span></strong><span class="brand-caption">CHAT ASSIST</span></div><button id="close" title="Kecilkan" aria-label="Kecilkan asisten">−</button></header><div class="body"><p id="status">Menunggu chat…</p><div id="account" hidden></div><div id="cards"></div><div class="actions"><button id="scan">↻ Baca ulang chat</button></div><details><summary>Opsi &amp; pengaturan</summary><div class="actions"><button id="pause">Jeda</button><button id="clear">Bersihkan</button><button id="sound" aria-pressed="false">Suara: mati</button></div><p>Jika pesan member belum dikenali, isi selector CSS khusus baris pesan member. Selector harus membedakan member dari agen.</p><label>Selector pesan member<input id="member" placeholder="Otomatis berdasarkan penanda pengirim"></label><label>Selector pesan AI / agen (opsional)<input id="agent" placeholder="Penanda khusus pengirim AI / agen"></label><label>Selector area percakapan (opsional)<input id="scope" placeholder="Otomatis dari penanda Started - Today"></label><button id="save">Simpan pengaturan</button> <button id="restore">Tampilkan lagi pengingat selesai</button> <button id="position">Reset posisi bubble</button><small>Chats dan Archives: hanya membaca pesan setelah Started - Today terakhir. Gulir sampai penanda tersebut dimuat, lalu klik Baca ulang.</small></details></div></section><button id="bubble"><span class="bubble-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5h14v10H10l-5 4V5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 9h6M9 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span class="bubble-label">Asisten<span>CHAT ASSIST</span></span><span id="count">0</span></button>`;
+  <section id="panel" hidden><header><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5h14v10H10l-5 4V5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 9h6M9 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><div class="brand"><strong>Asisten Pribadi <span class="edition">2.68</span></strong><span class="brand-caption">CHAT ASSIST</span></div><button id="close" title="Kecilkan" aria-label="Kecilkan asisten">−</button></header><div class="body"><p id="status">Menunggu chat…</p><div id="account" hidden></div><div id="cards"></div><div class="actions"><button id="scan">↻ Baca ulang chat</button></div><details><summary>Opsi & pengaturan</summary><div class="actions"><button id="pause">Jeda</button><button id="clear">Bersihkan</button><button id="sound" aria-pressed="false">Suara: mati</button></div><p>Jika pesan member belum dikenali, isi selector CSS khusus baris pesan member. Selector harus membedakan member dari agen.</p><label>Selector pesan member<input id="member" placeholder="Otomatis berdasarkan penanda pengirim"></label><label>Selector pesan AI / agen (opsional)<input id="agent" placeholder="Penanda khusus pengirim AI / agen"></label><label>Selector area percakapan (opsional)<input id="scope" placeholder="Otomatis dari penanda Started - Today"></label><button id="save">Simpan pengaturan</button> <button id="restore">Tampilkan lagi pengingat selesai</button> <button id="position">Reset posisi bubble</button><small>Chats dan Archives: hanya membaca pesan setelah Started - Today terakhir. Gulir sampai penanda tersebut dimuat, lalu klik Baca ulang.</small></details></div></section><button id="bubble"><span class="bubble-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5h14v10H10l-5 4V5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 9h6M9 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span class="bubble-label">Asisten<span>CHAT ASSIST</span></span><span id="count">0</span></button>`;
   const $ = id => ui.getElementById(id);
   $('member').value = cfg.member || ''; $('agent').value = cfg.agent || ''; $('scope').value = cfg.scope || '';
   const completedByChat = new Map(), sources = new Map();
@@ -1393,7 +1339,7 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
   const text = e => normalize(e.innerText || '');
   function setStatus(s) { if ($('status').textContent !== s) $('status').textContent = s; }
   function presentationCards(items){
-    const taskNames={blocked:'akun diblokir',change:'ganti rekening / akun',deposit:'deposit',withdraw:'withdraw',password:'pemulihan password',username:'lupa User ID',scatter:'PL scatter',clarify:'pemulihan akun — pastikan kebutuhan'};
+    const taskNames={change:'ganti rekening / akun',deposit:'deposit',withdraw:'withdraw',password:'pemulihan password',username:'lupa User ID',scatter:'PL scatter',clarify:'pemulihan akun — pastikan kebutuhan'};
     const pending=items.filter(c=>taskNames[c.type]&&(c.type!=='clarify'||c.title==='PASTIKAN KEBUTUHAN AKUN')&&c.title!=='PERMINTAAN GANTI DIBATALKAN');
     const primary=pending[0];
     const secondary=items.filter(c=>!pending.includes(c)).slice().reverse().map(c=>{
@@ -1404,11 +1350,10 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
   }
   function render() {
     cards=cards.filter(c=>allowedTopics.has(c.type));
-    const value = JSON.stringify({cards,blocked:blockedState()});
+    const value = JSON.stringify({cards});
     if (value === lastRender) return;
     lastRender = value; $('cards').replaceChildren(); $('count').textContent = cards.length; $('bubble').setAttribute('aria-label','Pengingat: '+cards.length+' aktif. Alt Shift B untuk buka atau tutup.');
-    if(cards.some(c=>c.type==='blocked')||blockedState().selectedUserid)drawBlocked($('cards'));
-    const topicLabels={blocked:'Akun Terkunci / Terblokir',deposit:'Cek Deposit',withdraw:'Cek Withdraw',password:'Lupa Password',username:'Lupa Username'};
+    const topicLabels={deposit:'Cek Deposit',withdraw:'Cek Withdraw',password:'Lupa Password',username:'Lupa Username'};
     const topics=[...new Set(cards.filter(c=>c.title!=='PERMINTAAN GANTI DIBATALKAN').map(c=>topicLabels[c.type]).filter(Boolean))];
     if(topics.length>1){const summary=document.createElement('div');summary.className='topic-summary';summary.textContent='Aktif: '+topics.join(' • ');$('cards').append(summary);}
     for (const c of presentationCards(cards)) {
@@ -1447,7 +1392,7 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
         if(box.querySelector('.intent-correction'))return;
         const panel=document.createElement('div');panel.className='intent-correction';
         const select=document.createElement('select');select.setAttribute('aria-label','Pilih maksud member');
-        for(const [value,label] of [['','Pilih maksud member…'],['deposit','Cek Deposit'],['withdraw','Cek Withdraw'],['username','Lupa Username'],['password','Lupa Password'],['blocked','Akun Terkunci / Terblokir']]){const option=document.createElement('option');option.value=value;option.textContent=label;select.append(option);}
+        for(const [value,label] of [['','Pilih maksud member…'],['deposit','Cek Deposit'],['withdraw','Cek Withdraw'],['username','Lupa Username'],['password','Lupa Password']]){const option=document.createElement('option');option.value=value;option.textContent=label;select.append(option);}
         const save=document.createElement('button');save.textContent='Simpan koreksi';save.onclick=()=>{
           if(!select.value)return;
           const source=sources.get(c.signature),phrase=normalizeMemberLanguage(source?text(source):c.message).trim();if(!phrase)return;
@@ -1461,7 +1406,7 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
       actions.append(done);box.append(actions,extra);$('cards').append(box);
     }
   }
-  function reset() { if(!blockedState().selectedUserid)cancelAdminGroup();seen.clear(); sources.clear(); cards=[]; render();resetAccount(); }
+  function reset() { cancelAdminGroup();seen.clear(); sources.clear(); cards=[]; render();resetAccount(); }
   function completed() {
     if(!completedByChat.has(route)){
       if(completedByChat.size>=40)completedByChat.delete(completedByChat.keys().next().value);
@@ -1544,7 +1489,6 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
       const contextualText=new Map(transcript.map(m=>[m.e,m.text]));
       liveChatContext={route,scope,candidates,messages:transcript};
       syncAccount(liveChatContext.messages);
-      syncBlocked(transcript);
       const context = idContext(transcript);
       const uncertainty=null;
       const lastRecovery=[...transcript].reverse().find(m=>m.kind==='member'&&detectIntent(m.text).some(t=>t==='password'||t==='username'));
@@ -1570,16 +1514,16 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
           const signature=identity+'|'+type;
           sources.set(signature,e);
           if(completed().has(signature))continue;
-          const advice = ['password','username'].includes(type)?recoveryAdvice(type,transcript):type==='change'?changeAdvice(transcript):(['deposit','withdraw','blocked'].includes(type)) ? contextualAdvice(type,context) : {title,body,category:'MAKSUD TERDETEKSI • '+(type==='scatter'?'PL SCATTER':type==='username'?'LUPA USER ID':'PASSWORD')};
+          const advice = ['password','username'].includes(type)?recoveryAdvice(type,transcript):type==='change'?changeAdvice(transcript):(['deposit','withdraw'].includes(type)) ? contextualAdvice(type,context) : {title,body,category:'MAKSUD TERDETEKSI • '+(type==='scatter'?'PL SCATTER':type==='username'?'LUPA USER ID':'PASSWORD')};
           const existing=cards.find(c=>c.signature===signature);
           if(existing){ Object.assign(existing,advice); continue; }
           if(seen.has(signature))continue;
           // One current card per transaction topic; update it as conversation progresses.
-          if(['deposit','withdraw','blocked','scatter','change'].includes(type)) cards=cards.filter(c=>c.type!==type);
+          if(['deposit','withdraw','scatter','change'].includes(type)) cards=cards.filter(c=>c.type!==type);
           seen.add(signature);cards.push({signature,type,...advice,message:message.slice(0,240)});added=true;
         }
       }
-      for(const card of cards) if(['deposit','withdraw','blocked'].includes(card.type)) Object.assign(card,contextualAdvice(card.type,context));
+      for(const card of cards) if(['deposit','withdraw'].includes(card.type)) Object.assign(card,contextualAdvice(card.type,context));
       for(const card of cards)if(['password','username'].includes(card.type))Object.assign(card,recoveryAdvice(card.type,transcript));
       for(const card of cards)if(card.type==='change')Object.assign(card,changeAdvice(transcript));
       cards=cards.slice(-30);render();
@@ -1663,47 +1607,6 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
     }
   });
 
-  function selectedChatUserid(){
-    const context=liveChatContext,selection=window.getSelection();
-    if(conversationRoute()!==route||paused||!selection||selection.isCollapsed||selection.rangeCount!==1)return '';
-    const asElement=node=>node?.nodeType===1?node:node?.parentElement;
-    const anchor=asElement(selection.anchorNode),focus=asElement(selection.focusNode);
-    if(!anchor||!focus||excluded(anchor)||excluded(focus)||anchor.closest('input,textarea,[contenteditable="true"]')||focus.closest('input,textarea,[contenteditable="true"]'))return '';
-    let message=context?.route===route?context.messages.find(m=>m.e?.isConnected&&m.e.contains(anchor)&&m.e.contains(focus)):null;
-    // Manual selection does not depend on automatic sender classification.
-    if(!message){
-      const marker=findStart(document.body);if(!marker)return '';
-      const scope=(cfg.scope?document.querySelector(cfg.scope):null)||inferScope(marker);
-      if(!scope||!scope.contains(marker)||!scope.contains(anchor)||!scope.contains(focus))return '';
-      const after=e=>!e.contains(marker)&&!!(marker.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING);
-      if(!after(anchor)||!after(focus))return '';
-      let row=asElement(selection.getRangeAt(0).commonAncestorContainer);
-      while(row?.parentElement&&row.parentElement!==scope&&row.textContent.length<120)row=row.parentElement;
-      if(!row||row.contains(marker))return '';
-      message={e:row};
-    }
-    const raw=selection.toString().normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g,'').trim();
-    const userid=raw.replace(/^(?:user\s*id|username|id)\s*[:=]\s*/i,'');
-    if(!/^\w[\w.-]{2,39}$/.test(userid))return '';
-    const range=selection.getRangeAt(0),prefix=range.cloneRange();
-    prefix.selectNodeContents(message.e);prefix.setEnd(range.startContainer,range.startOffset);
-    const linePrefix=prefix.toString().split(/\n/).pop();
-    if(/(?:password|kata sandi|nomor rekening|norek|no\.?\s*rek|telepon|phone|email)\s*[:=]\s*$/i.test(linePrefix))return '';
-    const labelled=/^(?:user\s*id|username|id)\s*[:=]/i.test(raw)||/(?:user\s*id|username|id)\s*[:=]\s*$/i.test(linePrefix);
-    const blocked=context?.route===route&&context.messages.some(m=>m.kind==='member'&&detectIntent(m.text).includes('blocked'));
-    // Bare numbers remain rekening unless an ID label or blocked context identifies them.
-    if(/^\d+$/.test(userid)&&!labelled&&!blocked)return '';
-    if(/^(?:akun|saya|aku|bos|bosku|kenapa|terblokir|teblokir|diblokir|terkunci|locked|blocked|password|username|userid|tolong|admin)$/i.test(userid))return '';
-    return userid;
-  }
-  function checkSelectedUserid(){
-    const userid=selectedChatUserid();if(!userid)return false;
-    const state=blockedState();state.active=true;state.selectedUserid=userid;saveBlocked(state);
-    $('panel').hidden=false;
-    runBlocked(userid,state.phase==='error');render();clampPosition();
-    setStatus('User ID pilihan: '+userid+' — membaca Status dan Information dari Profil.');
-    return true;
-  }
   function selectedChatAccount(){
     const context=liveChatContext,selection=window.getSelection();
     if(!context||context.route!==route||conversationRoute()!==route||paused||!selection||selection.isCollapsed||selection.rangeCount!==1)return '';
@@ -1719,7 +1622,6 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
     return choices.length===1?choices[0]:'';
   }
   function checkSelectedAccount(){
-    if(checkSelectedUserid())return;
     const number=selectedChatAccount();if(!number)return;
     const previous=selectionPins.get(route);
     if(previous?.number===number&&accountState.number===number){
