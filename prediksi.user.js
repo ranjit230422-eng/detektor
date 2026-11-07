@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         Prediksi Bubble - 53 Pasaran
 // @namespace    local.prediksi.bubble
-// @version      1.4.0
-// @description  Generator angka acak, panel kecil, salin per pasaran atau semua. Bukan ramalan hasil undian.
+// @version      1.4.2
+// @description  Generator angka acak, panel mini, salin per pasaran atau semua. Mendukung LiveChat + ChatGacor.
 // @match        https://my.livechatinc.com/*
+// @match        https://app.chatgacor.com/app/3/my-chats*
 // @run-at       document-idle
 // @noframes
 // @grant        GM_getValue
@@ -13,7 +14,8 @@
 
 /* CARA PASANG:
    Tampermonkey > Create a new script > hapus isi bawaan > tempel seluruh file
-   ini > Ctrl+S > muat ulang https://my.livechatinc.com/.
+   ini > Ctrl+S > muat ulang https://my.livechatinc.com/
+   atau https://app.chatgacor.com/app/3/my-chats.
    Klik bubble bintang di kanan bawah. Pilih tanggal (default WIB), pasaran,
    lalu Generate satu / Generate semua. Salin hanya menyalin ke clipboard.
    Hasil dan edit manual disimpan per tanggal, maksimal 14 tanggal terakhir.
@@ -162,6 +164,28 @@
     #bubble{width:68px;height:68px;border-radius:18px;touch-action:none;user-select:none;cursor:grab;overflow:hidden;border:1px solid #e53939;background:#080808 url("${THEME_IMAGE}") center top/auto 100%;box-shadow:0 7px 25px #000a,0 0 14px #e0000055}
     #bubble:hover{transform:none;border-color:#ff7777}#bubble:active{transform:none;cursor:grabbing}#bubble::after{display:none}
     #bubble img{display:block;width:100%;height:100%;object-fit:cover;object-position:center top;pointer-events:none}#bubble.dragging{cursor:grabbing;box-shadow:0 12px 30px #000a,0 0 24px #ff000066}
+    /* v1.4.2 — Panel mini: perubahan tampilan saja; seluruh logika tetap asli. */
+    #panel{width:305px;max-width:calc(100vw - 18px);max-height:calc(100dvh - 18px);border-radius:13px}
+    header{min-height:82px;padding:9px 11px;gap:7px}
+    #close{width:24px;height:24px;font-size:17px;border-radius:7px}
+    .body{padding:9px 11px 10px}
+    .summary{font-size:9px;margin-bottom:7px;gap:6px}
+    .badge{padding:2px 7px;font-size:9px}
+    label{margin-top:7px;font-size:9px;letter-spacing:.25px}
+    .fields{gap:6px}
+    input,select{min-height:32px;padding:6px 7px;margin-top:3px;border-radius:7px;font-size:11px}
+    input[type=date]{font-size:10px}
+    button{padding:7px 5px;border-radius:8px;font-size:10px;line-height:1.3}
+    .row{gap:6px;margin-top:7px}
+    #viewOne,#viewAll{font-size:10px;padding:5px}
+    .result-label{margin-top:9px}
+    .result-label span{font-size:8px}
+    textarea{height:155px;min-height:90px;padding:8px;font-size:10px;line-height:1.6;margin-top:5px;border-radius:8px}
+    #status{min-height:25px;margin-top:7px;padding:6px 8px;font-size:9px;border-radius:7px}
+    .note{margin:7px 0 0;font-size:8px}
+    #bubble{width:52px;height:52px;border-radius:13px}
+    @media(max-width:340px){#panel{width:calc(100vw - 16px)}.summary{font-size:8px}}
+    @media(max-height:540px){header{min-height:54px}textarea{height:105px}}
   </style>
   <section id="panel" aria-label="Generator angka" hidden>
     <header><div class="brand">${sparkle}</div><div class="heading"><div class="eyebrow">CRIMSON STUDIO</div><strong>Prediksi Pasaran</strong></div><button id="close" aria-label="Tutup">×</button></header>
@@ -240,7 +264,7 @@
     panel.style.left=x+'px'; panel.style.top=y+'px';
   }
   function moveBubble(x,y) {
-    const size=$('bubble').offsetWidth || 68;
+    const size=$('bubble').offsetWidth || 52;
     position={x:clamp(x,8,window.innerWidth-size-8),y:clamp(y,8,window.innerHeight-size-8)};
     host.style.right='auto';host.style.bottom='auto';
     host.style.left=position.x+'px';host.style.top=position.y+'px';
@@ -248,7 +272,7 @@
   }
   function rememberPosition() {try{GM_setValue(POSITION_KEY,JSON.stringify(position));}catch{}}
   if(position && Number.isFinite(position.x) && Number.isFinite(position.y)) moveBubble(position.x,position.y);
-  else moveBubble(window.innerWidth-84,window.innerHeight-148);
+  else moveBubble(window.innerWidth-70,window.innerHeight-120);
   let drag=null, suppressClick=false;
   $('bubble').addEventListener('pointerdown',e=>{
     if(!e.isPrimary || e.button!==0)return;
