@@ -1,10 +1,11 @@
 // ==UserScript==
-// @name         DeepSeek Original + Gopath Email TurboCheck AutoClose v12.3
+// @name         DeepSeek Original + Gopath Email TurboCheck AutoClose v12.3.2 (LiveChat + ChatGacor Compact)
 // @namespace    http://tampermonkey.net/
-// @version      12.3
+// @version      12.3.2
 // @description  DeepSeek lengkap + pemeriksaan email Gopath segera setelah paste; tanpa pemeriksaan duplikat; tab pekerja otomatis ditutup; indikator centang/X saja.
 // @match        https://agwl2.admitoto.com/agentnewplayer.php*
 // @match        https://my.livechatinc.com/*
+// @match        https://app.chatgacor.com/app/*/my-chats*
 // @match        https://gopath.id/link_linetogel/register*
 // @match        https://www.gopath.id/link_linetogel/register*
 // @match        https://gopath.id/register*
@@ -32,7 +33,8 @@
     const LIST_URL = 'https://agwl2.admitoto.com/agentplayerlist.php';
     const OLD_LIST_URL = 'https://agwl2.admitoto.com/agentplayerlist_old.php';
     const LIST_PATHS = ['/agentplayerlist.php','/agentplayerlist_old.php'];
-    const PARENT   = 'https://my.livechatinc.com';
+    // Dua situs chat resmi untuk menampilkan bubble yang sama.
+    const CHAT_PARENTS = ['https://my.livechatinc.com', 'https://app.chatgacor.com'];
     const ORIGIN   = 'https://agwl2.admitoto.com';
     const BANKS = ['BCA','BRI','BNI','BSI','CIMB','MANDIRI','DANAMON','MAYBANK',
                    'BANK JAGO','SEABANK','DANA','OVO','LINK AJA','GOPAY'];
@@ -222,11 +224,62 @@
             if (/^[0-9]{5,25}$/.test(digits)) return [digits];
         }
         if (selectedAccount && selectedAccount.route === location.href && Date.now() - selectedAccount.time < 120000) return [selectedAccount.number];
+        // ChatGacor memakai antarmuka terpisah. Baca hanya area percakapan
+        // yang sedang terlihat, bukan daftar chat di panel kiri.
+        if (location.hostname === 'app.chatgacor.com') {
+            const fromGacor = chatGacorActiveAccounts(visible);
+            if (fromGacor.length) return fromGacor;
+        }
         const selectors = '[role="log"],[data-testid*="message-list"],[data-testid*="messages-list"],[data-testid*="chat-messages"],[class*="MessageList"],[class*="messageList"],[class*="messagesList"],[aria-label="Chat messages"]';
         const candidates = [...document.querySelectorAll(selectors)].filter(visible).filter(el => !el.closest('#admitoto-hub,nav,aside,[role="navigation"]'));
         const roots = candidates.filter(el => !candidates.some(other => other !== el && other.contains(el)));
         if (roots.length !== 1) return [];
         return extractChatAccounts(roots[0].innerText);
+    }
+
+    // Pembaca tambahan untuk antarmuka ChatGacor. Pembaca LiveChat tetap asli.
+    function chatGacorActiveAccounts(visible) {
+        const selectors = [
+            '[role="log"]', '[aria-label*="messages" i]', '[aria-label*="conversation" i]',
+            '[data-testid*="message-list" i]', '[data-testid*="chat-messages" i]',
+            '[data-testid*="conversation" i]', '[data-test*="message-list" i]',
+            '[class*="message-list" i]', '[class*="messages-list" i]',
+            '[class*="messages-container" i]', '[class*="chat-messages" i]',
+            '[class*="chat-history" i]', '[class*="conversation-messages" i]',
+            '[class*="conversation-body" i]', '[class*="chat-body" i]'
+        ];
+        const skip = '#admitoto-hub,nav,aside,[role="navigation"],[role="menu"],[role="dialog"],form';
+        const seen = new Set();
+        const candidates = [];
+        for (const selector of selectors) {
+            for (const el of document.querySelectorAll(selector)) {
+                if (seen.has(el) || !visible(el) || el.closest(skip)) continue;
+                seen.add(el);
+                const rect = el.getBoundingClientRect();
+                if (rect.width < 170 || rect.height < 70 || rect.right <= innerWidth * 0.30) continue;
+                const text = el.innerText || '';
+                if (text.length < 5 || text.length > 120000) continue;
+                const numbers = extractChatAccounts(text);
+                if (!numbers.length) continue;
+                // Utamakan wadah pesan yang spesifik dibanding panel besar.
+                const tag = [el.className,el.id,el.getAttribute('data-testid'),el.getAttribute('aria-label')].join(' ');
+                const score = (/message|messages/i.test(tag) ? 4 : 0) +
+                    (/chat|conversation/i.test(tag) ? 2 : 0) +
+                    (rect.left > innerWidth * 0.30 ? 2 : 0) -
+                    (rect.width > innerWidth * 0.9 ? 3 : 0) -
+                    (text.length > 16000 ? 3 : 0);
+                candidates.push({el,numbers,score,area:rect.width * rect.height});
+            }
+        }
+        if (!candidates.length) return [];
+        candidates.sort((a,b) => b.score - a.score || a.area - b.area);
+        const best = candidates[0];
+        // Jika dua panel yang tidak berkaitan sama-sama cocok, jangan ambil
+        // rekening dari percakapan yang mungkin bukan chat aktif.
+        const competitors = candidates.filter(c => c !== best && !best.el.contains(c.el) &&
+            !c.el.contains(best.el) && c.score >= best.score);
+        if (competitors.length) return [];
+        return best.numbers;
     }
 
     function canonicalBank(text) {
@@ -731,8 +784,9 @@
     const _host = location.hostname.toLowerCase();
     const _path = location.pathname;
 
-    // (A) LiveChat → bubble Admitoto
-    if (_host === 'my.livechatinc.com') {
+    // (A) LiveChat atau ChatGacor → bubble Admitoto asli tanpa mengubah fitur.
+    if (_host === 'my.livechatinc.com' ||
+        (_host === 'app.chatgacor.com' && /^\/app\/\d+\/my-chats(?:\/|$)/.test(_path))) {
         if (document.readyState === 'loading')
             document.addEventListener('DOMContentLoaded', mountBubble, { once: true });
         else mountBubble();
@@ -964,6 +1018,78 @@
         .password-choices input{width:15px;height:15px;margin:0;accent-color:#f25477;cursor:pointer;flex:none}
         .password-options small{display:block;margin-top:8px;color:#b9c8d3;font-size:11px;line-height:1.6}
         @container(max-width:440px){.password-options{margin-left:0}}
+        /* v12.3.2 — MODE RINGKAS: perubahan visual saja, semua fungsi lama tetap */
+        .panel{width:min(386px,calc(100vw - 20px));height:min(560px,calc(100dvh - 20px));min-width:min(310px,calc(100vw - 20px));min-height:min(320px,calc(100dvh - 20px));border-radius:15px;font-size:12px}
+        header{padding:10px 12px;gap:9px}
+        header:after{width:150px;height:150px;right:-50px;top:-90px}
+        .brand{width:32px;height:32px;border-radius:10px}
+        .brand svg{width:19px;height:19px}
+        .eyebrow{font-size:9px;letter-spacing:1px;margin-bottom:1px}
+        .title strong{font-size:16px;letter-spacing:-.2px}
+        .title small{font-size:10px;margin-top:2px}
+        header>.icon-btn{width:27px;height:27px;border-radius:8px;font-size:17px}
+        .status{padding:7px 12px;font-size:10.5px;gap:7px;line-height:1.4}
+        .status-btn{font-size:10px;padding:4px 7px}
+        .regform{padding:10px 12px;scroll-padding-block:8px}
+        .chat-import{padding:8px 9px;margin-bottom:11px;border-radius:9px}
+        .chat-import-top{gap:7px;flex-wrap:nowrap}
+        .chat-import-top button{font-size:11px;padding:6px 8px;border-radius:7px}
+        .chat-import-message{font-size:10.5px;line-height:1.4}
+        .chat-import select{margin-top:6px;padding:6px;font-size:11px}
+        .form-card+.form-card{margin-top:9px}
+        .grid{gap:8px}
+        .grid>label,.userid-block label,.rekening-block label{grid-template-columns:96px minmax(0,1fr);gap:8px}
+        .lbl{font-size:11.5px;line-height:1.25}
+        .field input,.field select{height:35px;font-size:12px;padding:6px 8px;border-radius:7px}
+        .field input::placeholder{font-size:11px}
+        select[name=bank]{font-size:11.5px}
+        .eye,.regen{width:25px;height:25px;right:3px;border-radius:6px}
+        .eye svg{width:15px;height:15px}
+        .regen{right:29px;font-size:18px}
+        input[name=password]{padding-right:58px}
+        .email-check-status{margin-left:104px;font-size:10px;padding:5px 7px}
+        .userid-status{margin:6px 0 0 104px;padding:6px 7px;border-radius:7px;gap:6px}
+        .uid-symbol{width:20px;height:20px;font-size:13px}
+        .uid-title{font-size:10.5px}.uid-detail{font-size:10px;line-height:1.35}
+        .password-options{margin:0 0 2px 104px}
+        .password-options legend{font-size:10.5px;margin-bottom:5px}
+        .password-choices{gap:5px}
+        .password-choices label{min-height:31px;padding:5px 2px;border-radius:7px;font-size:11px;gap:4px}
+        .password-choices input{width:12px;height:12px}
+        .password-options small{font-size:9.5px;margin-top:4px;line-height:1.4}
+        .actions{padding:8px 10px;gap:6px}
+        .btn{min-height:35px;padding:7px 9px;border-radius:8px;font-size:11px}
+        .btn.primary{min-width:90px;font-size:12px}
+        .btn.primary .btn-ico{font-size:15px}
+        footer{padding:6px 8px;font-size:9px;line-height:1.3}
+        .result-card{padding:9px;border-radius:9px;margin-top:8px}
+        .result-heading{font-size:11px;margin-bottom:6px}
+        .result-card textarea{min-height:95px;font-size:10.5px;padding:8px}
+        .result-tools{gap:6px;margin-top:6px}
+        .copy-result{font-size:11px;padding:7px 9px}
+        .copy-feedback{font-size:10px}
+        .launcher{width:47px;height:47px;border-radius:15px}
+        .launcher:before{inset:4px;border-radius:11px}
+        .launcher svg{width:23px;height:23px}
+        .launcher .pulse{width:10px;height:10px}
+        .launcher .tip{right:55px;font-size:11px;white-space:nowrap}
+        .toasts{width:min(290px,calc(100vw - 24px))}
+        .toast{font-size:11px;padding:8px 10px}
+        /* Batalkan aturan lama yang membuat semua label vertikal pada panel <=440px */
+        @container(max-width:440px){
+          header{padding:10px 12px;gap:9px}
+          .title strong{font-size:16px}.title small{font-size:10px}
+          .brand{width:32px;height:32px;border-radius:10px}
+          .status{padding:7px 12px}.regform{padding:10px 12px}.actions{padding:8px 10px}
+          .grid>label,.userid-block label,.rekening-block label{grid-template-columns:96px minmax(0,1fr);gap:8px}
+          .userid-status{margin-left:104px}.password-options{margin-left:104px}
+          .chat-import-top{flex-wrap:nowrap}
+        }
+        @container(max-width:355px){
+          .grid>label,.userid-block label,.rekening-block label{grid-template-columns:1fr;gap:4px}
+          .userid-status,.password-options,.email-check-status{margin-left:0}
+          .chat-import-top{flex-wrap:wrap}
+        }
         </style>
 
         <section class="panel" hidden aria-label="Formulir pendaftaran pemain">
@@ -2414,12 +2540,15 @@
         function postToParent(type, payload = {}) {
             const tgt = window.parent !== window ? window.parent : window.opener;
             if (!tgt) return;
-            try { tgt.postMessage({ type, ...payload }, PARENT); } catch {}
+            // Kirim hanya ke window parent/opener yang origin-nya cocok.
+            for (const origin of CHAT_PARENTS) {
+                try { tgt.postMessage({ type, ...payload }, origin); } catch {}
+            }
         }
 
         let registering = false;
         window.addEventListener('message', async event => {
-            if (event.origin !== PARENT || event.source !== (inIframe ? window.parent : window.opener)) return;
+            if (!CHAT_PARENTS.includes(event.origin) || event.source !== (inIframe ? window.parent : window.opener)) return;
             const d = event.data || {};
             if (!d.type) return;
 
@@ -3009,16 +3138,18 @@
        ██ GOPATH BRIDGE (UNTUK IFrame TERSEMBUNYI DI ADMITOTO)
        ===================================================================== */
     function installGopathBridge() {
-        // BRIDGE hanya aktif pada iframe tersembunyi dari LiveChat.
+        // BRIDGE hanya aktif pada iframe tersembunyi dari LiveChat/ChatGacor.
         // window.name tetap ada meski Gopath redirect ke line38602.com.
         if (window.top === window.self) return;
-        const ALLOWED_PARENT = 'https://my.livechatinc.com';
+        const ALLOWED_PARENTS = CHAT_PARENTS;
         const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
         let currentToken = 0;
         let lastRequest = '';
 
         function send(type, args = {}) {
-            try { window.parent.postMessage({type, ...args}, ALLOWED_PARENT); } catch {}
+            for (const origin of ALLOWED_PARENTS) {
+                try { window.parent.postMessage({type, ...args}, origin); } catch {}
+            }
         }
         function isVisible(el) {
             if (!el || el.disabled || el.readOnly || el.type === 'hidden') return false;
@@ -3103,7 +3234,7 @@
             return null;
         }
         function isAllowedMessage(event) {
-            return event.source === window.parent && event.origin === ALLOWED_PARENT;
+            return event.source === window.parent && ALLOWED_PARENTS.includes(event.origin);
         }
         window.addEventListener('message', async event => {
             if (!isAllowedMessage(event)) return;
