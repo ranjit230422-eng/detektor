@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         LiveChat • Pengingat Member
 // @namespace    local.livechat.pengingat
-// @version      2.68.1
+// @version      2.69.0
 // @description  Pengingat lokal setelah Started - Today. Tanpa pencarian User ID untuk akun terblokir.
 // @match        https://my.livechatinc.com/*
+// @match        https://app.chatgacor.com/app/*
 // @match        https://agwl2.admitoto.com/agentplayerlist.php*
 // @match        https://agwl2.admitoto.com/agentplayerlist_old.php*
 // @match        https://agwl2.admitoto.com/editplayerlist.php*
@@ -21,8 +22,10 @@
   'use strict';
   if(window.top!==window.self)return;
   if (document.getElementById('lc-pengingat-bosku')) return;
+  const isChatGacor=location.hostname==='app.chatgacor.com';
+  const gacorRoom=()=>location.pathname.match(/^\/app\/(\d+)\/my-chats\/([^/]+)\/?$/);
   const isArchive=()=>/^\/archives?(?:\/|$)/.test(location.pathname);
-  const conversationRoute=()=>location.pathname+(isArchive()?location.search+location.hash:'');
+  const conversationRoute=()=>isChatGacor ? (gacorRoom()?.[0]||location.pathname) : location.pathname+(isArchive()?location.search+location.hash:'');
   const allowedTopics=new Set(['deposit','withdraw','username','password']);
   let intentCorrections={};
   try{const saved=JSON.parse(localStorage.getItem('lc-intent-corrections-v1')||'{}');if(saved&&typeof saved==='object'&&!Array.isArray(saved))intentCorrections=saved;}catch{}
@@ -1313,7 +1316,7 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
 #panel{background:#151114;border:1px solid #81404a;border-radius:21px;box-shadow:0 22px 60px #18080c66,inset 0 1px #ffffff0b}header{background:linear-gradient(115deg,#741f30,#39151e 65%,#1e151b);border-bottom:1px solid #cf657c40;color:#fff;padding:16px}.brand-mark{background:linear-gradient(140deg,#ffd9df,#dc8392);border:1px solid #ffe4e9;color:#6a1e30;border-radius:12px;box-shadow:0 3px 12px #19070c44}.brand strong{color:#fff0f3}.brand-caption{color:#e2acb8}#close{background:#ffffff06;border-color:#e5a1b139;color:#f0ccd5}#close:hover{background:#b14a6033}.body{background:linear-gradient(145deg,#22171d,#131216 70%);padding:13px}#status{background:#2a1c23;border:1px solid #68404d;color:#dfc1cc;border-radius:10px;box-shadow:none}#bubble{background:linear-gradient(120deg,#821f34,#461a29 60%,#20151d);border:1px solid #bc687b;color:#fff1f5;border-radius:20px;box-shadow:0 9px 30px #2a091746,inset 0 1px #ffffff13}.bubble-symbol{background:linear-gradient(135deg,#ffd9e2,#dd8fa0);border-color:#ffe9ee;color:#741f36;border-radius:10px}.bubble-label span{color:#e6afbd}#count{background:#ffffff0e;border-color:#f2bbca40;color:#ffe5ed}#bubble:hover{background:linear-gradient(120deg,#a12a45,#5c2235 70%,#291923);border-color:#e498ab}#bubble.unread{border-color:#f1a3b6;box-shadow:0 0 0 3px #d95c7c22,0 9px 30px #2a091746}#bubble.unread #count{background:#ffd7e2;border-color:#ffd7e2;color:#6c1731}
 .body>.actions button{background:linear-gradient(100deg,#84253b,#a73851)!important;border-color:#be6579!important;color:#fff0f4!important;border-radius:10px;box-shadow:0 3px 8px #16050a33}.body>.actions button:hover{background:#b54560!important;border-color:#e39aae!important}.body>details{background:#21191f;border-color:#65414f;color:#d5b8c3;border-radius:12px;box-shadow:inset 0 1px #ffffff04}.body>details>summary,.body>details[open]>summary{color:#f0becd;font-weight:600}.body>details p,.body>details label,.body>details small{color:#d2b7c2}.body>details button{background:#38212d;border-color:#754452;color:#f0cbd7;border-radius:8px}.body>details button:hover{background:#572b3e;border-color:#b16b81}.body>details input{background:#16131a;border-color:#714554;color:#faeaf0;border-radius:9px}.body>details input::placeholder{color:#b999a6}.body>details input:focus{border-color:#d77994;outline-color:#d779942d}
   </style>
-  <section id="panel" hidden><header><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5h14v10H10l-5 4V5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 9h6M9 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><div class="brand"><strong>Asisten Pribadi <span class="edition">2.68</span></strong><span class="brand-caption">CHAT ASSIST</span></div><button id="close" title="Kecilkan" aria-label="Kecilkan asisten">−</button></header><div class="body"><p id="status">Menunggu chat…</p><div id="account" hidden></div><div id="cards"></div><div class="actions"><button id="scan">↻ Baca ulang chat</button></div><details><summary>Opsi & pengaturan</summary><div class="actions"><button id="pause">Jeda</button><button id="clear">Bersihkan</button><button id="sound" aria-pressed="false">Suara: mati</button></div><p>Jika pesan member belum dikenali, isi selector CSS khusus baris pesan member. Selector harus membedakan member dari agen.</p><label>Selector pesan member<input id="member" placeholder="Otomatis berdasarkan penanda pengirim"></label><label>Selector pesan AI / agen (opsional)<input id="agent" placeholder="Penanda khusus pengirim AI / agen"></label><label>Selector area percakapan (opsional)<input id="scope" placeholder="Otomatis dari penanda Started - Today"></label><button id="save">Simpan pengaturan</button> <button id="restore">Tampilkan lagi pengingat selesai</button> <button id="position">Reset posisi bubble</button><small>Chats dan Archives: hanya membaca pesan setelah Started - Today terakhir. Gulir sampai penanda tersebut dimuat, lalu klik Baca ulang.</small></details></div></section><button id="bubble"><span class="bubble-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5h14v10H10l-5 4V5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 9h6M9 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span class="bubble-label">Asisten<span>CHAT ASSIST</span></span><span id="count">0</span></button>`;
+  <section id="panel" hidden><header><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5h14v10H10l-5 4V5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 9h6M9 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><div class="brand"><strong>Asisten Pribadi <span class="edition">2.69</span></strong><span class="brand-caption">CHAT ASSIST</span></div><button id="close" title="Kecilkan" aria-label="Kecilkan asisten">−</button></header><div class="body"><p id="status">Menunggu chat…</p><div id="account" hidden></div><div id="cards"></div><div class="actions"><button id="scan">↻ Baca ulang chat</button></div><details><summary>Opsi & pengaturan</summary><div class="actions"><button id="pause">Jeda</button><button id="clear">Bersihkan</button><button id="sound" aria-pressed="false">Suara: mati</button></div><p>Jika pesan member belum dikenali, isi selector CSS khusus baris pesan member. Selector harus membedakan member dari agen.</p><label>Selector pesan member<input id="member" placeholder="Otomatis berdasarkan penanda pengirim"></label><label>Selector pesan AI / agen (opsional)<input id="agent" placeholder="Penanda khusus pengirim AI / agen"></label><label>Selector area percakapan (opsional)<input id="scope" placeholder="Otomatis dari penanda Started - Today"></label><button id="save">Simpan pengaturan</button> <button id="restore">Tampilkan lagi pengingat selesai</button> <button id="position">Reset posisi bubble</button><small>LiveChat: membaca setelah Started - Today. ChatGacor: membaca pesan yang dimuat pada ruang aktif; gulir ke pesan sebelumnya untuk melengkapi konteks. Jika belum terbaca, atur selector area dan pengirim di atas.</small></details></div></section><button id="bubble"><span class="bubble-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5h14v10H10l-5 4V5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 9h6M9 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span class="bubble-label">Asisten<span>CHAT ASSIST</span></span><span id="count">0</span></button>`;
   const $ = id => ui.getElementById(id);
   $('member').value = cfg.member || ''; $('agent').value = cfg.agent || ''; $('scope').value = cfg.scope || '';
   const completedByChat = new Map(), sources = new Map();
@@ -1441,7 +1444,44 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
     }
     return null; // Never scan the entire application as a transcript.
   }
+
+  // ChatGacor adapter: reads the loaded transcript only; never clicks a chat,
+  // sends messages, requests a read receipt, or reads the conversation list.
+  function gacorKind(e,scope){
+    for(let p=e;p&&p!==scope;p=p.parentElement){
+      if(p.matches('nav,aside,a[href*="/my-chats/"],button,textarea,[contenteditable="true"]'))return 'unknown';
+      const role=['data-sender-role','data-role','data-author-role','data-sender-type','data-author-type','data-message-author-type','data-message-type','data-direction'].map(k=>p.getAttribute(k)||'').join(' ');
+      if(/\b(agent|assistant|operator|admin|bot|outgoing|outbound)\b/i.test(role))return 'agent';
+      if(/\b(visitor|customer|member|user|incoming|inbound)\b/i.test(role))return 'member';
+      if(/\b(system|note|internal)\b/i.test(role))return 'unknown';
+      const tag=[p.getAttribute('data-testid'),typeof p.className==='string'?p.className:''].join(' ');
+      if(/(?:^|[\s_-])(?:agent|assistant|operator|outgoing|outbound|bot)(?:$|[\s_-])/i.test(tag))return 'agent';
+      if(/(?:^|[\s_-])(?:visitor|customer|member|incoming|inbound)(?:$|[\s_-])/i.test(tag))return 'member';
+      // Direction is accepted only on an individual message wrapper.
+      if(p.matches('[data-message-id],[data-message],.message,.message-row,[data-testid="message"]')){
+        if(p.matches('.justify-end,.items-end,.self-end,.ml-auto,.text-right'))return 'agent';
+        if(p.matches('.justify-start,.items-start,.self-start,.mr-auto,.text-left'))return 'member';
+      }
+    }
+    return 'unknown';
+  }
+  function gacorScope(){
+    const usable=e=>visible(e)&&!excluded(e)&&!e.closest('nav,aside')&&!e.querySelector('a[href*="/my-chats/"]');
+    const explicit=[...document.querySelectorAll('[role="log"],[data-testid="message-list"],[data-testid="chat-messages"],[data-testid="conversation-messages"],.chat-messages,.messages-container')].filter(usable);
+    if(explicit.length===1)return explicit[0];
+    const rows=[...document.querySelectorAll('[data-message-id],[data-message],.message,.message-row,[data-sender-role],[data-sender-type]')].filter(usable);
+    const scopes=new Set();
+    for(const row of rows){
+      for(let p=row.parentElement;p&&p!==document.body;p=p.parentElement){
+        if(!usable(p))break;
+        if(/auto|scroll/.test(getComputedStyle(p).overflowY)){scopes.add(p);break;}
+      }
+    }
+    return scopes.size===1?[...scopes][0]:null;
+  }
+
   function senderKind(e, scope) {
+    if(isChatGacor)return gacorKind(e,scope);
     for(let p=e;p && p!==scope;p=p.parentElement){
       const tag=[p.getAttribute('data-author-type'),p.getAttribute('data-sender-type'),p.getAttribute('data-message-author-type'),p.getAttribute('data-testid'),p.className].filter(x=>typeof x==='string').join(' ').toLowerCase();
       if (/(^|[\s_\-])(agent|operator|outgoing|system|bot)([\s_\-]|$)/.test(tag)) return 'agent';
@@ -1452,7 +1492,7 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
   function scan(){
     const next=conversationRoute();
     if(next!==route){cancelAdminGroup();liveChatContext=null;clearTimeout(selectionTimer);route=next;baselineReady=false;reset();$('bubble').classList.remove('unread');}
-    host.hidden=!/^\/chats(?:\/|$)/.test(location.pathname)&&!isArchive();
+    host.hidden=isChatGacor?!gacorRoom():!/^\/chats(?:\/|$)/.test(location.pathname)&&!isArchive();
     if(host.hidden || paused) return;
     liveChatContext=null;
     try{
@@ -1463,12 +1503,13 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
         const logs=[...document.querySelectorAll('[role="log"]')].filter(e=>visible(e)&&!excluded(e));
         if(logs.length===1)scope=logs[0];
       }
-      const marker=findStart(scope || document.body);
-      if(!marker){cards=[];seen.clear();render();setStatus('Belum menemukan Started - Today. Gulir ke awal chat hari ini, lalu Baca ulang.');return;}
+      if(isChatGacor&&!scope)scope=gacorScope();
+      const marker=isChatGacor?(scope?findStart(scope):null):findStart(scope || document.body);
+      if(!marker&&!isChatGacor){cards=[];seen.clear();render();setStatus('Belum menemukan Started - Today. Gulir ke awal chat hari ini, lalu Baca ulang.');return;}
       scope=scope || (marker?inferScope(marker):null);
       if(!scope){reset();setStatus(isArchive()?'Archives aktif. Buka satu percakapan; jika belum terbaca, isi selector area percakapan pada pengaturan.':'Area chat belum dikenali. Isi selector area percakapan pada pengaturan.');return;}
-      if(!scope.contains(marker)){cards=[];seen.clear();render();setStatus('Started - Today belum ditemukan di percakapan yang dipilih.');return;}
-      const after=e=>!e.contains(marker)&&!!(marker.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING);
+      if(marker&&!scope.contains(marker)){cards=[];seen.clear();render();setStatus('Started - Today belum ditemukan di percakapan yang dipilih.');return;}
+      const after=e=>!marker||(!e.contains(marker)&&!!(marker.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING));
       let candidates;
       if(cfg.member){
         candidates=[...scope.querySelectorAll(cfg.member)].filter(e=>visible(e)&&!excluded(e)&&after(e));
@@ -1532,7 +1573,7 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
         if(baselineReady)playNotice();
       }
       baselineReady=true;
-      setStatus(`${isArchive()?'Archives':'Aktif'} • ${candidates.length} pesan member • ${agentRows.length} pesan AI/agen • mulai Started - Today • hanya chat yang sudah dimuat`);
+      setStatus(`${isChatGacor?'ChatGacor':isArchive()?'Archives':'Aktif'} • ${candidates.length} pesan member • ${agentRows.length} pesan AI/agen • ${marker?"mulai Started - Today":"ruang chat aktif"} • hanya chat yang sudah dimuat`);
     }catch(err){reset();setStatus('Pembacaan belum cocok: '+err.message.slice(0,140));}
   }
   $('bubble').onclick=()=>{
