@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         LiveChat • Pengingat Member
+// @name         ambil rek pemain lae
 // @namespace    local.livechat.pengingat
 // @version      2.77.0
 // @description  Pengingat lokal setelah Started - Today. Tanpa pencarian User ID untuk akun terblokir.
