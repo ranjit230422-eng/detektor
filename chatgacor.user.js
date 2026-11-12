@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         ART • Chat Saya | Notifikasi Lintas Menu v15
+// @name         ART • Chat Saya | Notifikasi Chat Tidak Aktif Diam v16
 // @namespace    local.chatgacor.chatsaya.alert
-// @version      15.0.0
-// @description  Perbaikan pesan real-time lintas menu, tanpa membuka/membaca chat; diagnostik sinyal suara.
+// @version      16.0.0
+// @description  Perbaikan pesan real-time lintas menu, tanpa membuka/membaca chat; chat selesai/tidak aktif tidak memicu suara.
 // @author       ART
 // @match        https://app.chatgacor.com/app/*
 // @grant        none
@@ -12,8 +12,8 @@
 
 (() => {
   'use strict';
-  if (window.top !== window.self || window.__ART_CHATGACOR_ALERT_15__) return;
-  window.__ART_CHATGACOR_ALERT_15__ = true;
+  if (window.top !== window.self || window.__ART_CHATGACOR_ALERT_16__) return;
+  window.__ART_CHATGACOR_ALERT_16__ = true;
   // Suara pesan masuk dari Suara_ART (1).wav: satu ucapan Incoming chat.
   // Berkas suara sudah tertanam: tidak perlu impor, rekam, atau ambil dari LiveChat.
   const VOICE = 'data:audio/mpeg;base64,SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYxLjcuMTAzAAAAAAAAAAAAAAD/+3DAAAAAAAAAAAAAAAAAAAAAAABJbmZvAAAADwAAADcAAESSAAkNDRISFhYbGx8kJCkpLS0yMjY7Oz8/RERJSU1NUlZWW1tfX2RkaW1tcnJ2dnt7gICEiYmNjZKSlpabn5+kpKmpra2ysra7u7+/xMTJyc3S0tbW29vg4OTk6e3t8vL29vv7/wAAAABMYXZjNjEuMTkAAAAAAAAAAAAAAAAkBBQAAAAAAABEkolu4VQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//twxAADwAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/7csRtA8AAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//twxG2DwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/7csRtA8AAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVgdZSUa+BQajxWdT12c0teZDn8b1TsdeW0dyUIdzwqaVjwbzXIe9ckeTRsZaKudH6KfJ8iet1mdoOcZrF2b/3ee+8qeUxyZZrAdOasfJa0dhOgalheY2GsagNEbzPkbbJgYqF6a5u2b3tCUO0Z8pqaBkCYPE4ZqG8ZgEAYOCCZImCZvn+aTo6a2IwZUAWZrq6bUtqbAoSYlk4abMgbaNUa+I8aJkmYSikZlJQaxLYagG4YdD+Z/qWa2riaxpGaeGcYwB2ZqqKbDsmawnmYikQaKLMbJNYbgMgbuq6//twxG2DwAABpAAAACAAADSAAAAEZjhsaXOsccSQcBLMY2GmbOwmckyicfu+dXOgZ2Embq16ei66d7wqZUqIc2YwetaEd1RkcKpKYolwbLSIdXWAc2NkZCISb/0adf1CVtuq/y/ivTap6OIAb/Q3UsNXmE02h/9fasYcUzCQqwtkFpIGgRSBv/h8AYJgoLwMGBIDrYvA5tDgMCjbwLAQBQBjqGQA14ZgPz2EDTbYA6YrvhlsUkGMAsUAXAoG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';
@@ -28,10 +28,18 @@
   const passiveBus={messages:[],listener:null};
   function reportPassive(o){if(!o)return;if(passiveBus.listener)passiveBus.listener(o);else if(passiveBus.messages.length<50)passiveBus.messages.push(o);}
   function findVal(...vs){return vs.find(x=>x!==undefined&&x!==null&&x!=='') ?? '';}
+  // Status percakapan, bukan status online/offline pengunjung.
+  const CLOSED_STATUS = /^(?:inactive|inaktif|tidak aktif|closed|resolved|ended|archived|finished|completed|done|selesai|ditutup|diarsipkan)$/i;
+  function closedPayload(...objects) {
+    return objects.some(o => o && typeof o==='object' &&
+      (o.active===false || o.is_active===false || o.isActive===false || o.closed===true || o.resolved===true ||
+       [o.status,o.chat_status,o.conversation_status,o.state].some(v=>typeof v==='string' && CLOSED_STATUS.test(v.trim()))));
+  }
   // Pemantauan PASIF: hanya membaca event yang dikirimkan aplikasi sendiri.
   // Tidak membuat permintaan jaringan, tidak membuka chat, tidak mengirim read receipt.
   function inspectRealtime(raw,src='ws'){
     try {
+      if (raw && typeof raw==='object') raw=JSON.stringify(raw);
       if (typeof raw !== 'string' || raw.length > 750000) return;
       let t=raw.trim();
       // Socket.IO: 42["event", {...}] dan 42/namespace,["event", {...}].
@@ -59,9 +67,16 @@
         const body=(v.payload&&typeof v.payload==='object'&&!Array.isArray(v.payload))?v.payload:v;
         const eventName=String(findVal(v.event,v.eventName,v.event_name,v.action,v.type,v.name,
           body.event,body.eventName,body.type,inherited,'')).toLowerCase().replace(/[\s.:-]+/g,'_');
+        const auxiliary = /^(?:ticket_created|new_ticket|ticket_assigned)$/.test(eventName) ? 'tickets' :
+          /^(?:visitor_queued|visitor_entered_queue|visitor_joined_queue|queue_visitor_added)$/.test(eventName) ? 'queue' : '';
+        if(auxiliary && !/fetch|xhr/.test(src)) {
+          const aid=String(findVal(body.ticket_id,body.ticket?.id,body.visitor_id,body.visitor?.id,body.id,''));
+          if(aid)reportPassive({id:aid,type:auxiliary,mine:body.assignedToMe===true||body.assigned_to_me===true,
+            sig:eventName+'|'+aid,source:src});
+        }
         const isNewChat=/(?:new_?chat|incoming_?chat|chat_?created|conversation_?created|chat_?assigned|conversation_?assigned|new_?conversation|chat_?started|chat_?accepted)/i.test(eventName);
         const isMessage=/(?:new_?message|message_?(?:new|received|created)|chat_?message|visitor_?message|messagereceived|onmessage|message\.created)/i.test(eventName) || /^message$/.test(eventName);
-        const isRemoved=/(?:chat|conversation)_?(?:closed|unassigned|transferred|deleted|resolved)/i.test(eventName);
+        const isRemoved=/(?:chat|conversation|thread)_?(?:closed|unassigned|transferred|deleted|resolved|inactive|deactivated|ended|archived|finished|completed)/i.test(eventName) || closedPayload(body,body.conversation,body.chat,body.thread);
         if(isNewChat || isMessage || isRemoved) {
           const conv=body.conversation||body.chat||body.thread||v.conversation||v.chat||{};
           const msg=body.message||body.last_message||body.lastMessage||v.message||{};
@@ -73,7 +88,7 @@
             const actor=msg.sender||msg.author||msg.from||{};
             const role=typeof actor==='object'?findVal(actor.type,actor.role,actor.kind,actor.is_agent?'agent':'',''):actor;
             const dir=findVal(msg.direction,msg.messageType,msg.message_type,msg.senderType,msg.sender_type,'');
-            const outgoing=msg.isOutbound===true||msg.outgoing===true||msg.fromMe===true||msg.from_me===true||
+            const outgoing=/^(system|bot|automation|event)$/i.test(String(role)) || msg.is_system===true || msg.isSystem===true || msg.isOutbound===true||msg.outgoing===true||msg.fromMe===true||msg.from_me===true||
               /^(agent|operator|admin|staff|outbound|sent|me)$/i.test(String(role))||/^(outbound|sent|agent|operator)$/i.test(String(dir));
             const mine=body.assignedToMe===true||body.assigned_to_me===true||body.isMyChat===true||
               v.assignedToMe===true||conv.assignedToMe===true||conv.isMyChat===true;
@@ -171,6 +186,7 @@
     firstScanV5: !!storage.firstScanV5,
     queueCount: Number.isFinite(storage.queueCount) ? storage.queueCount : null,
     queueThresholdNotified: !!storage.queueThresholdNotified,
+    sounds: {messages:true,incoming:true,tickets:true,queue:true,...storage.sounds},
     extras: storage.extras && typeof storage.extras==='object' ? storage.extras : {},
     pos: storage.pos || null
   };
@@ -275,16 +291,17 @@
       osc.connect(g);g.connect(ac.destination);osc.start(t0+dt);osc.stop(t0+dt+.2);
     }
   }
-  async function playIncomingTone(type='incoming') {
+  async function playIncomingTone(type='incoming', chatId='') {
     if(!state.enabled || !ready || !ac || ac.state!=='running')return;
     await preloadOriginalSound(type);
     if(!state.enabled || !ready || !ac || ac.state!=='running')return;
+    if(!state.sounds[type] || (chatId && (!state.items[chatId]?.pending || known[chatId]?.inactive)))return;
     // Jangan lanjutkan suara async apabila chat sudah hilang ketika audio selesai diproses.
     if ((!listScanned && !badgePending) || !goodRoute()) return;
     const entry=decodedAudio.get(type);
     if(entry && entry.data===getSavedAudio(type)) {
       const src=ac.createBufferSource();src.buffer=entry.buffer;src.connect(ac.destination);
-      activeIncomingSources.add(src);
+      src.artChatId=chatId;activeIncomingSources.add(src);
       src.onended=()=>{activeIncomingSources.delete(src);try{src.disconnect();}catch{}};
       src.start();
     } else fallbackTone(type);
@@ -306,7 +323,7 @@
     }
     try {
       localStorage.setItem(DB_KEY, JSON.stringify({
-        enabled: state.enabled, compact: state.compact,
+        enabled: state.enabled, compact: state.compact, sounds:state.sounds,
         queueCount: state.queueCount, queueThresholdNotified: state.queueThresholdNotified,
         items: state.items, firstScan: state.firstScan, firstScanV5: state.firstScanV5, extras: state.extras, pos: state.pos
       }));
@@ -365,8 +382,10 @@
         <div class="info"><i class="led" id="led"></i><div class="status"><strong id="status">Memeriksa chat</strong><span id="detail">Khusus Chat Saya</span></div><div class="num" id="count">0</div></div>
         <div class="queue" id="queueBox"><span>☾</span><em>Jumlah Chat Saya</em><strong id="queueCount">—</strong></div>
         <div class="buttons"><button type="button" class="primary" id="enable">Aktifkan suara</button><button type="button" class="secondary" id="test" title="Uji ketiga suara">Tes</button></div>
-        <div class="audio-status" id="audioStatus">Suara: chat masuk · belum dibaca · antrean >15</div>
-        <div class="meta"><span id="rows">Memeriksa...</span><span id="countdown">Siaga</span></div>
+        <div class="audio-status" id="audioStatus">Chat selesai / tidak aktif = diam</div>
+        <details style="font-size:9px;margin-top:6px"><summary>Pengaturan suara</summary>
+        ${[['messages','Pesan baru'],['incoming','Chat masuk'],['tickets','Tiket baru'],['queue','Pengunjung antrean']].map(([key,label])=>`<div style="display:flex;align-items:center;padding:4px 0"><label style="flex:1"><input type="checkbox" data-sound="${key}">${label}</label><button data-test="${key}" style="font-size:9px">Tes</button></div>`).join('')}
+        </details><div class="meta"><span id="rows">Memeriksa...</span><span id="countdown">Siaga</span></div>
         <div id="toast" aria-live="polite"></div>
         <div class="foot"><button id="done" type="button">✓ Sudah baca</button><button id="all" type="button">Hapus alarm</button></div>
       </main>
@@ -418,7 +437,7 @@
     return reminderDecoding;
   }
   function activeReminder() {
-    return goodRoute() && pendingCount() > 0 && state.enabled && ready && ac && ac.state === 'running';
+    return state.sounds.messages && goodRoute() && pendingCount() > 0 && state.enabled && ready && ac && ac.state === 'running';
   }
   function stopReminderLoop() {
     reminderEpoch++;
@@ -503,38 +522,11 @@
   // Lebih dari 15 = 16 atau lebih. Tidak berbunyi berulang saat jumlah diam.
   // Setiap kenaikan jumlah chat di atas batas = 1 notifikasi queue.
   function updateQueueCount(count) {
-    if (!Number.isFinite(count) || count < 0) return;
-    queueCountNow = count;
-    if (count <= QUEUE_LIMIT && queueSource) {
-      try {queueSource.stop();queueSource.disconnect();}catch{}
-      queueSource=null;queueAlertInFlight=false;
-    }
-    const last=state.queueCount;
-    let fire=false;
-    if(last === null) {
-      // Saat awal, jika sudah 16+, beri tahu satu kali setelah audio aktif.
-      fire = count > QUEUE_LIMIT && !state.queueThresholdNotified;
-    } else if(count <= QUEUE_LIMIT) {
-      state.queueThresholdNotified=false;
-    } else if(count > last) {
-      fire=true;
-    } else if(!state.queueThresholdNotified) {
-      fire=true;
-    }
-    state.queueCount=count;
-    if(count>QUEUE_LIMIT && fire) {
-      state.queueThresholdNotified=true;
-      if(state.enabled && ready) { playQueueSound(); queuePendingWhileLocked=false; }
-      else queuePendingWhileLocked=true;
-    }
-    if(count<=QUEUE_LIMIT) queuePendingWhileLocked=false;
-    if(count!==last || fire) persist(true);
+    if(!Number.isFinite(count)||count<0)return;
+    queueCountNow=count;state.queueCount=count;
+    // Jumlah Chat Saya bukan jumlah pengunjung antrean dan tidak memicu suara.
   }
-  function flushQueueAudio() {
-    if(queuePendingWhileLocked && state.queueCount>QUEUE_LIMIT && ready && state.enabled) {
-      queuePendingWhileLocked=false;playQueueSound();
-    }
-  }
+  function flushQueueAudio() {}
   // Ambil jumlah resmi pada label Chat Saya apabila ditampilkan, bukan angka 'Semua chat'.
   function nativeMyChatsCount() {
     // Hanya label yang secara jelas menunjukkan angka setelah tulisan "Chat Saya".
@@ -657,6 +649,14 @@
     return Array.from(found.values()).slice(0,180);
   }
 
+  function rowInactive(row) {
+    for(const el of [row,...row.querySelectorAll('[data-status],[data-chat-status],[data-conversation-status],[data-testid*="status" i],[class*="status" i]')]) {
+      for(const a of ['data-status','data-chat-status','data-conversation-status'])
+        if(CLOSED_STATUS.test(el.getAttribute(a)||''))return true;
+      if(el!==row && CLOSED_STATUS.test(normalize(el.textContent)))return true;
+    }
+    return (row.innerText||'').split('\n').some(line=>CLOSED_STATUS.test(line.trim()));
+  }
   function numericUnread(el) {
     if (!visible(el)) return 0;
     const aria = [el.getAttribute('aria-label'), el.getAttribute('title'), el.getAttribute('data-testid')].filter(Boolean).join(' ');
@@ -702,7 +702,8 @@
 
   function sendAlarm(item, type='incoming', chatId='') {
     if (!state.enabled || (!listScanned && !badgePending) || (chatId && !latestList.includes(chatId))) return;
-    if (ready) playIncomingTone(type);
+    if(!state.sounds[type] || known[chatId]?.inactive || !item.pending)return;
+    if (ready) playIncomingTone(type,chatId);
     notification(item.name,type);
     const titles={incoming:'Chat baru masuk',messages:'Pesan baru',tickets:'Tiket baru',queue:'Ada antrean baru'};
     toast((titles[type]||'Notifikasi')+' • '+(item.name||'Chat Saya'));
@@ -724,45 +725,44 @@
     }
     return null;
   }
-  function addBadgeSound(){
-    // Tanpa event percakapan spesifik, hanya gunakan bunyi pesan biasa.
-    // Kenaikan badge TIDAK pernah berarti pasti chat baru.
-    if(TIME()-passiveSignalAt<3000 || !state.enabled)return;
-    heardBadge++;
-    if(ready)playIncomingTone('messages');
-    notification('Aktivitas Chat Saya','messages');
-    toast('Aktivitas baru di Chat Saya · periksa pesan.');
-    syncReminderLoop();render();
-  }
   function scanOtherMenu(){
-    // Jangan membuka iframe/URL chat, dan jangan menyimpulkan read dari badge 0.
-    const n=globalMyChatCount();
-    if(n!==null){
-      if(menuCount!==null && n>menuCount){
-        lastBadgeIncreaseAt=TIME();
-        badgePending=Math.max(badgePending,n-menuCount);
-        const matched=unverifiedEvents.filter(x=>TIME()-x.at<9000);
-        unverifiedEvents.length=0;
-        // Perubahan indikator Chat Saya mengonfirmasi bahwa sinyal baru terkait kotak milik agen.
-        if(matched.length)handlePassive(matched[matched.length-1].event);
-        if(badgeTimer)clearTimeout(badgeTimer);
-        badgeTimer=setTimeout(()=>{badgeTimer=null;addBadgeSound();},1600);
-      }
-      if(n===0 && menuCount!==null){
-        // Badge 0 cuma membersihkan alarm yang berasal dari badge, bukan chat yang telah diketahui.
-        badgePending=0;
-      }
-      menuCount=n;
-    }
+    menuCount=globalMyChatCount();
+    badgePending=0; // Angka/status berubah tidak membuktikan adanya pesan baru.
     if(listScanned)scanRows=latestList.length;
     render();
+  }
+  function silenceInactive(id) {
+    known[id]={...(known[id]||{}),inactive:true,inMyChats:false,time:TIME()};
+    if(state.items[id])state.items[id].pending=false;
+    latestList=latestList.filter(x=>x!==id);
+    for(const src of activeIncomingSources)if(src.artChatId===id){
+      try{src.stop();src.disconnect();}catch{} activeIncomingSources.delete(src);
+    }
+    scanRows=latestList.length;badgePending=0;
+    syncReminderLoop();
+  }
+  async function auxiliarySound(type, test=false) {
+    if(!test && !state.sounds[type])return;
+    if(type==='queue')return playQueueSound(true);
+    // Tidak ada rekaman tiket khusus dalam lampiran: gunakan chime yang sudah ada.
+    return testReminder();
   }
   function handlePassive(event){
     if(!event?.id)return;
     observedRealtime++;
     const id=String(event.id);
+    if(event.type==='tickets'||event.type==='queue') {
+      if(!event.mine || !state.enabled || !ready || !state.sounds[event.type])return;
+      if(recentSignals.has(event.sig))return;
+      recentSignals.set(event.sig,TIME());auxiliarySound(event.type);return;
+    }
+    if(event.type==='removed') {
+      silenceInactive(id);saveKnown(true);persist(true);render();return;
+    }
+    if(known[id]?.inactive && event.type!=='incoming')return;
+    if(event.source==='fetch'||event.source==='xhr')return; // Snapshot bukan kejadian baru.
     const belonged=!!(state.items[id]||latestList.includes(id)||known[id]?.inMyChats||event.mine);
-    const possibleMine=TIME()-lastBadgeIncreaseAt<12000;
+    const possibleMine=false;
     lastSignal=`${event.type} · ${event.source||'live'} · ${belonged?'Chat Saya':possibleMine?'badge bertambah':'belum terverifikasi'}`;
     if(!belonged&&!possibleMine) {
       unverifiedEvents.push({event,at:TIME()});
@@ -788,7 +788,7 @@
     state.items[id]=current;
     if(!latestList.includes(id))latestList.push(id);
     listScanned=true;scanRows=latestList.length;
-    known[id]={...(known[id]||{}),inMyChats:true,time:TIME()};
+    known[id]={...(known[id]||{}),inactive:false,inMyChats:true,time:TIME()};
     passiveSignalAt=TIME();heardRealtime++;
     saveKnown(true);persist(true);
     if(badgeTimer){clearTimeout(badgeTimer);badgeTimer=null;}
@@ -802,7 +802,9 @@
   function scan() {
     ensureMonitor();
     if(!onMyChatsPage()){scanOtherMenu();return;}
-    const rows=collectRows();
+    const allRows=collectRows();
+    for(const {id,el} of allRows)if(rowInactive(el))silenceInactive(id);
+    const rows=allRows.filter(({id,el})=>!rowInactive(el) && !known[id]?.inactive);
     const firstPass=!baselineEstablished;
     const nativeCount=nativeMyChatsCount();
     const emptyState=explicitlyEmpty();
@@ -813,7 +815,7 @@
     if(!rows.length)emptyScans++;else emptyScans=0;
     // Jangan kosongkan daftar saat baris tak terlihat akibat loading/tab/menu.
     // Keadaan kosong baru valid kalau aplikasi secara eksplisit menampilkan pesan kosong.
-    const confirmedEmpty = rows.length===0 && emptyState;
+    const confirmedEmpty = rows.length===0 && (emptyState || allRows.length>0);
     if(confirmedEmpty){latestList=[];scanRows=0;badgePending=0;}
     const currentSet=new Set(latestList);
     let changed=false;
@@ -830,7 +832,7 @@
     // Jika ada badge angka resmi, gunakan ketika daftar tampil; jika tidak gunakan baris unik.
     // Jangan tahan angka lama ketika Chat Saya kosong.
     let listCount=rows.length;
-    if(rows.length && nativeCount!==null && nativeCount>=rows.length) {
+    if(false) {
       listCount=nativeCount;
       queueCountSource='label';
     } else {
@@ -846,7 +848,7 @@
       let item=state.items[id];
       if(!item) {
         item=state.items[id]={name:d.name,key:d.key,unread,pending:false,time:TIME()};
-        if(unread>0 || (!firstPass && !!d.preview && !d.outgoing)) {
+        if(unread>0 && !d.outgoing) {
           item.pending=true;item.time=TIME();
           // Chat benar-benar baru = ID belum PERNAH terlihat sebelumnya.
           // Jika ID pernah ada, lalu muncul kembali, itu bukan Incoming chat.
@@ -865,7 +867,7 @@
       const unreadCleared=false;
       const readInForeground=isChatViewed(id,el);
       const lastMsgByAgent=d.outgoing && changedPreview;
-      const newMessage=unreadIncreased || (changedPreview && !d.outgoing && TIME()>=(item.suppressUntil||0));
+      const newMessage=!d.outgoing && unreadIncreased && TIME()>=(item.suppressUntil||0);
       if(lastMsgByAgent || unreadCleared) {
         if(item.pending)changed=true;
         item.pending=false;item.suppressUntil=TIME()+500;
@@ -897,7 +899,7 @@
   }
   function pendingCount() {
     // Menghitung HANYA ID yang sedang terlihat dalam Chat Saya, bukan isi cache lokal.
-    const n = latestList.reduce((a,id)=>a+(state.items[id]?.pending?1:0),0);
+    const n = latestList.reduce((a,id)=>a+(state.items[id]?.pending&&!known[id]?.inactive?1:0),0);
     return n+ (scanningBackground()?badgePending:0);
   }
   function scheduleScan(delay = 250) {
@@ -909,6 +911,7 @@
     let item = state.items[id];
     if (!item) return false;
     item.pending = false;
+    for(const src of activeIncomingSources)if(src.artChatId===id){try{src.stop();}catch{}activeIncomingSources.delete(src);}
     // Jangan menghidupkan alarm lama lagi sebelum ada pesan masuk baru.
     item.suppressUntil = TIME() + 500;
     item.time = TIME();
@@ -985,7 +988,7 @@
   }, true);
 
   function oldScriptsStillRunning(){
-    return !!(window.__ART_CHATGACOR_ALERT_12__||window.__ART_CHATGACOR_ALERT_13__||window.__ART_CHATGACOR_ALERT_14__||
+    return !!(window.__ART_CHATGACOR_ALERT_12__||window.__ART_CHATGACOR_ALERT_13__||window.__ART_CHATGACOR_ALERT_14__||window.__ART_CHATGACOR_ALERT_15__||
       document.getElementById('art-chatsaya-monitor-frame'));
   }
 
@@ -1026,6 +1029,16 @@
       : `Live: ${observedRealtime} sinyal / ${heardRealtime} cocok · badge: ${heardBadge}`;
   }
 
+  for(const input of ui.querySelectorAll('[data-sound]')) {
+    input.checked=state.sounds[input.dataset.sound];
+    input.addEventListener('change',()=>{state.sounds[input.dataset.sound]=input.checked;stopChatSounds();persist(true);render();});
+  }
+  for(const button of ui.querySelectorAll('[data-test]'))button.addEventListener('click',async()=>{
+    state.enabled=true;await unlockAudio();
+    const type=button.dataset.test;
+    if(type==='incoming')await testVoice();else await auxiliarySound(type,true);
+    persist(true);render();
+  });
   $('enable').addEventListener('click', async () => {
     if (state.enabled && ready) {
       state.enabled = false;
@@ -1102,7 +1115,7 @@
   function attachObserver() {
     if (!document.body) return;
     observer.observe(document.body, {childList:true,subtree:true,characterData:true,attributes:true,
-      attributeFilter:['class','aria-label','aria-current','aria-selected','data-state','title']});
+      attributeFilter:['class','aria-label','aria-current','aria-selected','data-state','data-status','data-chat-status','data-conversation-status','title']});
   }
   if (document.body) attachObserver();
   else document.addEventListener('DOMContentLoaded', attachObserver, {once:true});
