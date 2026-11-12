@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LiveChat • Pengingat Member
 // @namespace    local.livechat.pengingat
-// @version      2.69.0
+// @version      2.77.0
 // @description  Pengingat lokal setelah Started - Today. Tanpa pencarian User ID untuk akun terblokir.
 // @match        https://my.livechatinc.com/*
 // @match        https://app.chatgacor.com/app/*
@@ -23,9 +23,21 @@
   if(window.top!==window.self)return;
   if (document.getElementById('lc-pengingat-bosku')) return;
   const isChatGacor=location.hostname==='app.chatgacor.com';
-  const gacorRoom=()=>location.pathname.match(/^\/app\/(\d+)\/my-chats\/([^/]+)\/?$/);
-  const isArchive=()=>/^\/archives?(?:\/|$)/.test(location.pathname);
-  const conversationRoute=()=>isChatGacor ? (gacorRoom()?.[0]||location.pathname) : location.pathname+(isArchive()?location.search+location.hash:'');
+  // Chat saya and Arsip share a per-room key, so completed results follow the room.
+  function gacorPage(){
+    const path=location.pathname.match(/^\/app\/(\d+)\/(my-chats|archives?|archived-chats|arsip)(?:\/(.*))?\/?$/i);
+    if(!path)return null;
+    const query=new URLSearchParams(location.search);
+    const parts=(path[3]||'').split('/').filter(Boolean);
+    const room=parts[0]||query.get('conversation_id')||query.get('chat_id')||query.get('room')||'';
+    return {app:path[1],section:path[2],room,thread:parts.slice(1).join('/')};
+  }
+  const isArchive=()=>isChatGacor ? !!gacorPage()&&gacorPage().section!=='my-chats' : /^\/archives?(?:\/|$)/.test(location.pathname);
+  const conversationRoute=()=>{
+    if(!isChatGacor)return location.pathname+(isArchive()?location.search+location.hash:'');
+    const page=gacorPage();
+    return page?.room ? 'chatgacor:'+page.app+':'+page.room+(page.thread?':'+page.thread:'') : location.pathname+location.search+location.hash;
+  };
   const allowedTopics=new Set(['deposit','withdraw','username','password']);
   let intentCorrections={};
   try{const saved=JSON.parse(localStorage.getItem('lc-intent-corrections-v1')||'{}');if(saved&&typeof saved==='object'&&!Array.isArray(saved))intentCorrections=saved;}catch{}
@@ -1256,7 +1268,7 @@
   }
 
   const normalize = s => s.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
-  const startRE = /^Started\s*[-–—]?\s*Today\b/i;
+  const startRE = /^(?:Started\s*[-–—]?\s*Today|Mulai\s*[-–—]?\s*Hari\s+ini)\b/i;
   const key = 'lc-pengingat-settings-v1';
   let cfg = {};
   try { cfg = JSON.parse(localStorage.getItem(key) || '{}'); } catch {}
@@ -1315,8 +1327,14 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
 /* Crimson/black outer shell. Admin result components retain their existing colors. */
 #panel{background:#151114;border:1px solid #81404a;border-radius:21px;box-shadow:0 22px 60px #18080c66,inset 0 1px #ffffff0b}header{background:linear-gradient(115deg,#741f30,#39151e 65%,#1e151b);border-bottom:1px solid #cf657c40;color:#fff;padding:16px}.brand-mark{background:linear-gradient(140deg,#ffd9df,#dc8392);border:1px solid #ffe4e9;color:#6a1e30;border-radius:12px;box-shadow:0 3px 12px #19070c44}.brand strong{color:#fff0f3}.brand-caption{color:#e2acb8}#close{background:#ffffff06;border-color:#e5a1b139;color:#f0ccd5}#close:hover{background:#b14a6033}.body{background:linear-gradient(145deg,#22171d,#131216 70%);padding:13px}#status{background:#2a1c23;border:1px solid #68404d;color:#dfc1cc;border-radius:10px;box-shadow:none}#bubble{background:linear-gradient(120deg,#821f34,#461a29 60%,#20151d);border:1px solid #bc687b;color:#fff1f5;border-radius:20px;box-shadow:0 9px 30px #2a091746,inset 0 1px #ffffff13}.bubble-symbol{background:linear-gradient(135deg,#ffd9e2,#dd8fa0);border-color:#ffe9ee;color:#741f36;border-radius:10px}.bubble-label span{color:#e6afbd}#count{background:#ffffff0e;border-color:#f2bbca40;color:#ffe5ed}#bubble:hover{background:linear-gradient(120deg,#a12a45,#5c2235 70%,#291923);border-color:#e498ab}#bubble.unread{border-color:#f1a3b6;box-shadow:0 0 0 3px #d95c7c22,0 9px 30px #2a091746}#bubble.unread #count{background:#ffd7e2;border-color:#ffd7e2;color:#6c1731}
 .body>.actions button{background:linear-gradient(100deg,#84253b,#a73851)!important;border-color:#be6579!important;color:#fff0f4!important;border-radius:10px;box-shadow:0 3px 8px #16050a33}.body>.actions button:hover{background:#b54560!important;border-color:#e39aae!important}.body>details{background:#21191f;border-color:#65414f;color:#d5b8c3;border-radius:12px;box-shadow:inset 0 1px #ffffff04}.body>details>summary,.body>details[open]>summary{color:#f0becd;font-weight:600}.body>details p,.body>details label,.body>details small{color:#d2b7c2}.body>details button{background:#38212d;border-color:#754452;color:#f0cbd7;border-radius:8px}.body>details button:hover{background:#572b3e;border-color:#b16b81}.body>details input{background:#16131a;border-color:#714554;color:#faeaf0;border-radius:9px}.body>details input::placeholder{color:#b999a6}.body>details input:focus{border-color:#d77994;outline-color:#d779942d}
-  </style>
-  <section id="panel" hidden><header><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5h14v10H10l-5 4V5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 9h6M9 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><div class="brand"><strong>Asisten Pribadi <span class="edition">2.69</span></strong><span class="brand-caption">CHAT ASSIST</span></div><button id="close" title="Kecilkan" aria-label="Kecilkan asisten">−</button></header><div class="body"><p id="status">Menunggu chat…</p><div id="account" hidden></div><div id="cards"></div><div class="actions"><button id="scan">↻ Baca ulang chat</button></div><details><summary>Opsi & pengaturan</summary><div class="actions"><button id="pause">Jeda</button><button id="clear">Bersihkan</button><button id="sound" aria-pressed="false">Suara: mati</button></div><p>Jika pesan member belum dikenali, isi selector CSS khusus baris pesan member. Selector harus membedakan member dari agen.</p><label>Selector pesan member<input id="member" placeholder="Otomatis berdasarkan penanda pengirim"></label><label>Selector pesan AI / agen (opsional)<input id="agent" placeholder="Penanda khusus pengirim AI / agen"></label><label>Selector area percakapan (opsional)<input id="scope" placeholder="Otomatis dari penanda Started - Today"></label><button id="save">Simpan pengaturan</button> <button id="restore">Tampilkan lagi pengingat selesai</button> <button id="position">Reset posisi bubble</button><small>LiveChat: membaca setelah Started - Today. ChatGacor: membaca pesan yang dimuat pada ruang aktif; gulir ke pesan sebelumnya untuk melengkapi konteks. Jika belum terbaca, atur selector area dan pengirim di atas.</small></details></div></section><button id="bubble"><span class="bubble-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5h14v10H10l-5 4V5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 9h6M9 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span class="bubble-label">Asisten<span>CHAT ASSIST</span></span><span id="count">0</span></button>`;
+  
+:host([data-sidebar-open]) #panel{width:100%!important;max-width:100%!important;min-width:0!important;height:100%!important;max-height:100%!important;box-sizing:border-box!important;margin:0!important;display:flex;flex-direction:column;overflow:hidden;border-radius:14px}
+:host([data-sidebar-open]) #panel>header{flex:0 0 auto;cursor:default}
+:host([data-sidebar-open]) #panel>.body{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-wrap:anywhere}
+:host([data-sidebar-open]) #bubble{display:none!important}
+:host([data-sidebar-open]) input,:host([data-sidebar-open]) select{min-width:0;max-width:100%;box-sizing:border-box}
+</style>
+  <section id="panel" hidden><header><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5h14v10H10l-5 4V5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 9h6M9 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><div class="brand"><strong>Asisten Pribadi <span class="edition">2.77</span></strong><span class="brand-caption">CHAT ASSIST</span></div><button id="close" title="Kecilkan" aria-label="Kecilkan asisten">−</button></header><div class="body"><p id="status">Menunggu chat…</p><div id="account" hidden></div><div id="cards"></div><div class="actions"><button id="scan">↻ Baca ulang chat</button></div><details><summary>Opsi & pengaturan</summary><div class="actions"><button id="pause">Jeda</button><button id="clear">Bersihkan</button><button id="sound" aria-pressed="false">Suara: mati</button></div><p>Jika pesan member belum dikenali, isi selector CSS khusus baris pesan member. Selector harus membedakan member dari agen.</p><label>Selector pesan member<input id="member" placeholder="Otomatis berdasarkan penanda pengirim"></label><label>Selector pesan AI / agen (opsional)<input id="agent" placeholder="Penanda khusus pengirim AI / agen"></label><label>Selector area percakapan (opsional)<input id="scope" placeholder="Otomatis dari penanda Started - Today"></label><button id="save">Simpan pengaturan</button> <button id="restore">Tampilkan lagi pengingat selesai</button> <button id="position">Reset posisi bubble</button><small>LiveChat: membaca setelah Started - Today. ChatGacor: hanya membaca setelah Mulai - Hari ini di Chat saya dan Arsip; gulir ke pesan sebelumnya untuk melengkapi konteks. Jika belum terbaca, atur selector area dan pengirim di atas.</small></details></div></section><button id="bubble"><span class="bubble-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5h14v10H10l-5 4V5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 9h6M9 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span class="bubble-label">Asisten<span>CHAT ASSIST</span></span><span id="count">0</span></button>`;
   const $ = id => ui.getElementById(id);
   $('member').value = cfg.member || ''; $('agent').value = cfg.agent || ''; $('scope').value = cfg.scope || '';
   const completedByChat = new Map(), sources = new Map();
@@ -1423,6 +1441,7 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
     try{localStorage.setItem(key,JSON.stringify(cfg));}catch{}
   }
   function clampPosition(){
+    if(isChatGacor&&!$('panel').hidden){fitGacorSidebar();return;}
     if(!host.style.left)return;
     host.style.left=Math.max(8,Math.min(parseFloat(host.style.left)||8,innerWidth-host.offsetWidth-8))+'px';
     host.style.top=Math.max(8,Math.min(parseFloat(host.style.top)||8,innerHeight-host.offsetHeight-8))+'px';
@@ -1447,29 +1466,32 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
 
   // ChatGacor adapter: reads the loaded transcript only; never clicks a chat,
   // sends messages, requests a read receipt, or reads the conversation list.
+  const gacorRows='[data-message-id],[data-message],.message,.message-row,.message-wrapper,.message-item,.chat-message,.chat-bubble,[data-testid="message"],[data-sender-role],[data-sender-type],[data-direction],.incoming,.outgoing,.inbound,.outbound';
   function gacorKind(e,scope){
     for(let p=e;p&&p!==scope;p=p.parentElement){
-      if(p.matches('nav,aside,a[href*="/my-chats/"],button,textarea,[contenteditable="true"]'))return 'unknown';
+      if(p.matches('nav,aside,[role="navigation"],button,textarea,[contenteditable="true"]'))return 'unknown';
       const role=['data-sender-role','data-role','data-author-role','data-sender-type','data-author-type','data-message-author-type','data-message-type','data-direction'].map(k=>p.getAttribute(k)||'').join(' ');
-      if(/\b(agent|assistant|operator|admin|bot|outgoing|outbound)\b/i.test(role))return 'agent';
-      if(/\b(visitor|customer|member|user|incoming|inbound)\b/i.test(role))return 'member';
-      if(/\b(system|note|internal)\b/i.test(role))return 'unknown';
-      const tag=[p.getAttribute('data-testid'),typeof p.className==='string'?p.className:''].join(' ');
-      if(/(?:^|[\s_-])(?:agent|assistant|operator|outgoing|outbound|bot)(?:$|[\s_-])/i.test(tag))return 'agent';
-      if(/(?:^|[\s_-])(?:visitor|customer|member|incoming|inbound)(?:$|[\s_-])/i.test(tag))return 'member';
-      // Direction is accepted only on an individual message wrapper.
-      if(p.matches('[data-message-id],[data-message],.message,.message-row,[data-testid="message"]')){
-        if(p.matches('.justify-end,.items-end,.self-end,.ml-auto,.text-right'))return 'agent';
-        if(p.matches('.justify-start,.items-start,.self-start,.mr-auto,.text-left'))return 'member';
+      const tag=[role,p.getAttribute('data-testid'),typeof p.className==='string'?p.className:''].join(' ').replace(/([a-z])([A-Z])/g,'$1-$2');
+      const has=word=>new RegExp('(?:^|[\\s_-])(?:'+word+')(?:$|[\\s_-])','i').test(tag);
+      if(has('system|note|internal|activity|notification'))return 'unknown';
+      if(has('agent|assistant|operator|admin|bot|outgoing|outbound|sent'))return 'agent';
+      if(has('visitor|customer|member|user|incoming|inbound|received'))return 'member';
+      // Alignment is used only for an explicitly identified individual message.
+      if(p.matches(gacorRows)){
+        if(p.matches('.justify-end,.items-end,.self-end,.ml-auto,.text-right,.message-right,.chat-end'))return 'agent';
+        if(p.matches('.justify-start,.items-start,.self-start,.mr-auto,.text-left,.message-left,.chat-start'))return 'member';
       }
     }
     return 'unknown';
   }
   function gacorScope(){
-    const usable=e=>visible(e)&&!excluded(e)&&!e.closest('nav,aside')&&!e.querySelector('a[href*="/my-chats/"]');
-    const explicit=[...document.querySelectorAll('[role="log"],[data-testid="message-list"],[data-testid="chat-messages"],[data-testid="conversation-messages"],.chat-messages,.messages-container')].filter(usable);
-    if(explicit.length===1)return explicit[0];
-    const rows=[...document.querySelectorAll('[data-message-id],[data-message],.message,.message-row,[data-sender-role],[data-sender-type]')].filter(usable);
+    const usable=e=>visible(e)&&!excluded(e)&&!e.closest('nav,aside,[role="navigation"]')&&!e.querySelector('a[href*="/my-chats/"],a[href*="/archive/"] ,a[href*="/archives/"]');
+    const explicit=[...document.querySelectorAll('[role="log"],[data-testid="message-list"],[data-testid="chat-messages"],[data-testid="conversation-messages"],.chat-messages,.messages-container,.conversation-messages,.message-list,.messages-list,.chat-message-list')].filter(usable);
+    // Keep the innermost transcript when a framework nests message containers.
+    const inner=explicit.filter(e=>!explicit.some(p=>p!==e&&e.contains(p)));
+    if(inner.length===1)return inner[0];
+    if(inner.length>1)return null;
+    const rows=[...document.querySelectorAll(gacorRows)].filter(usable);
     const scopes=new Set();
     for(const row of rows){
       for(let p=row.parentElement;p&&p!==document.body;p=p.parentElement){
@@ -1477,7 +1499,36 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
         if(/auto|scroll/.test(getComputedStyle(p).overflowY)){scopes.add(p);break;}
       }
     }
-    return scopes.size===1?[...scopes][0]:null;
+    const found=[...scopes].filter(e=>! [...scopes].some(p=>p!==e&&e.contains(p)));
+    return found.length===1?found[0]:null;
+  }
+
+  // Visual fallback for ChatGacor's left/right message bubbles. Only inspect
+  // rounded, painted bubbles inside the marker's transcript, never the app body.
+  function gacorVisualRows(scope,marker){
+    const bounds=scope.getBoundingClientRect();
+    const after=e=>!e.contains(marker)&&!!(marker.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING);
+    const painted=e=>{
+      const cs=getComputedStyle(e),r=e.getBoundingClientRect();
+      const bg=cs.backgroundColor;
+      const hasPaint=bg&&bg!=='transparent'&&!/rgba\([^)]*,\s*0(?:\.0+)?\s*\)/.test(bg);
+      const rounded=['borderTopLeftRadius','borderTopRightRadius','borderBottomLeftRadius','borderBottomRightRadius'].some(k=>parseFloat(cs[k])>=6);
+      return hasPaint&&rounded&&r.width>=28&&r.height>=20&&r.width<bounds.width-16;
+    };
+    const nodes=[...scope.querySelectorAll('div,p,li,article,section')].filter(e=>
+      visible(e)&&!excluded(e)&&after(e)&&!e.closest('button,[role="button"],header,footer')&&
+      text(e)&&!/^\d{1,2}[.:]\d{2}(?:\s*[AP]M)?$/i.test(text(e))&&painted(e));
+    const bubbles=nodes.filter(e=>!nodes.some(p=>p!==e&&p.contains(e)));
+    return bubbles.map(e=>{
+      let kind=gacorKind(e,scope);
+      if(kind==='unknown'){
+        const r=e.getBoundingClientRect(),left=r.left-bounds.left,right=bounds.right-r.right;
+        // A centered banner or nearly full-width block has no reliable sender.
+        if(Math.abs(left-right)<24)return null;
+        kind=left<right?'member':'agent';
+      }
+      return {e,kind};
+    }).filter(Boolean);
   }
 
   function senderKind(e, scope) {
@@ -1492,24 +1543,28 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
   function scan(){
     const next=conversationRoute();
     if(next!==route){cancelAdminGroup();liveChatContext=null;clearTimeout(selectionTimer);route=next;baselineReady=false;reset();$('bubble').classList.remove('unread');}
-    host.hidden=isChatGacor?!gacorRoom():!/^\/chats(?:\/|$)/.test(location.pathname)&&!isArchive();
+    host.hidden=isChatGacor?!gacorPage():!/^\/chats(?:\/|$)/.test(location.pathname)&&!isArchive();
     if(host.hidden || paused) return;
+    if(isChatGacor&&!gacorPage()?.room){
+      reset();setStatus((isArchive()?'Arsip':'Chat saya')+' • Buka satu percakapan untuk membaca pesan.');return;
+    }
     liveChatContext=null;
     try{
       let scope=cfg.scope ? document.querySelector(cfg.scope) : null;
       if(cfg.scope && (!scope || !visible(scope))){reset();setStatus('Area percakapan belum ditemukan. Periksa pengaturan.');return;}
-      if(isArchive()&&!scope){
+      if(!isChatGacor&&isArchive()&&!scope){
         // Read only a single identified transcript, never the Archives list.
         const logs=[...document.querySelectorAll('[role="log"]')].filter(e=>visible(e)&&!excluded(e));
         if(logs.length===1)scope=logs[0];
       }
       if(isChatGacor&&!scope)scope=gacorScope();
-      const marker=isChatGacor?(scope?findStart(scope):null):findStart(scope || document.body);
-      if(!marker&&!isChatGacor){cards=[];seen.clear();render();setStatus('Belum menemukan Started - Today. Gulir ke awal chat hari ini, lalu Baca ulang.');return;}
+      const marker=findStart(scope || document.body);
+      if(!marker){reset();setStatus(isChatGacor?'Belum menemukan Mulai - Hari ini. Gulir ke penanda awal chat hari ini, lalu klik Baca ulang.':'Belum menemukan Started - Today. Gulir ke awal chat hari ini, lalu Baca ulang.');return;}
       scope=scope || (marker?inferScope(marker):null);
       if(!scope){reset();setStatus(isArchive()?'Archives aktif. Buka satu percakapan; jika belum terbaca, isi selector area percakapan pada pengaturan.':'Area chat belum dikenali. Isi selector area percakapan pada pengaturan.');return;}
       if(marker&&!scope.contains(marker)){cards=[];seen.clear();render();setStatus('Started - Today belum ditemukan di percakapan yang dipilih.');return;}
       const after=e=>!marker||(!e.contains(marker)&&!!(marker.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING));
+      const visualRows=isChatGacor&&!cfg.member&&!cfg.agent?gacorVisualRows(scope,marker):[];
       let candidates;
       if(cfg.member){
         candidates=[...scope.querySelectorAll(cfg.member)].filter(e=>visible(e)&&!excluded(e)&&after(e));
@@ -1519,10 +1574,15 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
         // Outermost member wrapper is one message; do not count nested text twice.
         candidates=candidates.filter(e=>!candidates.some(p=>p!==e&&p.contains(e)));
       }
+      if(visualRows.length){
+        const fallback=visualRows.filter(m=>m.kind==='member').map(m=>m.e);
+        candidates=[...candidates,...fallback.filter(e=>!candidates.some(p=>p===e||p.contains(e)||e.contains(p)))];
+      }
       if(!candidates.length){reset();setStatus('Area percakapan ditemukan; pesan member belum dikenali. Periksa selector pesan jika chat sudah berisi pesan.');return;}
       const agents = [...scope.querySelectorAll(cfg.agent || 'div,p,li,span')]
         .filter(e=>visible(e)&&!excluded(e)&&after(e)&&!candidates.some(m=>m===e||m.contains(e)||e.contains(m))&&(cfg.agent||senderKind(e,scope)==='agent'));
       const agentRows = agents.filter(e=>!agents.some(p=>p!==e&&p.contains(e)));
+      for(const m of visualRows)if(m.kind==='agent'&&!agentRows.some(e=>e===m.e||e.contains(m.e)||m.e.contains(e))&&!candidates.some(e=>e===m.e||e.contains(m.e)||m.e.contains(e)))agentRows.push(m.e);
       let transcript = [...candidates.map(e=>({e,kind:'member'})),...agentRows.map(e=>({e,kind:'agent'}))]
         .sort((a,b)=>(a.e.compareDocumentPosition(b.e)&Node.DOCUMENT_POSITION_FOLLOWING)?-1:1)
         .map(m=>({e:m.e,kind:m.kind,text:m.e.innerText||''}));
@@ -1573,7 +1633,7 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
         if(baselineReady)playNotice();
       }
       baselineReady=true;
-      setStatus(`${isChatGacor?'ChatGacor':isArchive()?'Archives':'Aktif'} • ${candidates.length} pesan member • ${agentRows.length} pesan AI/agen • ${marker?"mulai Started - Today":"ruang chat aktif"} • hanya chat yang sudah dimuat`);
+      setStatus(`${isChatGacor?(isArchive()?'ChatGacor · Arsip':'ChatGacor · Chat saya'):isArchive()?'Archives':'Aktif'} • ${candidates.length} pesan member • ${agentRows.length} pesan AI/agen • ${isChatGacor?"setelah Mulai - Hari ini":"mulai Started - Today"} • hanya chat yang sudah dimuat`);
     }catch(err){reset();setStatus('Pembacaan belum cocok: '+err.message.slice(0,140));}
   }
   $('bubble').onclick=()=>{
@@ -1627,6 +1687,7 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
   let drag=null, moved=false;
   for(const handle of [ui.querySelector('header'),$('bubble')]){
     handle.addEventListener('pointerdown',e=>{
+      if(isChatGacor&&!$('panel').hidden)return;
       if(e.target.closest('header button'))return;
       const r=host.getBoundingClientRect();drag={x:e.clientX,y:e.clientY,left:r.left,top:r.top};moved=false;handle.setPointerCapture(e.pointerId);
     });
@@ -1702,6 +1763,42 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
   window.addEventListener('blur',()=>{selectionDragging=false;selectionKeyboard=false;clearTimeout(selectionTimer);});
 
   const schedule=()=>{clearTimeout(timer);timer=setTimeout(scan,250);};
-  new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true,characterData:true});
+  new MutationObserver(records=>{if(records.some(r=>!host.contains(r.target)))schedule();}).observe(document.body,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['data-sender-role','data-sender-type','data-direction','data-message-id']});
   setInterval(scan,1800);window.addEventListener('popstate',schedule);window.addEventListener('hashchange',schedule);scan();
+
+  // Open the assistant inside the right contact column. Reader logic is unchanged.
+  function fitGacorSidebar(){
+    if(!isChatGacor)return;
+    if($('panel').hidden){
+      if(host.hasAttribute('data-sidebar-open')){
+        host.removeAttribute('data-sidebar-open');
+        for(const k of ['width','height','max-width','max-height','left','top'])host.style.removeProperty(k);
+        host.style.right='22px';host.style.bottom='24px';
+      }
+      return;
+    }
+    const options=[...document.querySelectorAll('aside,section,div')].filter(e=>{
+      if(e===host||host.contains(e))return false;
+      const r=e.getBoundingClientRect();
+      if(r.left<innerWidth*.65||r.width<200||r.width>480||r.height<innerHeight*.5||!visible(e))return false;
+      const t=e.innerText||'';
+      return /\bKONTAK\b/i.test(t)&&/\bPERCAKAPAN\b/i.test(t);
+    });
+    options.sort((a,b)=>b.getBoundingClientRect().height-a.getBoundingClientRect().height);
+    const r=options[0]?.getBoundingClientRect();
+    const gap=8;
+    const left=r?Math.max(gap,r.left+gap):Math.max(gap,innerWidth-328);
+    const top=r?Math.max(gap,r.top+gap):gap;
+    const width=Math.max(1,Math.min(r?r.width-gap*2:320,innerWidth-left-gap));
+    const bottom=r?Math.min(innerHeight-gap,r.bottom-gap):innerHeight-gap;
+    const height=Math.max(1,Math.min(550,Math.floor(bottom-top)));
+    host.setAttribute('data-sidebar-open','');
+    Object.assign(host.style,{left:left+'px',top:top+'px',width:width+'px',height:height+'px',right:'auto',bottom:'auto'});
+  }
+  if(isChatGacor){
+    new MutationObserver(fitGacorSidebar).observe($('panel'),{attributes:true,attributeFilter:['hidden']});
+    window.addEventListener('resize',fitGacorSidebar);
+    setInterval(fitGacorSidebar,1500);
+    fitGacorSidebar();
+  }
 })();
