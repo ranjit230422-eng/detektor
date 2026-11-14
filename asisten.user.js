@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         ambil rek pemain lae
+// @name         LiveChat • Pengingat Member
 // @namespace    local.livechat.pengingat
-// @version      2.73.0
+// @version      2.73.1
 // @description  Pengingat lokal setelah Started - Today. Tanpa pencarian User ID untuk akun terblokir.
 // @match        https://my.livechatinc.com/*
 // @match        https://app.chatgacor.com/app/*
@@ -991,7 +991,7 @@
     const number=document.createElement('strong');number.className='account-number';number.textContent=accountState.number||'Pilih nomor rekening';el.append(number);
     const status=document.createElement('div');status.className='lookup-steps';
     for(const [name,value] of [['NOW',accountState.now],['OLD',accountState.old]]){
-      const line=document.createElement('div'),label=document.createElement('b'),valueEl=document.createElement('span');line.dataset.state=/GAGAL|BELUM BISA/.test(value)?'error':/TIDAK ADA/.test(value)?'empty':/TERDAFTAR/.test(value)?'found':/Sedang/.test(value)?'loading':'idle';label.textContent=name;valueEl.textContent=value;line.append(label,valueEl);status.append(line);
+      const line=document.createElement('div'),label=document.createElement('b'),valueEl=document.createElement('span');line.dataset.source=name;line.dataset.state=/GAGAL|BELUM BISA/.test(value)?'error':/TIDAK ADA/.test(value)?'empty':/TERDAFTAR/.test(value)?'found':/Sedang/.test(value)?'loading':'idle';label.textContent=name;valueEl.textContent=value;line.append(label,valueEl);status.append(line);
     }
     const context=document.createElement('details');context.className='aux-details account-context';
     const contextTitle=document.createElement('summary');contextTitle.textContent='Detail pemeriksaan';context.append(contextTitle);
@@ -1007,8 +1007,8 @@
     }
     if(accountState.record){
       const record=accountState.record;
-      const card=document.createElement('section');card.className='player-result';
-      const banner=document.createElement('div');banner.className='player-banner';
+      const card=document.createElement('section');card.className='player-result';card.dataset.source=accountState.source;
+      const banner=document.createElement('div');banner.className='player-banner';banner.dataset.source=accountState.source;
       banner.textContent='✓ TERDAFTAR DI PEMAIN '+accountState.source;card.append(banner);
       const table=document.createElement('table');table.className='player-table';
       for(const [label,value] of [['User ID',record.userid],['Referral (Downline Aktif)',referralText(record)],['Bank / E-wallet',record.bank],['Nama Rekening',record.holder],['Nomor Rekening',record.number]]){
@@ -1327,12 +1327,34 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
 /* Crimson/black outer shell. Admin result components retain their existing colors. */
 #panel{background:#151114;border:1px solid #81404a;border-radius:21px;box-shadow:0 22px 60px #18080c66,inset 0 1px #ffffff0b}header{background:linear-gradient(115deg,#741f30,#39151e 65%,#1e151b);border-bottom:1px solid #cf657c40;color:#fff;padding:16px}.brand-mark{background:linear-gradient(140deg,#ffd9df,#dc8392);border:1px solid #ffe4e9;color:#6a1e30;border-radius:12px;box-shadow:0 3px 12px #19070c44}.brand strong{color:#fff0f3}.brand-caption{color:#e2acb8}#close{background:#ffffff06;border-color:#e5a1b139;color:#f0ccd5}#close:hover{background:#b14a6033}.body{background:linear-gradient(145deg,#22171d,#131216 70%);padding:13px}#status{background:#2a1c23;border:1px solid #68404d;color:#dfc1cc;border-radius:10px;box-shadow:none}#bubble{background:linear-gradient(120deg,#821f34,#461a29 60%,#20151d);border:1px solid #bc687b;color:#fff1f5;border-radius:20px;box-shadow:0 9px 30px #2a091746,inset 0 1px #ffffff13}.bubble-symbol{background:linear-gradient(135deg,#ffd9e2,#dd8fa0);border-color:#ffe9ee;color:#741f36;border-radius:10px}.bubble-label span{color:#e6afbd}#count{background:#ffffff0e;border-color:#f2bbca40;color:#ffe5ed}#bubble:hover{background:linear-gradient(120deg,#a12a45,#5c2235 70%,#291923);border-color:#e498ab}#bubble.unread{border-color:#f1a3b6;box-shadow:0 0 0 3px #d95c7c22,0 9px 30px #2a091746}#bubble.unread #count{background:#ffd7e2;border-color:#ffd7e2;color:#6c1731}
 .body>.actions button{background:linear-gradient(100deg,#84253b,#a73851)!important;border-color:#be6579!important;color:#fff0f4!important;border-radius:10px;box-shadow:0 3px 8px #16050a33}.body>.actions button:hover{background:#b54560!important;border-color:#e39aae!important}.body>details{background:#21191f;border-color:#65414f;color:#d5b8c3;border-radius:12px;box-shadow:inset 0 1px #ffffff04}.body>details>summary,.body>details[open]>summary{color:#f0becd;font-weight:600}.body>details p,.body>details label,.body>details small{color:#d2b7c2}.body>details button{background:#38212d;border-color:#754452;color:#f0cbd7;border-radius:8px}.body>details button:hover{background:#572b3e;border-color:#b16b81}.body>details input{background:#16131a;border-color:#714554;color:#faeaf0;border-radius:9px}.body>details input::placeholder{color:#b999a6}.body>details input:focus{border-color:#d77994;outline-color:#d779942d}
-  
+
 :host([data-sidebar-open]) #panel{width:100%!important;max-width:100%!important;min-width:0!important;height:100%!important;max-height:100%!important;box-sizing:border-box!important;margin:0!important;display:flex;flex-direction:column;overflow:hidden;border-radius:14px}
 :host([data-sidebar-open]) #panel>header{flex:0 0 auto;cursor:default}
 :host([data-sidebar-open]) #panel>.body{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-wrap:anywhere}
 :host([data-sidebar-open]) #bubble{display:none!important}
 :host([data-sidebar-open]) input,:host([data-sidebar-open]) select{min-width:0;max-width:100%;box-sizing:border-box}
+
+/* Status sumber admin: NOW hijau terang, OLD merah. Berlaku hanya saat ditemukan. */
+#account .player-result[data-source="NOW"]{border-color:#10b948}
+#account .player-result[data-source="OLD"]{border-color:#eb3747}
+#account .player-result .player-banner[data-source="NOW"]{
+  background:linear-gradient(100deg,#08af3e 0%,#22d653 55%,#41e575 100%);
+  color:#fff;border-bottom:1px solid #069332;text-shadow:0 1px 1px #08652b55;
+}
+#account .player-result .player-banner[data-source="OLD"]{
+  background:linear-gradient(100deg,#c81f32 0%,#e93847 55%,#fb5861 100%);
+  color:#fff;border-bottom:1px solid #af1f30;text-shadow:0 1px 1px #7a142655;
+}
+#account .lookup-steps>div[data-source="NOW"][data-state="found"]{
+  background:#e8fff0;border-color:#39bd68;
+}
+#account .lookup-steps>div[data-source="NOW"][data-state="found"] b,
+#account .lookup-steps>div[data-source="NOW"][data-state="found"] span{color:#087c31}
+#account .lookup-steps>div[data-source="OLD"][data-state="found"]{
+  background:#fff0f0;border-color:#ec6871;
+}
+#account .lookup-steps>div[data-source="OLD"][data-state="found"] b,
+#account .lookup-steps>div[data-source="OLD"][data-state="found"] span{color:#bd2033}
 </style>
   <section id="panel" hidden><header><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5h14v10H10l-5 4V5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 9h6M9 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><div class="brand"><strong>Asisten Pribadi <span class="edition">2.73</span></strong><span class="brand-caption">CHAT ASSIST</span></div><button id="close" title="Kecilkan" aria-label="Kecilkan asisten">−</button></header><div class="body"><p id="status">Menunggu chat…</p><div id="account" hidden></div><div id="cards"></div><div class="actions"><button id="scan">↻ Baca ulang chat</button></div><details><summary>Opsi & pengaturan</summary><div class="actions"><button id="pause">Jeda</button><button id="clear">Bersihkan</button><button id="sound" aria-pressed="false">Suara: mati</button></div><p>Jika pesan member belum dikenali, isi selector CSS khusus baris pesan member. Selector harus membedakan member dari agen.</p><label>Selector pesan member<input id="member" placeholder="Otomatis berdasarkan penanda pengirim"></label><label>Selector pesan AI / agen (opsional)<input id="agent" placeholder="Penanda khusus pengirim AI / agen"></label><label>Selector area percakapan (opsional)<input id="scope" placeholder="Otomatis dari penanda Started - Today"></label><button id="save">Simpan pengaturan</button> <button id="restore">Tampilkan lagi pengingat selesai</button> <button id="position">Reset posisi bubble</button><small>LiveChat: membaca setelah Started - Today. ChatGacor: hanya membaca setelah Mulai - Hari ini di Chat saya dan Arsip; gulir ke pesan sebelumnya untuk melengkapi konteks. Jika belum terbaca, atur selector area dan pengirim di atas.</small></details></div></section><button id="bubble"><span class="bubble-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5h14v10H10l-5 4V5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 9h6M9 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span class="bubble-label">Asisten<span>CHAT ASSIST</span></span><span id="count">0</span></button>`;
   const $ = id => ui.getElementById(id);
