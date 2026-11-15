@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ART Prediksi Line Premium - 53 Pasaran (Jakarta ON/OFF)
 // @namespace    local.prediksi.bubble
-// @version      2.0.0
-// @description  Generator 53 pasaran dengan sakelar Jakarta 1400 & 2330 (default OFF), copy massal terfilter, dan panel premium.
+// @version      2.1.0
+// @description  Generator 53 pasaran dengan sakelar Jakarta 1400 & 2330 (default OFF), salin bertahap per 16 pasaran, copy massal terfilter, dan panel premium.
 // @match        https://my.livechatinc.com/*
 // @match        https://app.chatgacor.com/app/3/my-chats*
 // @run-at       document-idle
@@ -18,7 +18,10 @@
    atau https://app.chatgacor.com/app/3/my-chats.
    Klik bubble Prediksi Line di kanan bawah. Jakarta awalnya OFF,
    aktifkan sakelar jika ingin memasukkan kedua pasaran Jakarta.
-   Generate semua / Salin semua hanya memakai pasaran aktif.
+   Generate semua hanya memakai pasaran aktif.
+   Salin semua berjalan BERTAHAP: 16 pasaran per sekali klik.
+   Setelah salin, tempel + kirim ke chat, lalu salin tahap berikutnya.
+   Ada tombol Sebelumnya, Berikutnya, Mulai ulang, dan pilihan 16/12/8/4.
    Hasil dan edit manual disimpan per tanggal, maksimal 14 tanggal terakhir.
    Semua angka acak; tidak menggunakan data hasil undian atau membaca chat.
 */
@@ -141,6 +144,9 @@
   state.jakartaEnabled = state.jakartaEnabled === true;
   const isActive = market => MARKETS.includes(market) && (state.jakartaEnabled || !JAKARTA_MARKETS.has(market));
   const activeMarkets = () => MARKETS.filter(isActive);
+  const ALLOWED_BATCH_SIZES = [16,12,8,4];
+  state.batchSize = ALLOWED_BATCH_SIZES.includes(Number(state.batchSize)) ? Number(state.batchSize) : 16;
+  if (!state.batch || typeof state.batch !== 'object' || Array.isArray(state.batch)) state.batch = {};
 
   root.innerHTML = `<style>
     :host{all:initial;font:12px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;color:#f5e9e8;color-scheme:dark}
@@ -195,9 +201,18 @@
     .btn.strong{border-color:#fb8b7a;background:linear-gradient(120deg,#e8575e,#a92940);color:#fff9f4;box-shadow:0 5px 16px #d6344b30,inset 0 1px #ffffff58}
     .btn.gold{border-color:#bd916e;background:linear-gradient(125deg,#b68758,#795137);color:#fff4e2;box-shadow:0 4px 14px #bd885026}
     .divider{height:1px;margin:13px 0 10px;background:linear-gradient(90deg,transparent,#b87c795d,transparent)}
+    .batchBox{margin-top:10px;padding:11px 12px;border:1px solid #9f6b584d;border-radius:12px;background:linear-gradient(145deg,#301f28,#1b171e 85%);box-shadow:inset 0 1px #ffffff16,0 5px 16px #0002}
+    .batchTop{display:flex;align-items:center;justify-content:space-between;gap:8px}.batchTitle{font-size:10px;letter-spacing:.6px;font-weight:900;color:#f6c490}.batchCount{font-size:10px;color:#ffd7c8;font-weight:900}
+    .batchMeta{font-size:10px;color:#e6d4cf;margin-top:7px;font-weight:700}.batchNames{margin:3px 0 6px;min-height:13px;font-size:9px;color:#b8a4a6;overflow-wrap:anywhere}
+    .batchTrack{height:6px;background:#150e15;border:1px solid #6b434b;border-radius:99px;overflow:hidden}.batchFill{height:100%;width:0%;background:linear-gradient(90deg,#b9805e,#e36b68);border-radius:99px;transition:width .2s}
+    .batchFoot{display:flex;align-items:center;justify-content:space-between;gap:7px;margin:7px 0 0;color:#c5aeab;font-size:9px}
+    .batchFoot label{display:flex;align-items:center;gap:6px;font-size:9px;white-space:nowrap}.batchFoot select{border:1px solid #68414b;background:#171119;color:#ffddd0;border-radius:6px;padding:3px 5px;font-size:10px}
+    .batchNav{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin-top:9px}.batchNav .btn{min-height:29px;padding:4px 6px;font-size:9px}
+    .batchTip{margin:8px 0 0;color:#bda5a2;font-size:9px;line-height:1.5}
+
     .resultTitle{display:flex;align-items:center;justify-content:space-between;gap:8px}
     .resultTitle strong{font-size:10px;letter-spacing:1.1px;color:#e9b8a1}.resultTitle span{font-size:9px;color:#ad9a9b}
-    .tabs{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:8px;padding:3px;background:#141016;border:1px solid #45343c;border-radius:9px}
+    .tabs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-top:8px;padding:3px;background:#141016;border:1px solid #45343c;border-radius:9px}
     .tabs button{border:1px solid transparent;background:transparent;color:#ae969a;border-radius:6px;padding:5px 7px;font-size:10px;font-weight:750}
     .tabs button[aria-pressed="true"]{background:#4a2930;color:#ffe4db;border-color:#91515d;box-shadow:inset 0 1px #ffffff14}
     #output{display:block;width:100%;height:184px;min-height:105px;margin-top:9px;padding:11px 12px;resize:vertical;border:1px solid #624248;border-radius:11px;background:linear-gradient(150deg,#0c0e12,#171117 85%);color:#f0dfdc;font:11px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;box-shadow:inset 0 4px 13px #0005;scrollbar-width:thin;scrollbar-color:#60404a #161015}
@@ -225,9 +240,18 @@
       <div class="actions"><button id="one" class="btn">↻ Generate satu</button><button id="all" class="btn strong">✦ Generate semua</button></div>
       <div class="divider"></div>
       <div class="resultTitle"><strong>HASIL PREDIKSI</strong><span id="viewHint">Bisa diedit langsung</span></div>
-      <div class="tabs"><button id="viewOne" aria-pressed="true">◉ Satu pasaran</button><button id="viewAll" aria-pressed="false">▦ Semua pasaran</button></div>
+      <div class="tabs"><button id="viewOne" aria-pressed="true">◉ Satu</button><button id="viewBatch" aria-pressed="false">◫ Tahap ini</button><button id="viewAll" aria-pressed="false">▦ Semua</button></div>
       <textarea id="output" spellcheck="false" placeholder="Pilih pasaran lalu Generate.&#10;Hasil muncul di sini dan tersimpan otomatis."></textarea>
-      <div class="actions"><button id="copy" class="btn gold">⧉ Salin pasaran ini</button><button id="copyAll" class="btn">⧉ Salin semua</button></div>
+      <div class="actions"><button id="copy" class="btn gold">⧉ Salin pasaran ini</button><button id="copyAll" class="btn strong">⧉ Salin tahap 1 / 4</button></div>
+       <div class="batchBox" aria-label="Salin semua pasaran secara bertahap">
+         <div class="batchTop"><strong class="batchTitle">◈ KIRIM SEMUA · PER TAHAP</strong><span id="batchCount" class="batchCount">1 / 4</span></div>
+         <div id="batchMeta" class="batchMeta">Pasaran 1–16 dari 51</div>
+         <div id="batchNames" class="batchNames"></div>
+         <div class="batchTrack" role="progressbar" id="batchTrack" aria-label="Bagian yang sudah disalin" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0"><div id="batchFill" class="batchFill"></div></div>
+         <div class="batchFoot"><span id="batchChars">— karakter</span><label>Per chat <select id="batchSize" aria-label="Jumlah pasaran per kiriman"><option value="16">16 pasaran</option><option value="12">12 pasaran</option><option value="8">8 pasaran</option><option value="4">4 pasaran</option></select></label></div>
+         <div class="batchNav"><button id="batchPrev" type="button" class="btn">◀ Sebelumnya</button><button id="batchNext" type="button" class="btn">Berikutnya ▶</button><button id="batchReset" type="button" class="btn" title="Mulai salin dari bagian pertama">↻ Ulang</button></div>
+         <p class="batchTip">Setiap klik Salin tahap menyalin maksimal 16 pasaran lalu berpindah ke tahap berikutnya. Tempel dan kirim ke chat secara manual sebelum lanjut. Jika chat menolak karena panjang teks, pilih 8 atau 4 pasaran.</p>
+       </div>
       <div id="status" role="status" aria-live="polite"></div>
       <p class="foot">Hasil berupa angka acak, bukan jaminan hasil undian.</p>
     </div>
@@ -238,11 +262,66 @@
   $('date').value = today();
   let selected = isActive(state.selected) ? state.selected : 'SINGAPORE';
   let viewAll = false;
+  let viewBatch = false;
+  $('batchSize').value = String(state.batchSize);
   const validDate = () => /^\d{4}-\d{2}-\d{2}$/.test($('date').value) && Number.isFinite(Date.parse($('date').value));
   function records() {
     const key = $('date').value;
     if (!state.days[key] || typeof state.days[key] !== 'object' || Array.isArray(state.days[key])) state.days[key] = {};
     return state.days[key];
+  }
+  // Antrean salin disimpan per tanggal + status Jakarta + ukuran tahap.
+  // Kunci berubah => mulai lagi dari tahap pertama; arsip prediksi tidak dihapus.
+  function batchKey() {
+    return `${$('date').value}|${state.jakartaEnabled ? 'JKT-ON' : 'JKT-OFF'}|${state.batchSize}`;
+  }
+  function batchGroups() {
+    const list = activeMarkets(); // Urutan MARKETS asli, bukan urutan hasil pencarian.
+    const groups = [];
+    for (let start=0; start<list.length; start+=state.batchSize) {
+      groups.push(list.slice(start,start+state.batchSize));
+    }
+    return groups;
+  }
+  function ensureBatch() {
+    const total = batchGroups().length;
+    if (state.batch.key !== batchKey()) {
+      state.batch = {key:batchKey(),cursor:0};
+    }
+    const cursor=Number(state.batch.cursor);
+    state.batch.cursor = Number.isInteger(cursor) ? Math.max(0,Math.min(total,cursor)) : 0;
+    return state.batch;
+  }
+  function updateBatchUI() {
+    const groups=batchGroups(), queue=ensureBatch(), total=groups.length;
+    const done=queue.cursor>=total;
+    const idx=done?total-1:queue.cursor;
+    const markets=groups[idx]||[];
+    const start=idx*state.batchSize + 1;
+    const end=Math.min(activeMarkets().length,start+markets.length-1);
+    const data=validDate()?records():{};
+    const missing=markets.filter(m=>typeof data[m]!=='string'||!data[m].trim());
+    const texts=markets.map(m=>data[m]).filter(t=>typeof t==='string'&&t.trim());
+    const chars=texts.join('\n\n').length;
+    $('batchCount').textContent=done?`SELESAI / ${total}`:`${idx+1} / ${total}`;
+    $('batchMeta').textContent=`Bagian ${idx+1} • Pasaran ${start}–${end} dari ${activeMarkets().length}`;
+    $('batchNames').textContent=markets.length?`${markets[0]} → ${markets[markets.length-1]}`:'Belum ada pasaran';
+    $('batchChars').textContent=missing.length ? `${missing.length} belum dibuat · ${chars.toLocaleString('id-ID')} karakter tersedia` : `${chars.toLocaleString('id-ID')} karakter · ${markets.length} pasaran`;
+    $('batchFill').style.width=(total?queue.cursor/total*100:0)+'%';
+    $('batchTrack').setAttribute('aria-valuemax',String(total));
+    $('batchTrack').setAttribute('aria-valuenow',String(queue.cursor));
+    $('batchPrev').disabled=queue.cursor===0;
+    $('batchNext').disabled=queue.cursor>=total-1;
+    $('batchReset').disabled=queue.cursor===0;
+    $('copyAll').disabled=!validDate()||!total;
+    $('copyAll').textContent=done?'↻ Mulai salin dari 1':`⧉ Salin tahap ${idx+1} / ${total}`;
+  }
+  function selectBatch(index) {
+    const count=batchGroups().length;
+    ensureBatch().cursor=Math.max(0,Math.min(count,index));
+    if(viewBatch) display();
+    else updateBatchUI();
+    save();
   }
   function status(message,tone='normal') {
     $('status').textContent=message;
@@ -268,19 +347,26 @@
     $('jakartaBox').classList.toggle('active',state.jakartaEnabled);
     $('jakartaLabel').textContent=state.jakartaEnabled?'ON':'OFF';
     $('jakartaHint').textContent=state.jakartaEnabled
-      ? 'Jakarta aktif dan ikut Generate Semua, Lihat Semua, dan Salin Semua.'
-      : 'Saat OFF, Jakarta tidak ikut Generate Semua, Lihat Semua, maupun Salin Semua.';
+      ? 'Jakarta aktif dan ikut Generate Semua, Lihat Semua, dan Salin Semua bertahap.'
+      : 'Saat OFF, Jakarta tidak ikut Generate Semua, Lihat Semua, maupun Salin Semua bertahap.';
+    updateBatchUI();
   }
   function display() {
     updateSummary();
     const data=validDate()?records():{};
-    $('output').value=viewAll
-      ? activeMarkets().map(m=>data[m]).filter(t=>typeof t==='string' && t.trim()).join('\n\n')
-      : (isActive(selected) && typeof data[selected]==='string' ? data[selected] : '');
-    $('output').readOnly=viewAll;
-    $('output').placeholder=viewAll?'Belum ada hasil. Klik Generate semua terlebih dahulu.':'Pilih pasaran lalu klik Generate satu.';
-    $('viewHint').textContent=viewAll?'Hanya pasaran aktif':'Bisa diedit langsung';
-    $('viewOne').setAttribute('aria-pressed',String(!viewAll));
+    const queue=ensureBatch();
+    const groups=batchGroups();
+    const previewGroup=groups[Math.min(queue.cursor,groups.length-1)]||[];
+    $('output').value=viewBatch
+      ? previewGroup.map(m=>data[m]).filter(t=>typeof t==='string' && t.trim()).join('\n\n')
+      : (viewAll
+        ? activeMarkets().map(m=>data[m]).filter(t=>typeof t==='string' && t.trim()).join('\n\n')
+        : (isActive(selected) && typeof data[selected]==='string' ? data[selected] : ''));
+    $('output').readOnly=viewAll||viewBatch;
+    $('output').placeholder=viewBatch?'Tahap ini belum ada hasil. Klik Generate semua terlebih dahulu.':viewAll?'Belum ada hasil. Klik Generate semua terlebih dahulu.':'Pilih pasaran lalu klik Generate satu.';
+    $('viewHint').textContent=viewBatch?'Pratinjau tahap aktif':viewAll?'Hanya pasaran aktif':'Bisa diedit langsung';
+    $('viewOne').setAttribute('aria-pressed',String(!viewAll&&!viewBatch));
+    $('viewBatch').setAttribute('aria-pressed',String(viewBatch));
     $('viewAll').setAttribute('aria-pressed',String(viewAll));
     if(!validDate()) status('Pilih tanggal yang valid.','warn');
     else status(`${activeMarkets().length} pasaran aktif · Jakarta ${state.jakartaEnabled?'ON':'OFF'}.`);
@@ -310,25 +396,57 @@
     if(!list.length){status('Tidak ada pasaran aktif yang bisa dibuat.','warn');return;}
     const data=records();
     for(const m of list) data[m]=generate(m,$('date').value);
-    viewAll=all;
+    if(all) ensureBatch().cursor=0; // Hasil baru => proses pengiriman dimulai lagi dari bagian 1.
+    viewAll=all;viewBatch=false;
     display();
     if(save()) status(`${list.length} pasaran berhasil dibuat. Jakarta ${state.jakartaEnabled?'diikutkan':'dikecualikan'}.`,'ok');
   }
-  function copy(all) {
+  // Salin per pasaran tetap sama seperti versi sebelumnya.
+  function copyOne() {
     if(!validDate()){display();return;}
-    const list=all?activeMarkets():(isActive(selected)?[selected]:[]);
-    if(!list.length){status('Pasaran Jakarta sedang OFF.','warn');return;}
-    const data=records();
-    const texts=list.map(m=>data[m]).filter(t=>typeof t==='string' && t.trim());
-    if(!texts.length){status('Generate hasil terlebih dahulu.','warn');return;}
-    if(all && texts.length!==list.length){status(`Baru ${texts.length}/${list.length} pasaran tersedia. Klik Generate semua terlebih dahulu.`, 'warn');return;}
+    if(!isActive(selected)){status('Pasaran Jakarta sedang OFF.','warn');return;}
+    const text=records()[selected];
+    if(typeof text!=='string'||!text.trim()){status('Generate hasil terlebih dahulu.','warn');return;}
     try{
-      GM_setClipboard(texts.join('\n\n'),'text',()=>status(`${texts.length} pasaran berhasil disalin. Jakarta ${state.jakartaEnabled?'termasuk':'tidak ikut'}.`,'ok'));
-      // Callback GM_setClipboard tidak dijalankan di semua versi Tampermonkey.
-      status(`${texts.length} pasaran disalin. Jakarta ${state.jakartaEnabled?'termasuk':'tidak ikut'}.`,'ok');
+      GM_setClipboard(text,'text');
+      status(`1 pasaran (${selected}) disalin.`, 'ok');
     }catch{
-      viewAll=all;display();$('output').focus();$('output').select();
+      viewAll=false;viewBatch=false;display();$('output').focus();$('output').select();
       status('Clipboard gagal. Tekan Ctrl+C pada teks terpilih.','warn');
+    }
+  }
+  function copyBatch() {
+    if(!validDate()){display();return;}
+    const queue=ensureBatch(),groups=batchGroups(),total=groups.length;
+    if(queue.cursor>=total){
+      selectBatch(0);
+      status('Antrean dimulai kembali dari bagian 1. Klik Salin tahap 1 untuk menyalin.','ok');
+      return;
+    }
+    const idx=queue.cursor,markets=groups[idx]||[];
+    if(!markets.length){status('Tidak ada pasaran aktif.','warn');return;}
+    const data=records();
+    const missing=markets.filter(m=>typeof data[m]!=='string'||!data[m].trim());
+    if(missing.length){
+      status(`${missing.length} pasaran di tahap ${idx+1} belum punya hasil. Klik Generate semua terlebih dahulu.`, 'warn');
+      return;
+    }
+    const text=markets.map(m=>data[m]).join('\n\n');
+    const afterCopy=()=>{
+      // Cursor hanya bertambah setelah salin dicoba, bukan setelah pesan terkirim.
+      queue.cursor=idx+1;
+      if(viewBatch) display(); else updateBatchUI();
+      save();
+      const next=idx+1<total ? `Selanjutnya tahap ${idx+2}/${total}.` : 'Semua tahap sudah disalin; gunakan ↻ Ulang untuk mulai lagi.';
+      status(`Tahap ${idx+1}/${total}: ${markets.length} pasaran (${text.length.toLocaleString('id-ID')} karakter) tersalin. Tempel dan KIRIM ke chat. ${next}`,'ok');
+    };
+    try{
+      GM_setClipboard(text,'text');
+      afterCopy();
+    }catch{
+      // Fallback manual: tepat teks tahap ini, bukan seluruh 53 pasaran.
+      viewAll=false;viewBatch=true;display();$('output').value=text;$('output').focus();$('output').select();
+      status(`Clipboard gagal untuk tahap ${idx+1}. Teks tahap ini sudah dipilih; tekan Ctrl+C, lalu tempel di chat.`,'warn');
     }
   }
 
@@ -339,20 +457,34 @@
     options();
     if(save()) status(state.jakartaEnabled?'Jakarta 1400 & 2330 AKTIF. Kini ikut semua proses.':'Jakarta 1400 & 2330 NONAKTIF. Tidak ikut generate atau salin massal.','ok');
   };
-  $('date').onchange=display;
-  $('search').oninput=()=>{viewAll=false;options();};
-  $('market').onchange=()=>{const candidate=$('market').value;if(isActive(candidate)){selected=candidate;viewAll=false;display();save();}};
-  $('viewOne').onclick=()=>{viewAll=false;display();};
-  $('viewAll').onclick=()=>{viewAll=true;display();};
+  $('date').onchange=()=>{display();save();};
+  $('search').oninput=()=>{viewAll=false;viewBatch=false;options();};
+  $('market').onchange=()=>{const candidate=$('market').value;if(isActive(candidate)){selected=candidate;viewAll=false;viewBatch=false;display();save();}};
+  $('viewOne').onclick=()=>{viewAll=false;viewBatch=false;display();};
+  $('viewBatch').onclick=()=>{viewAll=false;viewBatch=true;display();};
+  $('viewAll').onclick=()=>{viewAll=true;viewBatch=false;display();};
   $('output').oninput=()=>{
-    if(!viewAll && validDate() && isActive(selected)){
+    if(!viewAll && !viewBatch && validDate() && isActive(selected)){
       records()[selected]=$('output').value;save();updateSummary();
     }
   };
   $('one').onclick=()=>run(false);
   $('all').onclick=()=>run(true);
-  $('copy').onclick=()=>copy(false);
-  $('copyAll').onclick=()=>copy(true);
+  $('copy').onclick=copyOne;
+  $('copyAll').onclick=copyBatch;
+  $('batchPrev').onclick=()=>selectBatch(ensureBatch().cursor-1);
+  $('batchNext').onclick=()=>selectBatch(ensureBatch().cursor+1);
+  $('batchReset').onclick=()=>{
+    selectBatch(0);
+    status('Antrean diulang dari tahap 1. Hasil prediksi tidak berubah.','ok');
+  };
+  $('batchSize').onchange=()=>{
+    const size=Number($('batchSize').value);
+    if(!ALLOWED_BATCH_SIZES.includes(size))return;
+    state.batchSize=size;
+    updateBatchUI();save();
+    status(`Ukuran tahap diubah menjadi ${size} pasaran. Urutan salin dimulai lagi dari tahap 1.`, 'ok');
+  };
 
   // Bubble dapat digeser, panel diposisikan di dalam viewport.
   const POSITION_KEY='prediksi-bubble-position-v1';
