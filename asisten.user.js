@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         LiveChat • Pengingat Member
 // @namespace    local.livechat.pengingat
-// @version      2.73.37
+// @version      2.73.41
 // @description  Celestial Orchid 2.73.37 (desain premium saja): pencocokan admin-led; nama/bank admin dicari dalam pesan member yang diblok, tanpa mencampur frasa lupa password. NOW/OLD/888, bubble mini.
 // @match        https://my.livechatinc.com/*
-// @match        https://app.chatgacor.com/app/*
-// @match        https://agwl2.admitoto.com/agentplayerlist.php*
-// @match        https://agwl2.admitoto.com/agentplayerlist_old.php*
-// @match        https://agwl2.admitoto.com/editplayerlist.php*
+// @match        https://app.chatgacor.com/*
+// @match        https://agwl2.admitoto.com/*
+// @match        *://agwl2.suksesbogil.com/*
+// @grant        GM_addValueChangeListener
 // @grant        GM_openInTab
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -15,6 +15,7 @@
 // @run-at       document-idle
 // @grant        GM_xmlhttpRequest
 // @connect      agwl2.admitoto.com
+// @connect      agwl2.suksesbogil.com
 // @noframes
 // ==/UserScript==
 
@@ -27,8 +28,25 @@
   // Jangan menolak chat hanya karena ID room tidak terdapat di path.
   function gacorPage(){
     const path=location.pathname.match(/^\/app\/([^/]+)\/(my-chats|my_chat|chats|archives?|archived-chats|arsip)(?:\/(.*))?\/?$/i);
-    if(!path)return null;
+    const hashPath=location.hash.replace(/^#!?/, '').split('?')[0];
+    const archivePattern=/(?:^|\/)(archives?|archived(?:[-_]chats)?|chat[-_]archives?|arsip)(?:\/|$)(.*)/i;
+    const archive=hashPath.match(archivePattern)||location.pathname.match(archivePattern);
+    if(archive){
+      const [room='', ...thread]=archive[2].split('/').filter(Boolean);
+      const query=new URLSearchParams(location.hash.split('?')[1]||location.search);
+      const id=room||['conversation_id','conversationId','chat_id','chatId','room','roomId','id'].map(k=>query.get(k)).find(Boolean)||'';
+      return {app:location.pathname.split('/')[2]||'',section:'arsip',room:id,thread:thread.join('/')};
+    }
     const query=new URLSearchParams(location.search);
+    const archiveLabel=/^(?:arsip|archive[sd]?)(?: (?:chat|percakapan))?(?:\s*\(?\d+\)?)?$/i;
+    const archiveTab=['tab','view','section','status','filter'].some(key=>archiveLabel.test(query.get(key)||''));
+    const labels=document.querySelectorAll('h1,h2,[role="heading"],[aria-selected="true"],[aria-current="page"],nav .active,aside .active,[role="tab"][data-state="active"]');
+    const archiveHeading=Array.from(labels).some(el=>el.getClientRects().length && archiveLabel.test((el.getAttribute('aria-label')||el.textContent||'').trim()));
+    if(archiveTab||archiveHeading){
+      const room=['conversation_id','conversationId','chat_id','chatId','room','roomId','id'].map(key=>query.get(key)).find(Boolean)||path?.[3]||'';
+      return {app:location.pathname.split('/')[2]||'',section:'arsip',room,thread:''};
+    }
+    if(!path)return null;
     const parts=(path[3]||'').split('/').filter(Boolean);
     const room=parts[0]||['conversation_id','conversationId','chat_id','chatId','room','roomId','id'].map(x=>query.get(x)).find(Boolean)||'';
     return {app:path[1],section:path[2],room,thread:parts.slice(1).join('/')};
@@ -88,7 +106,7 @@
     if(!isChatGacor)return location.pathname+(isArchive()?location.search+location.hash:'');
     const page=gacorPage();if(!page)return location.pathname+location.search+location.hash;
     const identity=page.room ? 'room:'+page.room+(page.thread?':'+page.thread:'') : gacorActiveIdentity()||gacorTranscriptKey()||'unselected';
-    return 'chatgacor:'+page.app+':'+identity;
+    return 'chatgacor:'+page.app+':'+(page.section==='arsip'?'arsip:':'')+identity;
   };
   const allowedTopics=new Set(['deposit','withdraw','username','password']);
   let intentCorrections={};
@@ -307,12 +325,30 @@
     return {category,title,body,tone};
   }
   // Read-only account lookup; completion status follows SENT chat messages. No reset/password mutation.
-  const ADMIN_ORIGIN = 'https://agwl2.admitoto.com';
+  const defaultAdmin = 'https://agwl2.admitoto.com';
+  const suksesLogin = 'http://agwl2.suksesbogil.com/?passkey=WH9eRDBqtriK4pL';
+  const adminOrigins = [defaultAdmin, 'http://agwl2.suksesbogil.com', 'https://agwl2.suksesbogil.com'];
+  const adminKey = 'lc-active-admin-origin';
+  const onAdmin = adminOrigins.includes(location.origin);
+  const savedAdmin = GM_getValue(adminKey, defaultAdmin);
+  const ADMIN_ORIGIN = onAdmin ? location.origin : (adminOrigins.includes(savedAdmin) ? savedAdmin : defaultAdmin);
+  const adminCacheScope = ADMIN_ORIGIN === defaultAdmin ? '' : ADMIN_ORIGIN + ':';
   const ADMIN_PATHS = ['/agentplayerlist.php','/agentplayerlist_old.php'];
   const resetIntent = intentMatcher('password');
   const accountLabel = /(?:nomor\s*rekening|no\.?\s*(?:rekening|rek)\b|norek\b|rekening\b|account\s*(?:number|no\.?))/i;
 
-  if(location.origin===ADMIN_ORIGIN){void runProfileWorker();return;}
+  if(onAdmin){
+    const jobId = new URLSearchParams(location.hash.slice(1)).get('lc-profile-job') || sessionStorage.getItem('lc-profile-job');
+    if(jobId){
+      void runProfileWorker();
+    }else if(savedAdmin !== location.origin){
+      GM_setValue(adminKey, location.origin);
+    }
+    return;
+  }
+  GM_addValueChangeListener(adminKey, (_key, _previous, origin) => {
+    if(adminOrigins.includes(origin) && origin !== ADMIN_ORIGIN) location.reload();
+  });
 
   const usernameIntent=intentMatcher('username');
   // Inspect sent agent messages only; never retain the password value.
@@ -361,7 +397,7 @@
     }
     return complete;
   }
-  const conversationDonePrefix='lc-conversation-completed-v1:';
+  const conversationDonePrefix='lc-conversation-completed-v1:'+adminCacheScope;
   const conversationDoneMemory=new Map();
   function conversationDone(chat=route){
     if(conversationDoneMemory.has(chat))return conversationDoneMemory.get(chat);
@@ -1864,7 +1900,7 @@
 
   const selectionPins=new Map();
   let accountShowResult=false;
-  const accountCachePrefix='lc-account-results-v1:';
+  const accountCachePrefix='lc-account-results-v1:'+adminCacheScope;
   const accountCacheMemory=new Map();
   function readAccountCache(chat=route){
     if(!chat)return {latest:'',results:{}};
@@ -2038,7 +2074,7 @@
     return full?.length?(windowedRecoveryMessages(full)||full):null;
   }
   function verificationEvidenceSource(){
-    return manualEvidence?.route===route&&manualEvidence.messages?.length?'BLOK CHAT':'CHAT HARI INI';
+    return manualEvidence?.route===route&&manualEvidence.messages?.length?'BLOK CHAT':isChatGacor&&isArchive()?'CHAT ARSIP':'CHAT HARI INI';
   }
   function drawAccount(){
     const el=$('account');if(!el)return;
@@ -2241,7 +2277,15 @@
       const retry=document.createElement('button');retry.textContent='Cek ulang';retry.id='account-retry';retry.onclick=()=>runAccount(accountState.number,true);el.append(retry);
     }
     const finish=document.createElement('button');finish.id='account-finish';finish.className='account-finish';finish.textContent=accountState.completed?'Kembali ke pencarian selesai':'✓ Selesai';finish.disabled=!['done','error'].includes(accountState.phase);finish.title='Tampilkan ringkasan selesai; hasil tetap tersimpan';finish.onclick=finishAccount;el.append(finish);
-    const link=document.createElement('a');link.href=ADMIN_ORIGIN+ADMIN_PATHS[0];link.target='_blank';link.rel='noopener noreferrer';link.textContent='Buka admin / login';link.className='admin-link';manual.append(link);
+    for(const [name, href] of [['Admitoto', defaultAdmin+ADMIN_PATHS[0]], ['Suksesbogil', suksesLogin]]){
+      const link=document.createElement('a');
+      link.href=href;
+      link.target='_blank';
+      link.rel='noopener noreferrer';
+      link.textContent='Buka admin '+name+' / login';
+      link.className='admin-link';
+      manual.append(link);
+    }
   }
   function referralDates(){
     const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
@@ -2432,7 +2476,7 @@
   }
   function reopenedCheckpoint(){
     if(reopenedMemory.has(route))return reopenedMemory.get(route);
-    let value=null;try{value=JSON.parse(localStorage.getItem('lc-reopened-v1:'+route)||'null');}catch{}
+    let value=null;try{value=JSON.parse(localStorage.getItem('lc-reopened-v1:'+adminCacheScope+route)||'null');}catch{}
     reopenedMemory.set(route,value);return value;
   }
   function freshCompletionMessages(messages){
@@ -2447,7 +2491,7 @@
     const context=liveChatContext;
     if(!context||context.route!==route){setStatus('Muat Started - Today lalu Baca ulang sebelum membuka kembali.');return;}
     const checkpoint={};for(const m of context.messages)if(m.kind==='agent'){const key=reopenMessageKey(m);checkpoint[key]=(checkpoint[key]||0)+1;}
-    reopenedMemory.set(route,checkpoint);try{localStorage.setItem('lc-reopened-v1:'+route,JSON.stringify(checkpoint));}catch{}
+    reopenedMemory.set(route,checkpoint);try{localStorage.setItem('lc-reopened-v1:'+adminCacheScope+route,JSON.stringify(checkpoint));}catch{}
     reopenRecovery();accountState.active=true;
     accountState.message='Percakapan dibuka kembali di Asisten. Hasil pencarian tetap tersimpan; gunakan Cek ulang bila perlu memperbarui.';
     saveAccountResult();drawAccount();scan();$('panel').hidden=false;
@@ -4406,7 +4450,7 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
   }
   function gacorVisualRows(scope,marker){
     const bounds=scope.getBoundingClientRect();
-    const after=e=>!e.contains(marker)&&!!(marker.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING);
+    const after=e=>!marker||(!e.contains(marker)&&!!(marker.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING));
     const painted=e=>{
       const cs=getComputedStyle(e),r=e.getBoundingClientRect(),bg=cs.backgroundColor;
       const hasPaint=bg&&bg!=='transparent'&&!/rgba\([^)]*,\s*0(?:\.0+)?\s*\)/.test(bg);
@@ -4435,7 +4479,7 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
     return value.split(/\r?\n/).map(x=>x.trim()).filter(x=>x&&!/^(?:\d{1,2}[.:]\d{2}(?::\d{2})?(?:\s*[AP]M)?|dibaca|terkirim|read|delivered)$/i.test(x)).join('\n').trim();
   }
   function gacorTranscript(scope,marker){
-    const after=e=>!e.contains(marker)&&!!(marker.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING);
+    const after=e=>!marker||(!e.contains(marker)&&!!(marker.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING));
     const structural=[...scope.querySelectorAll(gacorRows)].filter(e=>visible(e)&&!excluded(e)&&after(e)&&
       gacorMessageText(e)&&!e.closest('button,[role="button"],header,footer')&&e!==scope);
     // Elemen luar yang mengandung lebih dari satu pesan tidak boleh
@@ -4502,23 +4546,40 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
     }catch(_){return false;}
   }
   function scan(){
+    if(isChatGacor&&!host.isConnected)document.body.appendChild(host);
     const next=conversationRoute();
-    if(next!==route){manualEvidence=null;highlightedDraft=null;cancelAdminGroup();liveChatContext=null;clearTimeout(selectionTimer);route=next;baselineReady=false;reset();$('bubble').classList.remove('unread');}
-    host.hidden=isChatGacor?!gacorPage():!/^\/chats(?:\/|$)/.test(location.pathname)&&!isArchive();
+    const menu=isChatGacor?(gacorPage()?.section||location.pathname+location.search+location.hash):'';
+    if(isChatGacor && lastGacorMenu!==null && menu!==lastGacorMenu){
+      $('panel').hidden=true;
+      fitGacorSidebar();
+    }
+    lastGacorMenu=menu;
+    if(next!==route){archiveManualRoute=null;archiveInput.value='';manualEvidence=null;highlightedDraft=null;cancelAdminGroup();liveChatContext=null;clearTimeout(selectionTimer);route=next;baselineReady=false;reset();$('bubble').classList.remove('unread');}
+    host.hidden=!isChatGacor&&!/^\/chats(?:\/|$)/.test(location.pathname)&&!isArchive();
+    const inArchive=isChatGacor && isArchive();
+    archiveForm.hidden=!inArchive;
+    const needsChat=next.endsWith(':unselected');
+    archiveButton.disabled=archiveInput.disabled=needsChat;
+    archiveInput.placeholder=needsChat?'Pilih satu percakapan arsip':'Nomor rekening di arsip';
     if(host.hidden || paused) return;
+    if(isChatGacor&&!gacorPage()){
+      setStatus('Asisten aktif. Buka Chat saya atau Arsip untuk mengecek nomor rekening.');
+      return;
+    }
     // Tetap cek pesan yang DIKIRIM agen walaupun mode blok atau hijau aktif.
-    if(watchSentCompletionOnChatgacor())return;
+    if(!(isChatGacor&&isArchive())&&watchSentCompletionOnChatgacor())return;
     // Sebelumnya mode blok menghentikan scan. Sekarang pemindaian tetap
     // membaca seluruh pesan setelah penanda hari ini, termasuk koreksi terbaru.
     // Teks pilihan tetap dapat digunakan sebagai pencarian manual, bukan
     // pembatas pembacaan percakapan yang telah dimuat.
     if(isChatGacor&&!gacorPage()?.room&&!gacorScope()){
+      if(archiveManualRoute===route)return;
       reset();setStatus((isArchive()?'Arsip':'Chat saya')+' • Buka percakapan untuk membaca pesan.');return;
     }
     liveChatContext=null;
     try{
       let scope=cfg.scope ? document.querySelector(cfg.scope) : null;
-      if(cfg.scope && (!scope || !visible(scope))){reset();setStatus('Area percakapan belum ditemukan. Periksa pengaturan.');return;}
+      if(cfg.scope && (!scope || !visible(scope))){if(archiveManualRoute===route)return;reset();setStatus('Area percakapan belum ditemukan. Periksa pengaturan.');return;}
       if(!isChatGacor&&isArchive()&&!scope){
         // Read only a single identified transcript, never the Archives list.
         const logs=[...document.querySelectorAll('[role="log"]')].filter(e=>visible(e)&&!excluded(e));
@@ -4526,8 +4587,9 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
       }
       if(isChatGacor&&!scope)scope=gacorScope();
       // Jangan mengambil penanda tanggal dari daftar chat, laporan, atau sidebar.
-      const marker=findStart(scope || (isChatGacor?document.createElement('div'):document.body));
-      if(!marker){
+      const marker=isChatGacor&&isArchive()?null:findStart(scope || (isChatGacor?document.createElement('div'):document.body));
+      if(!marker && !(isChatGacor&&isArchive()&&scope)){
+        if(archiveManualRoute===route)return;
         if(manualEvidence?.route===route&&manualEvidence.messages?.length){
           drawAccount();setStatus('MODE BLOK AKTIF • Verifikasi memakai teks yang kamu sorot.');return;
         }
@@ -4559,6 +4621,7 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
           .map(m=>({...m,text:m.e.innerText||''}));
       }
       if(!candidates.length){
+        if(archiveManualRoute===route)return;
         if(manualEvidence?.route===route&&manualEvidence.messages?.length){
           drawAccount();setStatus('MODE BLOK AKTIF • Identitas dibaca dari teks yang kamu sorot.');return;
         }
@@ -4567,7 +4630,7 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
       transcript=contextualMessages(transcript);
       const contextualText=new Map(transcript.map(m=>[m.e,m.text]));
       liveChatContext={route,scope,candidates,messages:transcript};
-      syncAccount(liveChatContext.messages);
+      if(archiveManualRoute!==route)syncAccount(liveChatContext.messages);
       if(getGreenLock()){drawAccount();setStatus(greenStatus());return;}
       const context = idContext(transcript);
       const uncertainty=null;
@@ -4616,7 +4679,7 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
       if(conversationDone())setStatus(completedStatusText(conversationDone().type));
       else if(manualEvidence?.route===route&&manualEvidence.messages?.length)
         setStatus('MODE BLOK AKTIF • Nama, nomor rekening, dan bank hanya dibandingkan dari teks yang kamu blok.');
-      else setStatus(`${isChatGacor?(isArchive()?'ChatGacor · Arsip':'ChatGacor · Chat saya'):isArchive()?'Archives':'Aktif'} • ${candidates.length} pesan member • ${agentRows.length} pesan AI/agen • ${isChatGacor?"setelah Mulai - Hari ini":"mulai Started - Today"} • hanya chat yang sudah dimuat`);
+      else setStatus(`${isChatGacor?(isArchive()?'ChatGacor · Arsip':'ChatGacor · Chat saya'):isArchive()?'Archives':'Aktif'} • ${candidates.length} pesan member • ${agentRows.length} pesan AI/agen • ${isChatGacor&&isArchive()?"percakapan arsip":isChatGacor?"setelah Mulai - Hari ini":"mulai Started - Today"} • hanya chat yang sudah dimuat`);
     }catch(err){reset();setStatus('Pembacaan belum cocok: '+err.message.slice(0,140));}
   }
   $('bubble').onclick=()=>{
@@ -4969,6 +5032,30 @@ button{background:#d9bba50b;border-color:#b2928045;color:#e8d4c8}button:hover{ba
   document.addEventListener('keyup',e=>{if(e.key==='Shift')selectionKeyboard=false;if(e.key==='Shift'||e.key.startsWith('Arrow')){captureHighlightedTranscript();checkHighlightedTranscriptAutomatically();scheduleSelectedAccount();}},true);
   window.addEventListener('blur',()=>{selectionDragging=false;selectionKeyboard=false;clearTimeout(selectionTimer);});
 
+  let lastGacorMenu=null;
+  let archiveManualRoute=null;
+  const archiveForm=document.createElement('form');
+  archiveForm.hidden=true;
+  const archiveInput=document.createElement('input');
+  archiveInput.type='text';
+  archiveInput.inputMode='numeric';
+  archiveInput.placeholder='Nomor rekening di arsip';
+  archiveInput.setAttribute('aria-label',archiveInput.placeholder);
+  const archiveButton=document.createElement('button');
+  archiveButton.type='submit';
+  archiveButton.textContent='Cek norek';
+  archiveForm.append(archiveInput,archiveButton);
+  $('account').before(archiveForm);
+  archiveForm.onsubmit=event=>{
+    event.preventDefault();
+    if(paused||route!==conversationRoute()||archiveForm.hidden||archiveButton.disabled)return;
+    const number=cleanAccount(archiveInput.value);
+    if(!accountNumberRE.test(number)){setStatus('Isi nomor rekening 5–25 digit.');return;}
+    archiveManualRoute=route;
+    accountState.active=true;
+    accountState.requestType='account';
+    void runAccount(number,true);
+  };
   const schedule=()=>{clearTimeout(timer);timer=setTimeout(scan,250);};
   new MutationObserver(records=>{if(records.some(r=>!host.contains(r.target)))schedule();}).observe(document.body,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['data-sender-role','data-sender-type','data-direction','data-message-id']});
   setInterval(scan,1800);window.addEventListener('popstate',schedule);window.addEventListener('hashchange',schedule);scan();
