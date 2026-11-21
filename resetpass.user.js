@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AGWL2 Auto Reset Password Member
 // @namespace    tampermonkey-agwl2-reset-password-member
-// @version      2.3.0
+// @version      2.3.1
 // @description  Bubble compact; klik Reset & Salin langsung menyalin sebelum form diproses, verifikasi log tetap di background.
 // @match        *://agwl2.admitoto.com/*
 // @match        *://agwl2.suksesbogil.com/*
@@ -13,6 +13,7 @@
 // @grant        GM_listValues
 // @grant        GM_xmlhttpRequest
 // @connect      agwl2.admitoto.com
+// @connect      agwl2.suksesbogil.com
 // @noframes
 // @run-at       document-idle
 // ==/UserScript==
@@ -55,11 +56,14 @@
   // === VERIFIKASI RESET DI BELAKANG LAYAR v2.0 ===
   // Pekerjaan disimpan di Tampermonkey dan dijalankan oleh tab admin UTAMA,
   // bukan oleh popup profil yang dapat ditutup setelah reset.
-  const LOG_URL = 'https://agwl2.admitoto.com/log.php';
-  const JOB_PREFIX = 'agwl2_rp20_job_';
-  const EVENT_KEY = 'agwl2_rp20_event';
-  const LATEST_KEY = 'agwl2_rp20_latest';
-  const DISMISS_PREFIX = 'agwl2_rp20_dismiss_';
+  const isSuksesbogil = location.hostname === 'agwl2.suksesbogil.com';
+  const logHost = isSuksesbogil ? location.hostname : 'agwl2.admitoto.com';
+  const LOG_URL = `https://${logHost}/log.php`;
+  const logKeyPrefix = isSuksesbogil ? 'agwl2_suksesbogil_rp20_' : 'agwl2_rp20_';
+  const JOB_PREFIX = logKeyPrefix + 'job_';
+  const EVENT_KEY = logKeyPrefix + 'event';
+  const LATEST_KEY = logKeyPrefix + 'latest';
+  const DISMISS_PREFIX = logKeyPrefix + 'dismiss_';
   const WORKER_ID = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
   const LOG_ACTION_RE = /\b(?:reset\s*[-_ ]?\s*(?:password|passwd|pwd|pass)|(?:password|passwd|pwd)\s*[-_ ]?\s*reset|(?:ubah|ganti|change|changed|update|updated)\s+(?:password|passwd|pwd))\b/i;
   const activeJobs = new Set();
@@ -138,7 +142,7 @@
     const path = new URL(response.url).pathname;
     if (/\b(?:login|signin|sign-in)\b/i.test(path) ||
         (doc.querySelector('input[type="password"]') && !/\buserid\b/i.test(doc.body?.textContent || ''))) {
-      throw new Error('Sesi login log.php tidak aktif. Login ke agwl2.admitoto.com dahulu.');
+      throw new Error(`Sesi login log.php tidak aktif. Login ke ${logHost} dahulu.`);
     }
     return doc;
   }
